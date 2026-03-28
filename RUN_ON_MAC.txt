@@ -1,0 +1,35 @@
+Где лежит «приложение»
+======================
+Это проект Python (не установщик .dmg). Корневая папка на вашем Mac:
+
+  /Users/sergejnovozilov/Documents/audio
+
+Главный файл интерфейса: main_gui.py
+Быстрый запуск из Finder: дважды нажмите run_gui.command (первый раз: ПКМ → Открыть, если macOS ругается на неизвестного разработчика).
+
+Перенос на другой MacBook
+==========================
+1. Скопируйте всю папку `audio` целиком (USB, AirDrop, zip и распаковать).
+2. На новом Mac должен быть Python 3.11+ (если нет — python.org/downloads/macos/).
+
+Самый быстрый первый запуск (один раз)
+---------------------------------------
+В Терминале:
+
+  cd /путь/к/audio
+  chmod +x quick_setup.sh run_gui.command
+  ./quick_setup.sh
+
+Потом каждый раз:
+
+  ./run_gui.command
+
+Либо без скрипта настройки — вручную:
+
+  cd /путь/к/audio
+  python3 -m venv .venv
+  .venv/bin/pip install -r requirements.txt
+  .venv/bin/python main_gui.py
+
+Первый запуск сегментации скачает модель Whisper (занимает место и время).
+Для Apple Silicon обычно ставится torch с поддержкой MPS/CPU — см. документацию PyTorch при необходимости.
