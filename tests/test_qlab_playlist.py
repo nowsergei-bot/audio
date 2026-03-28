@@ -106,6 +106,8 @@ def test_export_formats(tmp_path: Path) -> None:
     assert 'make type "audio"' in ascript
     assert "last item of (selected as list)" in ascript
     assert "POSIX file onePath" in ascript
+    assert "set q name of newCue to item i of nameLines" in ascript
+    assert "q list name" not in ascript
     names_txt = (tmp_path / "q.names.txt").read_text(encoding="utf-8")
     assert "Иван" in names_txt or "Петров" in names_txt
     assert (tmp_path / "q.paths.txt").is_file()

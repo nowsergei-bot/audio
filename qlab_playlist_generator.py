@@ -571,6 +571,8 @@ class QLabPlaylistGenerator:
         Кириллица внутри кавычек в теле .applescript ломает компилятор Редактора сценариев.
         Пути и имена выносятся в UTF-8 sidecar-файлы (.paths.txt, .names.txt, .colors.txt);
         сценарий читает их через «cat» (в исходнике только ASCII).
+        Имя кью: только «set q name» — «q list name» в словаре QLab только для чтения, а слово list
+        в AppleScript зарезервировано и даёт синтаксическую ошибку при компиляции.
         """
         p = Path(output_path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -652,7 +654,7 @@ class QLabPlaylistGenerator:
             '            make type "audio"',
             "            set newCue to last item of (selected as list)",
             "            set file target of newCue to POSIX file onePath",
-            "            set q list name of newCue to item i of nameLines",
+            "            set q name of newCue to item i of nameLines",
             "            set q color of newCue to item i of colorLines",
             "          on error errMsg",
             '            log "QLab cue " & i & ": " & errMsg',
