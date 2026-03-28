@@ -1,0 +1,748 @@
+-- QLab 5: open workspace, click inside the target cue list.
+-- Optional: select a cue; new audio cues are created below selection.
+-- Script Editor: Run. File is UTF-8 with BOM (Cyrillic OK).
+-- 2026-03-28T16:08:54
+
+tell application id "com.figure53.qlab.5"
+  activate
+  delay 0.4
+  tell front workspace
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/07_Елизавета_Дюмина,.wav"
+      set q name of newCue to "Елизавета ДЮмина"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav"
+      set q name of newCue to "Александр ЗвЕрев"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/29_Александр_Казаков,.wav"
+      set q name of newCue to "Александр КазакОв [1/5]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/30_Александр_Казаков,_2.wav"
+      set q name of newCue to "Александр КазакОв [2/5]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav"
+      set q name of newCue to "Александр КазакОв [3/5]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/11_Александр_Кузмин,.wav"
+      set q name of newCue to "Александр КазакОв [4/5]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/12_Александр_Кузмин,_2.wav"
+      set q name of newCue to "Александр КазакОв [5/5]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/08_Дарафея_Карибова,.wav"
+      set q name of newCue to "Дорофея КарИбова"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/09_Георгий_Калеген,.wav"
+      set q name of newCue to "Георгий КоллЕгин [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/10_Георгий_Калеген,_2.wav"
+      set q name of newCue to "Георгий КоллЕгин [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/28_Алина_Махмудова,.wav"
+      set q name of newCue to "Алёна МахмУдова"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/13_Саломон_Мельников,.wav"
+      set q name of newCue to "Соломон МЕльников [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/14_Саломон_Мельников,_2.wav"
+      set q name of newCue to "Соломон МЕльников [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/37_Марк_Морозов,.wav"
+      set q name of newCue to "Марк МорОзов"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/15_Александр_Муродян,.wav"
+      set q name of newCue to "Александр МурадЯн"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/34_Александр_Никифоров,.wav"
+      set q name of newCue to "Александр НикИфоров"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/36_Константин_Абаленский,.wav"
+      set q name of newCue to "Константин ОболЕнский"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/20_Смирнова,_Нина.wav"
+      set q name of newCue to "Нина СмирнОва [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/18_Ника_Смирнова,.wav"
+      set q name of newCue to "Нина СмирнОва [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/22_Арина_Юдина,.wav"
+      set q name of newCue to "Арина Юдина [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/23_Арина_Юдина,_2.wav"
+      set q name of newCue to "Арина Юдина [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_1_Филипь_Юкубовский,.wav"
+      set q name of newCue to "Филипп ЯкубОвский [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_2_Филипь_Юкубовский,.wav"
+      set q name of newCue to "Филипп ЯкубОвский [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/27_Филипь_Юкубовский,_2.wav"
+      set q name of newCue to "Филипп ЯкубОвский [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/42_Александр_Гришин.wav"
+      set q name of newCue to "Александр ГрИшин [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/45_Александр_Гришин_2.wav"
+      set q name of newCue to "Александр ГрИшин [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav"
+      set q name of newCue to "Дарья МирмАнова [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/28_Дарья_Мирманова.wav"
+      set q name of newCue to "Дарья МирмАнова [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/37_Анна_Петражицкая.wav"
+      set q name of newCue to "Анна ПетрожИцкая [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/38_Анна_Петражицкая_2.wav"
+      set q name of newCue to "Анна ПетрожИцкая [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/39_Александр_Пискунов.wav"
+      set q name of newCue to "Александр ПискунОв"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/24_Дарья_Савелева.wav"
+      set q name of newCue to "Дарья СавЕльева"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/16_Данил_Солтис.wav"
+      set q name of newCue to "Даниил СОлтис [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/17_Данил_Солтис_2.wav"
+      set q name of newCue to "Даниил СОлтис [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/25_Эмма_Табунова.wav"
+      set q name of newCue to "Эмма ТабунОва [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/27_Эмма_Табунова_2.wav"
+      set q name of newCue to "Эмма ТабунОва [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav"
+      set q name of newCue to "Эмма ТабунОва [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/20_Лидия_Черепенникова.wav"
+      set q name of newCue to "Лидия ЧерепЕнникова"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/21_Ника_Шитая.wav"
+      set q name of newCue to "Ника ШИтая [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/22_Ника_Шитая_2.wav"
+      set q name of newCue to "Ника ШИтая [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/23_Ника_Шитая_3.wav"
+      set q name of newCue to "Ника ШИтая [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/30_Ксения_Бадимова,.wav"
+      set q name of newCue to "Ксения БадИмова"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/09_Дмитрий_Илегуев,.wav"
+      set q name of newCue to "Дмитрий ИльягУев [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/10_Дмитрий_Илегуев,_2.wav"
+      set q name of newCue to "Дмитрий ИльягУев [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/11_Максим_Калинин,.wav"
+      set q name of newCue to "Максим КалИнин"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/36_Виктория_Лабанова,.wav"
+      set q name of newCue to "Виктория ЛобАнова [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/37_Виктория_Лабанова,_2.wav"
+      set q name of newCue to "Виктория ЛобАнова [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/16_Капиталина_Ткаленко,.wav"
+      set q name of newCue to "Капитолина ТкалЕнко"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/07_Арина_Артюхова.wav"
+      set q name of newCue to "Арина АртюхОва [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/08_Арина_Артюхова_2.wav"
+      set q name of newCue to "Арина АртюхОва [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/48_Кирилл_Барабанов.wav"
+      set q name of newCue to "Кирилл БарабАнов"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/11_Егор_Галкин.wav"
+      set q name of newCue to "Егор ГАлкин"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/43_Артемии_Говриков.wav"
+      set q name of newCue to "Артемий ГоврякОв"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/42_Евангелина_Денисова.wav"
+      set q name of newCue to "Евангелина ДенИсова"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/10_Милана_Истомина.wav"
+      set q name of newCue to "Милана ИстОмина"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/34_Анастасия_Резни.wav"
+      set q name of newCue to "Анастасия РЕзник [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/37_Анастасия_Резни_2.wav"
+      set q name of newCue to "Анастасия РЕзник [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/38_Анастасия_Резни_3.wav"
+      set q name of newCue to "Анастасия РЕзник [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/39_Марк_Соловьев.wav"
+      set q name of newCue to "Марк СоловьЁв [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/40_Марк_Соловьев_2.wav"
+      set q name of newCue to "Марк СоловьЁв [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/41_Марк_Соловьев_3.wav"
+      set q name of newCue to "Марк СоловьЁв [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/14_Роберт_Тер.wav"
+      set q name of newCue to "Роберт Тер-ГригорЯн [1/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/16_Тер_грегорян.wav"
+      set q name of newCue to "Роберт Тер-ГригорЯн [2/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/12_Роберт_Тенгрегориан.wav"
+      set q name of newCue to "Роберт Тер-ГригорЯн [3/3]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/28_Олесия_Тищенко.wav"
+      set q name of newCue to "Алеся ТЫщенко [1/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/29_Олесия_Тищенко_2.wav"
+      set q name of newCue to "Алеся ТЫщенко [2/2]"
+      set q color of newCue to "red"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+    try
+      make type "audio"
+      set newCue to last item of (selected as list)
+      set file target of newCue to POSIX file "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/27_Ксения_Ходокова.wav"
+      set q name of newCue to "Ксения ХодакОва"
+      set q color of newCue to "none"
+    on error errMsg
+      set dlgText to "QLab: " & errMsg
+      display dialog dlgText buttons {"OK"} default button 1 with title "QLab"
+    end try
+    delay 0.08
+  end tell
+end tell

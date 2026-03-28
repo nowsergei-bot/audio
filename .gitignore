@@ -5,3 +5,11 @@ __pycache__/
 .DS_Store
 gui_settings.json
 *.log
+pipeline_run.pid
+
+# Исходники и нарезка — сотни МБ; держите локально или бэкапьте отдельно
+audio_files/
+segmented_output/
+
+# Локальный show QLab (большой bundle)
+qlab_playlist/Untitled Workspace/

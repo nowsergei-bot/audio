@@ -1,0 +1,201 @@
+Cue Number,Cue Name,File Path,Duration,Notes,Q Color
+1,Мария БаклАнова,,,1А №вдок=1,
+2,Адриан БОгод,,,1А №вдок=2,
+3,Константин БорИсов,,,1А №вдок=3,
+4,Кира БоровикОва,,,1А,
+5,Зоя БуякЕвич,,,1А,
+6,Марк ГлИнский,,,1А,
+7,Даниэль ЗЕйтц,,,1А,
+8,Андрей КочкурОв,,,1А,
+9,Мария МакАрова,,,1А,
+10,Савелий МаркЕвич,,,1А,
+11,Анастасия ПристанскОва,,,1А,
+12,Макар САлыч,,,1А,
+13,Матвей СемУка,,,1А,
+14,Марк ТерлЕцкий,,,1А №вдок=4,
+15,Павел БугрИмов,,,1В,
+16,Людмила ГринцОва,,,1В,
+17,Екатерина ГулЯева,,,1В,
+18,ЯсмИн ДжанмирзОева,,,1В,
+19,Анастасия ЕфимЕнко,,,1В,
+20,Анна ЛоктАева,,,1В,
+21,Марк НигАй,,,1В,
+22,Иван НикИфоров,,,1В,
+23,ТинатИн ПлАван,,,1В,
+24,Дарья СунтЕева,,,1В,
+25,Марк СучкОв,,,1В,
+26,Николь ЧалЕнко,,,1В,
+27,Виктория ЧеранЕва,,,1В,
+28,Амир АбдулсамАдов,,,1С,
+29,Артем АртюхОв,,,1С,
+30,Александра АртЁменко,,,1С,
+31,Александра Вакс,,,1С,
+32,Алиса ДесЯткова,,,1С,
+33,Ника ДроздОва,,,1С,
+34,Мария ЕвтушЕвская,,,1С,
+35,Евгения ИвОнтьева,,,1С,
+36,Виктория КакОрина,,,1С,
+37,Александр ЛазУка,,,1С,
+38,МикаЭль СпивакОв,,,1С,
+39,Елизавета ДЮмина,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/07_Елизавета_Дюмина,.wav",1.38,1D,
+40,Александр ЗвЕрев,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav",1.12,1D,
+41,Александр КазакОв [1/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/29_Александр_Казаков,.wav",1.72,1D,red
+42,Александр КазакОв [2/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/30_Александр_Казаков,_2.wav",1.60,1D,red
+43,Александр КазакОв [3/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav",1.12,1D,red
+44,Александр КазакОв [4/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/11_Александр_Кузмин,.wav",1.32,1D,red
+45,Александр КазакОв [5/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/12_Александр_Кузмин,_2.wav",1.26,1D,red
+46,Дорофея КарИбова,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/08_Дарафея_Карибова,.wav",1.31,1D,
+47,Георгий КоллЕгин [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/09_Георгий_Калеген,.wav",1.20,1D,red
+48,Георгий КоллЕгин [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/10_Георгий_Калеген,_2.wav",1.72,1D,red
+49,Алёна МахмУдова,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/28_Алина_Махмудова,.wav",2.02,1D,
+50,Соломон МЕльников [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/13_Саломон_Мельников,.wav",1.09,1D,red
+51,Соломон МЕльников [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/14_Саломон_Мельников,_2.wav",1.73,1D,red
+52,Марк МорОзов,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/37_Марк_Морозов,.wav",0.93,1D,
+53,Александр МурадЯн,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/15_Александр_Муродян,.wav",0.99,1D,
+54,Александр НикИфоров,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/34_Александр_Никифоров,.wav",1.22,1D,
+55,Константин ОболЕнский,"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/36_Константин_Абаленский,.wav",1.54,1D,
+56,Нина СмирнОва [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/20_Смирнова,_Нина.wav",1.42,1D,red
+57,Нина СмирнОва [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/18_Ника_Смирнова,.wav",1.48,1D,red
+58,Арина Юдина [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/22_Арина_Юдина,.wav",1.21,1D,red
+59,Арина Юдина [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/23_Арина_Юдина,_2.wav",1.57,1D,red
+60,Филипп ЯкубОвский [1/3],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_1_Филипь_Юкубовский,.wav",2.04,1D,red
+61,Филипп ЯкубОвский [2/3],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_2_Филипь_Юкубовский,.wav",5.49,1D,red
+62,Филипп ЯкубОвский [3/3],"/Users/sergejnovozilov/Documents/audio/segmented_output/1d/27_Филипь_Юкубовский,_2.wav",1.46,1D,red
+63,Карен АвагумЯн,,,2А,
+64,Платон БогдАнов,,,2А,
+65,Алексей БОндарев,,,2А №вдок=5,
+66,Вероника ГолОвкина,,,2А,
+67,Ана ДмИтриева,,,2А,
+68,Анна КрапИвина,,,2А,
+69,Алиса ЛАзарева,,,2А,
+70,Стефана МАринова,,,2А,
+71,София ЛобкО,,,2А,
+72,Мария ПетропАвловская,,,2А,
+73,Артём ПопОв,,,2А,
+74,Екатерина ПрижИмова,,,2А,
+75,Елизавета ПрохорОвич,,,2А,
+76,АдАм РаджабилАев,,,2А,
+77,Александра БикмАева,,,2В,
+78,Егор БондарЕнко,,,2В,
+79,Мария ГУсева,,,2В,
+80,Даниил ДжЕксон,,,2В,
+81,Елизавета КОлесова,,,2В,
+82,Кирилл ПопОв,,,2В,
+83,Денис РЕзник,,,2В,
+84,АлИма СирАзева,,,2В,
+85,Диана СмАгина,,,2В,
+86,Дарья ФЁдорова,,,2В,
+87,Ариэль ЮсУпов,,,2В №вдок=6,
+88,Всеволод ГулевАтый,,,2С №вдок=7,
+89,Егор ГригОрьев,,,2С,
+90,Диана ЗакИрова,,,2С,
+91,Платон КазачЕнко,,,2С №вдок=8,
+92,Евдокия КотенЁва,,,2С,
+93,Михаил МельничЕнко,,,2С,
+94,Мирослава МокшАнцева,,,2С,
+95,Каролина ОксюкОвская,,,2С,
+96,Полина СпиридОнова,,,2С,
+97,Ева Тер-ГригорЯн,,,2С,
+98,Мария ТомкОвич,,,2С №вдок=9,
+99,Александр ГрИшин [1/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/42_Александр_Гришин.wav,1.40,2D,red
+100,Александр ГрИшин [2/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/45_Александр_Гришин_2.wav,1.28,2D,red
+101,Александр ГрИшин [3/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/52_Александр_Гришин.wav,1.40,2D,red
+102,Александр ГрИшин [4/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/55_Александр_Гришин_2.wav,1.61,2D,red
+103,Дарья МирмАнова [1/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav,3.00,2D,red
+104,Дарья МирмАнова [2/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/28_Дарья_Мирманова.wav,1.68,2D,red
+105,Дарья МирмАнова [3/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/30_Дарья_М.wav,1.44,2D,red
+106,Дарья МирмАнова [4/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/34_Дарья_М_2.wav,0.88,2D,red
+107,Анна ПетрожИцкая [1/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/37_Анна_Петражицкая.wav,1.28,2D,red
+108,Анна ПетрожИцкая [2/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/38_Анна_Петражицкая_2.wav,1.82,2D,red
+109,Анна ПетрожИцкая [3/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/47_Анна_Петражицкая.wav,1.30,2D,red
+110,Анна ПетрожИцкая [4/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/48_Анна_Петражицкая_2.wav,1.70,2D,red
+111,Александр ПискунОв [1/2],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/39_Александр_Пискунов.wav,1.29,2D,red
+112,Александр ПискунОв [2/2],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/49_Александр_Пискунов.wav,1.29,2D,red
+113,Дарья СавЕльева [1/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/24_Дарья_Савелева.wav,1.40,2D,red
+114,Дарья СавЕльева [2/4],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/28_Дарья_Савелева,.wav",1.78,2D,red
+115,Дарья СавЕльева [3/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/30_Дарья_М.wav,1.44,2D,red
+116,Дарья СавЕльева [4/4],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/34_Дарья_М_2.wav,0.88,2D,red
+117,Даниил СОлтис [1/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/16_Данил_Солтис.wav,1.44,2D,red
+118,Даниил СОлтис [2/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/17_Данил_Солтис_2.wav,1.25,2D,red
+119,Даниил СОлтис [3/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/17_Даниил_салтис.wav,1.42,2D,red
+120,Даниил СОлтис [4/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/18_Даниил_салтис_2.wav,1.58,2D,red
+121,Даниил СОлтис [5/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/19_Даниил_салтис_3.wav,1.57,2D,red
+122,Эмма ТабунОва [1/8],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/25_Эмма_Табунова.wav,1.15,2D,red
+123,Эмма ТабунОва [2/8],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/27_Эмма_Табунова_2.wav,1.50,2D,red
+124,Эмма ТабунОва [3/8],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/31_М._Табунова.wav,1.14,2D,red
+125,Эмма ТабунОва [4/8],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/35_Табунова,_А.wav",1.26,2D,red
+126,Эмма ТабунОва [5/8],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/29_М._Табунова,.wav",1.15,2D,red
+127,Эмма ТабунОва [6/8],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav,3.00,2D,red
+128,Эмма ТабунОва [7/8],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/32_М._Табунова,_2.wav",0.28,2D,red
+129,Эмма ТабунОва [8/8],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/33_М._Табунова,_3.wav",1.62,2D,red
+130,Лидия ЧерепЕнникова [1/2],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/20_Лидия_Черепенникова.wav,1.92,2D,red
+131,Лидия ЧерепЕнникова [2/2],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/25_Черепенникова._Нико_считай.wav,2.82,2D,red
+132,Ника ШИтая [1/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/21_Ника_Шитая.wav,1.98,2D,red
+133,Ника ШИтая [2/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/22_Ника_Шитая_2.wav,1.89,2D,red
+134,Ника ШИтая [3/5],/Users/sergejnovozilov/Documents/audio/segmented_output/2d/23_Ника_Шитая_3.wav,1.04,2D,red
+135,Ника ШИтая [4/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/27_Ника_шитай,.wav",1.74,2D,red
+136,Ника ШИтая [5/5],"/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Нико_шитай,.wav",0.98,2D,red
+137,Александр БоЯркин,,,3А,
+138,Вирсавия ВахрОмова,,,3А,
+139,Алексей ВОлков,,,3А,
+140,София ГолОвкина,,,3А,
+141,Георгий КовальчУк,,,3А,
+142,Анастасия КосЕнко,,,3А,
+143,Маттео КутАсин,,,3А,
+144,Михаил ЛЮбченков,,,3А,
+145,Никита МитрофАнов,,,3А,
+146,Анастасия Обод,,,3А,
+147,Дмитрий ФОкин,,,3А,
+148,Марк ХакИмов,,,3А,
+149,Александра ХАнина,,,3А,
+150,Павел ХаритОнов,,,3А,
+151,Ксения БордЭй,,,3В,
+152,Даниил ВлАсов,,,3В,
+153,Валерия КачАлова,,,3В,
+154,Георгий КвАсов,,,3В,
+155,Лев КОсарев,,,3В,
+156,Григорий МирОнчик,,,3В,
+157,Тимур ШОрин,,,3В,
+158,Анастасия ИкОнникова,,,3С,
+159,Михаил ПУхов,,,3С,
+160,Александра ШалыгАнова,,,3С,
+161,Ксения БадИмова,"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/30_Ксения_Бадимова,.wav",1.35,3D,
+162,Дмитрий ИльягУев [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/09_Дмитрий_Илегуев,.wav",1.54,3D,red
+163,Дмитрий ИльягУев [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/10_Дмитрий_Илегуев,_2.wav",1.62,3D,red
+164,Максим КалИнин,"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/11_Максим_Калинин,.wav",0.96,3D,
+165,Виктория ЛобАнова [1/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/36_Виктория_Лабанова,.wav",1.14,3D,red
+166,Виктория ЛобАнова [2/2],"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/37_Виктория_Лабанова,_2.wav",1.99,3D,red
+167,Капитолина ТкалЕнко,"/Users/sergejnovozilov/Documents/audio/segmented_output/3d/16_Капиталина_Ткаленко,.wav",1.40,3D,
+168,Милания ТОропова,,,4А,
+169,Евангелина АвдякОва,,,4В,
+170,Давид БренермАн,,,4В,
+171,Михаил ВоробьЁв,,,4В,
+172,Константин ГолОвкин,,,4В,
+173,Георгий ДьячЕнко,,,4В,
+174,Лука ЗахАров,,,4В,
+175,Денис РубцОв,,,4В,
+176,Федор БОртич,,,4С,
+177,Екатерина БуЯнова,,,4С,
+178,Арина ДушкЕвич,,,4С,
+179,Эвелина НикИтенко,,,4С,
+180,Арина АртюхОва [1/2],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/07_Арина_Артюхова.wav,1.25,4D,red
+181,Арина АртюхОва [2/2],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/08_Арина_Артюхова_2.wav,2.04,4D,red
+182,Кирилл БарабАнов,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/48_Кирилл_Барабанов.wav,1.02,4D,
+183,Егор ГАлкин,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/11_Егор_Галкин.wav,0.98,4D,
+184,Артемий ГоврякОв,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/43_Артемии_Говриков.wav,1.63,4D,
+185,Евангелина ДенИсова,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/42_Евангелина_Денисова.wav,2.56,4D,
+186,Милана ИстОмина,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/10_Милана_Истомина.wav,1.14,4D,
+187,Анастасия РЕзник [1/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/34_Анастасия_Резни.wav,1.74,4D,red
+188,Анастасия РЕзник [2/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/37_Анастасия_Резни_2.wav,1.50,4D,red
+189,Анастасия РЕзник [3/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/38_Анастасия_Резни_3.wav,2.20,4D,red
+190,Марк СоловьЁв [1/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/39_Марк_Соловьев.wav,2.10,4D,red
+191,Марк СоловьЁв [2/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/40_Марк_Соловьев_2.wav,1.59,4D,red
+192,Марк СоловьЁв [3/3],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/41_Марк_Соловьев_3.wav,1.38,4D,red
+193,Роберт Тер-ГригорЯн [1/5],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/13_Роберт_Тер.wav,4.46,4D,red
+194,Роберт Тер-ГригорЯн [2/5],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/14_Роберт_Тер.wav,1.50,4D,red
+195,Роберт Тер-ГригорЯн [3/5],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/16_Тер_грегорян.wav,2.82,4D,red
+196,Роберт Тер-ГригорЯн [4/5],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/12_Роберт_Тенгрегориан.wav,1.38,4D,red
+197,Роберт Тер-ГригорЯн [5/5],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/12_Роберт_Тенгрегориан_Тер.wav,2.14,4D,red
+198,Алеся ТЫщенко [1/2],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/28_Олесия_Тищенко.wav,1.22,4D,red
+199,Алеся ТЫщенко [2/2],/Users/sergejnovozilov/Documents/audio/segmented_output/4d/29_Олесия_Тищенко_2.wav,1.45,4D,red
+200,Ксения ХодакОва,/Users/sergejnovozilov/Documents/audio/segmented_output/4d/27_Ксения_Ходокова.wav,2.31,4D,

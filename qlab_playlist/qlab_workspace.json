@@ -1,0 +1,1807 @@
+{
+  "workspace": {
+    "version": "5.0",
+    "cues": [
+      {
+        "number": "1",
+        "name": "Мария БаклАнова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А №вдок=1",
+        "qColor": "none"
+      },
+      {
+        "number": "2",
+        "name": "Адриан БОгод",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А №вдок=2",
+        "qColor": "none"
+      },
+      {
+        "number": "3",
+        "name": "Константин БорИсов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А №вдок=3",
+        "qColor": "none"
+      },
+      {
+        "number": "4",
+        "name": "Кира БоровикОва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "5",
+        "name": "Зоя БуякЕвич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "6",
+        "name": "Марк ГлИнский",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "7",
+        "name": "Даниэль ЗЕйтц",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "8",
+        "name": "Андрей КочкурОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "9",
+        "name": "Мария МакАрова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "10",
+        "name": "Савелий МаркЕвич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "11",
+        "name": "Анастасия ПристанскОва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "12",
+        "name": "Макар САлыч",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "13",
+        "name": "Матвей СемУка",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А",
+        "qColor": "none"
+      },
+      {
+        "number": "14",
+        "name": "Марк ТерлЕцкий",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1А №вдок=4",
+        "qColor": "none"
+      },
+      {
+        "number": "15",
+        "name": "Павел БугрИмов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "16",
+        "name": "Людмила ГринцОва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "17",
+        "name": "Екатерина ГулЯева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "18",
+        "name": "ЯсмИн ДжанмирзОева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "19",
+        "name": "Анастасия ЕфимЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "20",
+        "name": "Анна ЛоктАева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "21",
+        "name": "Марк НигАй",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "22",
+        "name": "Иван НикИфоров",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "23",
+        "name": "ТинатИн ПлАван",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "24",
+        "name": "Дарья СунтЕева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "25",
+        "name": "Марк СучкОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "26",
+        "name": "Николь ЧалЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "27",
+        "name": "Виктория ЧеранЕва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1В",
+        "qColor": "none"
+      },
+      {
+        "number": "28",
+        "name": "Амир АбдулсамАдов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "29",
+        "name": "Артем АртюхОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "30",
+        "name": "Александра АртЁменко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "31",
+        "name": "Александра Вакс",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "32",
+        "name": "Алиса ДесЯткова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "33",
+        "name": "Ника ДроздОва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "34",
+        "name": "Мария ЕвтушЕвская",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "35",
+        "name": "Евгения ИвОнтьева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "36",
+        "name": "Виктория КакОрина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "37",
+        "name": "Александр ЛазУка",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "38",
+        "name": "МикаЭль СпивакОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "1С",
+        "qColor": "none"
+      },
+      {
+        "number": "39",
+        "name": "Елизавета ДЮмина",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/07_Елизавета_Дюмина,.wav",
+        "duration": 1.38,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "40",
+        "name": "Александр ЗвЕрев",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav",
+        "duration": 1.12,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "41",
+        "name": "Александр КазакОв [1/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/29_Александр_Казаков,.wav",
+        "duration": 1.72,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "42",
+        "name": "Александр КазакОв [2/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/30_Александр_Казаков,_2.wav",
+        "duration": 1.6,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "43",
+        "name": "Александр КазакОв [3/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/35_Александр_Зверев,.wav",
+        "duration": 1.12,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "44",
+        "name": "Александр КазакОв [4/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/11_Александр_Кузмин,.wav",
+        "duration": 1.32,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "45",
+        "name": "Александр КазакОв [5/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/12_Александр_Кузмин,_2.wav",
+        "duration": 1.26,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "46",
+        "name": "Дорофея КарИбова",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/08_Дарафея_Карибова,.wav",
+        "duration": 1.31,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "47",
+        "name": "Георгий КоллЕгин [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/09_Георгий_Калеген,.wav",
+        "duration": 1.2,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "48",
+        "name": "Георгий КоллЕгин [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/10_Георгий_Калеген,_2.wav",
+        "duration": 1.72,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "49",
+        "name": "Алёна МахмУдова",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/28_Алина_Махмудова,.wav",
+        "duration": 2.02,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "50",
+        "name": "Соломон МЕльников [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/13_Саломон_Мельников,.wav",
+        "duration": 1.09,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "51",
+        "name": "Соломон МЕльников [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/14_Саломон_Мельников,_2.wav",
+        "duration": 1.73,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "52",
+        "name": "Марк МорОзов",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/37_Марк_Морозов,.wav",
+        "duration": 0.93,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "53",
+        "name": "Александр МурадЯн",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/15_Александр_Муродян,.wav",
+        "duration": 0.99,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "54",
+        "name": "Александр НикИфоров",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/34_Александр_Никифоров,.wav",
+        "duration": 1.22,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "55",
+        "name": "Константин ОболЕнский",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/36_Константин_Абаленский,.wav",
+        "duration": 1.54,
+        "notes": "1D",
+        "qColor": "none"
+      },
+      {
+        "number": "56",
+        "name": "Нина СмирнОва [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/20_Смирнова,_Нина.wav",
+        "duration": 1.42,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "57",
+        "name": "Нина СмирнОва [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/18_Ника_Смирнова,.wav",
+        "duration": 1.48,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "58",
+        "name": "Арина Юдина [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/22_Арина_Юдина,.wav",
+        "duration": 1.21,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "59",
+        "name": "Арина Юдина [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/23_Арина_Юдина,_2.wav",
+        "duration": 1.57,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "60",
+        "name": "Филипп ЯкубОвский [1/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_1_Филипь_Юкубовский,.wav",
+        "duration": 2.04,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "61",
+        "name": "Филипп ЯкубОвский [2/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/26_2_Филипь_Юкубовский,.wav",
+        "duration": 5.49,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "62",
+        "name": "Филипп ЯкубОвский [3/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/1d/27_Филипь_Юкубовский,_2.wav",
+        "duration": 1.46,
+        "notes": "1D",
+        "qColor": "red"
+      },
+      {
+        "number": "63",
+        "name": "Карен АвагумЯн",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "64",
+        "name": "Платон БогдАнов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "65",
+        "name": "Алексей БОндарев",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А №вдок=5",
+        "qColor": "none"
+      },
+      {
+        "number": "66",
+        "name": "Вероника ГолОвкина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "67",
+        "name": "Ана ДмИтриева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "68",
+        "name": "Анна КрапИвина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "69",
+        "name": "Алиса ЛАзарева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "70",
+        "name": "Стефана МАринова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "71",
+        "name": "София ЛобкО",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "72",
+        "name": "Мария ПетропАвловская",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "73",
+        "name": "Артём ПопОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "74",
+        "name": "Екатерина ПрижИмова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "75",
+        "name": "Елизавета ПрохорОвич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "76",
+        "name": "АдАм РаджабилАев",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2А",
+        "qColor": "none"
+      },
+      {
+        "number": "77",
+        "name": "Александра БикмАева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "78",
+        "name": "Егор БондарЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "79",
+        "name": "Мария ГУсева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "80",
+        "name": "Даниил ДжЕксон",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "81",
+        "name": "Елизавета КОлесова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "82",
+        "name": "Кирилл ПопОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "83",
+        "name": "Денис РЕзник",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "84",
+        "name": "АлИма СирАзева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "85",
+        "name": "Диана СмАгина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "86",
+        "name": "Дарья ФЁдорова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В",
+        "qColor": "none"
+      },
+      {
+        "number": "87",
+        "name": "Ариэль ЮсУпов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2В №вдок=6",
+        "qColor": "none"
+      },
+      {
+        "number": "88",
+        "name": "Всеволод ГулевАтый",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С №вдок=7",
+        "qColor": "none"
+      },
+      {
+        "number": "89",
+        "name": "Егор ГригОрьев",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "90",
+        "name": "Диана ЗакИрова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "91",
+        "name": "Платон КазачЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С №вдок=8",
+        "qColor": "none"
+      },
+      {
+        "number": "92",
+        "name": "Евдокия КотенЁва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "93",
+        "name": "Михаил МельничЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "94",
+        "name": "Мирослава МокшАнцева",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "95",
+        "name": "Каролина ОксюкОвская",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "96",
+        "name": "Полина СпиридОнова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "97",
+        "name": "Ева Тер-ГригорЯн",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С",
+        "qColor": "none"
+      },
+      {
+        "number": "98",
+        "name": "Мария ТомкОвич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "2С №вдок=9",
+        "qColor": "none"
+      },
+      {
+        "number": "99",
+        "name": "Александр ГрИшин [1/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/42_Александр_Гришин.wav",
+        "duration": 1.4,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "100",
+        "name": "Александр ГрИшин [2/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/45_Александр_Гришин_2.wav",
+        "duration": 1.28,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "101",
+        "name": "Александр ГрИшин [3/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/52_Александр_Гришин.wav",
+        "duration": 1.4,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "102",
+        "name": "Александр ГрИшин [4/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/55_Александр_Гришин_2.wav",
+        "duration": 1.61,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "103",
+        "name": "Дарья МирмАнова [1/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav",
+        "duration": 3.0,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "104",
+        "name": "Дарья МирмАнова [2/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/28_Дарья_Мирманова.wav",
+        "duration": 1.68,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "105",
+        "name": "Дарья МирмАнова [3/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/30_Дарья_М.wav",
+        "duration": 1.44,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "106",
+        "name": "Дарья МирмАнова [4/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/34_Дарья_М_2.wav",
+        "duration": 0.88,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "107",
+        "name": "Анна ПетрожИцкая [1/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/37_Анна_Петражицкая.wav",
+        "duration": 1.28,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "108",
+        "name": "Анна ПетрожИцкая [2/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/38_Анна_Петражицкая_2.wav",
+        "duration": 1.82,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "109",
+        "name": "Анна ПетрожИцкая [3/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/47_Анна_Петражицкая.wav",
+        "duration": 1.3,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "110",
+        "name": "Анна ПетрожИцкая [4/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/48_Анна_Петражицкая_2.wav",
+        "duration": 1.7,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "111",
+        "name": "Александр ПискунОв [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/39_Александр_Пискунов.wav",
+        "duration": 1.29,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "112",
+        "name": "Александр ПискунОв [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/49_Александр_Пискунов.wav",
+        "duration": 1.29,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "113",
+        "name": "Дарья СавЕльева [1/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/24_Дарья_Савелева.wav",
+        "duration": 1.4,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "114",
+        "name": "Дарья СавЕльева [2/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/28_Дарья_Савелева,.wav",
+        "duration": 1.78,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "115",
+        "name": "Дарья СавЕльева [3/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/30_Дарья_М.wav",
+        "duration": 1.44,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "116",
+        "name": "Дарья СавЕльева [4/4]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/34_Дарья_М_2.wav",
+        "duration": 0.88,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "117",
+        "name": "Даниил СОлтис [1/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/16_Данил_Солтис.wav",
+        "duration": 1.44,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "118",
+        "name": "Даниил СОлтис [2/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/17_Данил_Солтис_2.wav",
+        "duration": 1.25,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "119",
+        "name": "Даниил СОлтис [3/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/17_Даниил_салтис.wav",
+        "duration": 1.42,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "120",
+        "name": "Даниил СОлтис [4/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/18_Даниил_салтис_2.wav",
+        "duration": 1.58,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "121",
+        "name": "Даниил СОлтис [5/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/19_Даниил_салтис_3.wav",
+        "duration": 1.57,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "122",
+        "name": "Эмма ТабунОва [1/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/25_Эмма_Табунова.wav",
+        "duration": 1.15,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "123",
+        "name": "Эмма ТабунОва [2/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/27_Эмма_Табунова_2.wav",
+        "duration": 1.5,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "124",
+        "name": "Эмма ТабунОва [3/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/31_М._Табунова.wav",
+        "duration": 1.14,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "125",
+        "name": "Эмма ТабунОва [4/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/35_Табунова,_А.wav",
+        "duration": 1.26,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "126",
+        "name": "Эмма ТабунОва [5/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/29_М._Табунова,.wav",
+        "duration": 1.15,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "127",
+        "name": "Эмма ТабунОва [6/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Дарья_Мирманова._Табунова.wav",
+        "duration": 3.0,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "128",
+        "name": "Эмма ТабунОва [7/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/32_М._Табунова,_2.wav",
+        "duration": 0.28,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "129",
+        "name": "Эмма ТабунОва [8/8]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/33_М._Табунова,_3.wav",
+        "duration": 1.62,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "130",
+        "name": "Лидия ЧерепЕнникова [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/20_Лидия_Черепенникова.wav",
+        "duration": 1.92,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "131",
+        "name": "Лидия ЧерепЕнникова [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/25_Черепенникова._Нико_считай.wav",
+        "duration": 2.82,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "132",
+        "name": "Ника ШИтая [1/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/21_Ника_Шитая.wav",
+        "duration": 1.98,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "133",
+        "name": "Ника ШИтая [2/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/22_Ника_Шитая_2.wav",
+        "duration": 1.89,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "134",
+        "name": "Ника ШИтая [3/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/23_Ника_Шитая_3.wav",
+        "duration": 1.04,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "135",
+        "name": "Ника ШИтая [4/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/27_Ника_шитай,.wav",
+        "duration": 1.74,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "136",
+        "name": "Ника ШИтая [5/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/2d/26_Нико_шитай,.wav",
+        "duration": 0.98,
+        "notes": "2D",
+        "qColor": "red"
+      },
+      {
+        "number": "137",
+        "name": "Александр БоЯркин",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "138",
+        "name": "Вирсавия ВахрОмова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "139",
+        "name": "Алексей ВОлков",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "140",
+        "name": "София ГолОвкина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "141",
+        "name": "Георгий КовальчУк",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "142",
+        "name": "Анастасия КосЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "143",
+        "name": "Маттео КутАсин",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "144",
+        "name": "Михаил ЛЮбченков",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "145",
+        "name": "Никита МитрофАнов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "146",
+        "name": "Анастасия Обод",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "147",
+        "name": "Дмитрий ФОкин",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "148",
+        "name": "Марк ХакИмов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "149",
+        "name": "Александра ХАнина",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "150",
+        "name": "Павел ХаритОнов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3А",
+        "qColor": "none"
+      },
+      {
+        "number": "151",
+        "name": "Ксения БордЭй",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "152",
+        "name": "Даниил ВлАсов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "153",
+        "name": "Валерия КачАлова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "154",
+        "name": "Георгий КвАсов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "155",
+        "name": "Лев КОсарев",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "156",
+        "name": "Григорий МирОнчик",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "157",
+        "name": "Тимур ШОрин",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3В",
+        "qColor": "none"
+      },
+      {
+        "number": "158",
+        "name": "Анастасия ИкОнникова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3С",
+        "qColor": "none"
+      },
+      {
+        "number": "159",
+        "name": "Михаил ПУхов",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3С",
+        "qColor": "none"
+      },
+      {
+        "number": "160",
+        "name": "Александра ШалыгАнова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "3С",
+        "qColor": "none"
+      },
+      {
+        "number": "161",
+        "name": "Ксения БадИмова",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/30_Ксения_Бадимова,.wav",
+        "duration": 1.35,
+        "notes": "3D",
+        "qColor": "none"
+      },
+      {
+        "number": "162",
+        "name": "Дмитрий ИльягУев [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/09_Дмитрий_Илегуев,.wav",
+        "duration": 1.54,
+        "notes": "3D",
+        "qColor": "red"
+      },
+      {
+        "number": "163",
+        "name": "Дмитрий ИльягУев [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/10_Дмитрий_Илегуев,_2.wav",
+        "duration": 1.62,
+        "notes": "3D",
+        "qColor": "red"
+      },
+      {
+        "number": "164",
+        "name": "Максим КалИнин",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/11_Максим_Калинин,.wav",
+        "duration": 0.96,
+        "notes": "3D",
+        "qColor": "none"
+      },
+      {
+        "number": "165",
+        "name": "Виктория ЛобАнова [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/36_Виктория_Лабанова,.wav",
+        "duration": 1.14,
+        "notes": "3D",
+        "qColor": "red"
+      },
+      {
+        "number": "166",
+        "name": "Виктория ЛобАнова [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/37_Виктория_Лабанова,_2.wav",
+        "duration": 1.99,
+        "notes": "3D",
+        "qColor": "red"
+      },
+      {
+        "number": "167",
+        "name": "Капитолина ТкалЕнко",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/3d/16_Капиталина_Ткаленко,.wav",
+        "duration": 1.4,
+        "notes": "3D",
+        "qColor": "none"
+      },
+      {
+        "number": "168",
+        "name": "Милания ТОропова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4А",
+        "qColor": "none"
+      },
+      {
+        "number": "169",
+        "name": "Евангелина АвдякОва",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "170",
+        "name": "Давид БренермАн",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "171",
+        "name": "Михаил ВоробьЁв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "172",
+        "name": "Константин ГолОвкин",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "173",
+        "name": "Георгий ДьячЕнко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "174",
+        "name": "Лука ЗахАров",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "175",
+        "name": "Денис РубцОв",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4В",
+        "qColor": "none"
+      },
+      {
+        "number": "176",
+        "name": "Федор БОртич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4С",
+        "qColor": "none"
+      },
+      {
+        "number": "177",
+        "name": "Екатерина БуЯнова",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4С",
+        "qColor": "none"
+      },
+      {
+        "number": "178",
+        "name": "Арина ДушкЕвич",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4С",
+        "qColor": "none"
+      },
+      {
+        "number": "179",
+        "name": "Эвелина НикИтенко",
+        "type": "Audio",
+        "file": "",
+        "duration": 0.0,
+        "notes": "4С",
+        "qColor": "none"
+      },
+      {
+        "number": "180",
+        "name": "Арина АртюхОва [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/07_Арина_Артюхова.wav",
+        "duration": 1.25,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "181",
+        "name": "Арина АртюхОва [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/08_Арина_Артюхова_2.wav",
+        "duration": 2.04,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "182",
+        "name": "Кирилл БарабАнов",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/48_Кирилл_Барабанов.wav",
+        "duration": 1.02,
+        "notes": "4D",
+        "qColor": "none"
+      },
+      {
+        "number": "183",
+        "name": "Егор ГАлкин",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/11_Егор_Галкин.wav",
+        "duration": 0.98,
+        "notes": "4D",
+        "qColor": "none"
+      },
+      {
+        "number": "184",
+        "name": "Артемий ГоврякОв",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/43_Артемии_Говриков.wav",
+        "duration": 1.63,
+        "notes": "4D",
+        "qColor": "none"
+      },
+      {
+        "number": "185",
+        "name": "Евангелина ДенИсова",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/42_Евангелина_Денисова.wav",
+        "duration": 2.56,
+        "notes": "4D",
+        "qColor": "none"
+      },
+      {
+        "number": "186",
+        "name": "Милана ИстОмина",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/10_Милана_Истомина.wav",
+        "duration": 1.14,
+        "notes": "4D",
+        "qColor": "none"
+      },
+      {
+        "number": "187",
+        "name": "Анастасия РЕзник [1/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/34_Анастасия_Резни.wav",
+        "duration": 1.74,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "188",
+        "name": "Анастасия РЕзник [2/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/37_Анастасия_Резни_2.wav",
+        "duration": 1.5,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "189",
+        "name": "Анастасия РЕзник [3/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/38_Анастасия_Резни_3.wav",
+        "duration": 2.2,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "190",
+        "name": "Марк СоловьЁв [1/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/39_Марк_Соловьев.wav",
+        "duration": 2.1,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "191",
+        "name": "Марк СоловьЁв [2/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/40_Марк_Соловьев_2.wav",
+        "duration": 1.59,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "192",
+        "name": "Марк СоловьЁв [3/3]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/41_Марк_Соловьев_3.wav",
+        "duration": 1.38,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "193",
+        "name": "Роберт Тер-ГригорЯн [1/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/13_Роберт_Тер.wav",
+        "duration": 4.46,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "194",
+        "name": "Роберт Тер-ГригорЯн [2/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/14_Роберт_Тер.wav",
+        "duration": 1.5,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "195",
+        "name": "Роберт Тер-ГригорЯн [3/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/16_Тер_грегорян.wav",
+        "duration": 2.82,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "196",
+        "name": "Роберт Тер-ГригорЯн [4/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/12_Роберт_Тенгрегориан.wav",
+        "duration": 1.38,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "197",
+        "name": "Роберт Тер-ГригорЯн [5/5]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/12_Роберт_Тенгрегориан_Тер.wav",
+        "duration": 2.14,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "198",
+        "name": "Алеся ТЫщенко [1/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/28_Олесия_Тищенко.wav",
+        "duration": 1.22,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "199",
+        "name": "Алеся ТЫщенко [2/2]",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/29_Олесия_Тищенко_2.wav",
+        "duration": 1.45,
+        "notes": "4D",
+        "qColor": "red"
+      },
+      {
+        "number": "200",
+        "name": "Ксения ХодакОва",
+        "type": "Audio",
+        "file": "/Users/sergejnovozilov/Documents/audio/segmented_output/4d/27_Ксения_Ходокова.wav",
+        "duration": 2.31,
+        "notes": "4D",
+        "qColor": "none"
+      }
+    ]
+  }
+}
