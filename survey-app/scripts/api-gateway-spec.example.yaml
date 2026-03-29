@@ -1,0 +1,41 @@
+# Пример спецификации для Serverless API Gateway (Яндекс Облако).
+# Если в консоли нет типа «HTTP-триггер», часто используют шлюз.
+#
+# 1. В консоли: Cloud Functions → survey-api → скопируйте «Идентификатор» функции.
+# 2. Создайте сервисный аккаунт с ролью serverless.functions.invoker на эту функцию.
+# 3. Подставьте function_id и service_account_id ниже.
+# 4. Serverless → API Gateway → Создать API → загрузить этот файл → развернуть.
+# 5. VITE_API_BASE = выданный адрес шлюза (https://....apigw.yandexcloud.net), без / в конце.
+#
+# Важно: маршрут /api/{proxy+}, а не /{proxy+}. Иначе шлюз может передать в функцию
+# pathParameters.proxy = "{proxy+}" (литерал шаблона) и POST падает в 404.
+#
+# CORS на шлюзе обязателен для браузера: иначе preflight (OPTIONS) с заголовком X-Api-Key
+# даёт «Failed to fetch», хотя curl с того же URL работает.
+
+openapi: 3.0.0
+info:
+  title: survey-api-gateway
+  version: 1.0.0
+
+x-yc-apigateway:
+  cors:
+    origin: '*'
+    methods: '*'
+    allowedHeaders: '*'
+
+paths:
+  /api/{proxy+}:
+    x-yc-apigateway-any-method:
+      parameters:
+        - explode: false
+          in: path
+          name: proxy
+          required: true
+          schema:
+            type: string
+      x-yc-apigateway-integration:
+        type: cloud_functions
+        function_id: ЗАМЕНИТЕ_НА_ID_ФУНКЦИИ
+        service_account_id: ЗАМЕНИТЕ_НА_ID_СЕРВИСНОГО_АККАУНТА
+        tag: "$latest"

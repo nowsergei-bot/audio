@@ -13,3 +13,17 @@ segmented_output/
 
 # Локальный show QLab (большой bundle)
 qlab_playlist/Untitled Workspace/
+audio/qlab_playlist/Untitled Workspace/
+
+# Survey app (Node / Vite)
+survey-app/**/node_modules/
+survey-app/**/dist/
+survey-app/backend/function-bundle.zip
+survey-app/frontend/.env
+survey-app/frontend/.env.*
+!survey-app/frontend/.env.example
+!survey-app/frontend/.env.production.example
+
+# Локальные URL бакета / API (не в публичный репозиторий)
+survey-app/deploy.config.json
+survey-app/.youware.json

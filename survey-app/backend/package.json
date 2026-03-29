@@ -1,0 +1,11 @@
+{
+  "name": "survey-api-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Скрипты локального запуска; зависимости функции — в functions/package.json",
+  "scripts": {
+    "install-func": "npm install --prefix functions",
+    "seed": "node ../scripts/seed-db.js",
+    "serve": "node functions/local-server.js"
+  }
+}

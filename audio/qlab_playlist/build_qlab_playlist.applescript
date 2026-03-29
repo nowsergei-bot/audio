@@ -1,6 +1,6 @@
 -- QLab 5: keep this .applescript next to .paths.txt, .names.txt, .colors.txt (UTF-8).
 -- Open workspace, click in cue list, then Run in Script Editor.
--- 2026-03-28T17:42:00
+-- 2026-03-28T17:57:10
 
 tell application id "com.figure53.qlab.5"
 	activate

@@ -1,0 +1,12 @@
+{
+  "name": "survey-api-function",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "pg": "^8.13.1",
+    "read-excel-file": "^5.8.1",
+    "uuid": "^11.0.3"
+  }
+}
