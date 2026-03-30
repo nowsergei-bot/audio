@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   getAnalyticsFacets,
+  getResults,
   getSurvey,
   getSurveyTextAnswers,
   postResultsFilter,
@@ -43,6 +44,14 @@ function buildFiltersFromRows(rows: SliceRow[]): AnalyticsFilter[] {
   return out;
 }
 
+function humanizeApiError(e: unknown): string {
+  const raw = e instanceof Error ? e.message : 'Ошибка загрузки';
+  if (raw === 'Not found') {
+    return 'Опрос не найден или нет доступа. Войдите в кабинет или проверьте ссылку.';
+  }
+  return raw;
+}
+
 function parseRowsFromStorage(raw: string | null): SliceRow[] | null {
   if (!raw) return null;
   try {
@@ -78,6 +87,8 @@ export default function SurveyAnalytics() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  /** true если на сервере нет маршрутов analytics-facets / results-filter (старая Cloud Function). */
+  const [legacySliceApi, setLegacySliceApi] = useState(false);
   const [textModal, setTextModal] = useState<{ open: boolean; question_id?: number; q?: string }>({ open: false });
   const [textInsightModal, setTextInsightModal] = useState<{ open: boolean; question_id: number | null }>({
     open: false,
@@ -112,17 +123,25 @@ export default function SurveyAnalytics() {
     if (!Number.isFinite(surveyId)) return;
     setLoading(true);
     setErr(null);
+    setLegacySliceApi(false);
     try {
-      const [s, f, initial] = await Promise.all([
-        getSurvey(surveyId),
-        getAnalyticsFacets(surveyId),
-        postResultsFilter(surveyId, []),
-      ]);
+      const s = await getSurvey(surveyId);
       setSurvey({ title: s.title, status: s.status, access_link: s.access_link });
       setQuestions(s.questions || []);
-      setFacets(f.facets || {});
-      setData(initial);
       setAppliedFilters([]);
+
+      try {
+        const [f, initial] = await Promise.all([getAnalyticsFacets(surveyId), postResultsFilter(surveyId, [])]);
+        setFacets(f.facets || {});
+        setData(initial);
+        setLegacySliceApi(false);
+      } catch {
+        const initial = await getResults(surveyId);
+        setFacets({});
+        setData(initial);
+        setLegacySliceApi(true);
+      }
+
       try {
         const stored = parseRowsFromStorage(localStorage.getItem(LS_ROWS(surveyId)));
         setSliceRows(stored ?? defaultRows());
@@ -130,7 +149,7 @@ export default function SurveyAnalytics() {
         setSliceRows(defaultRows());
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка загрузки');
+      setErr(humanizeApiError(e));
     } finally {
       setLoading(false);
     }
@@ -153,6 +172,10 @@ export default function SurveyAnalytics() {
 
   const applyFilters = useCallback(async () => {
     if (!Number.isFinite(surveyId)) return;
+    if (legacySliceApi) {
+      setErr('Срезы по выборке требуют обновлённую версию Cloud Function в Яндекс.Облаке (маршруты analytics-facets и results-filter).');
+      return;
+    }
     setApplying(true);
     setErr(null);
     try {
@@ -161,11 +184,11 @@ export default function SurveyAnalytics() {
       setData(next);
       setAppliedFilters(f);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Ошибка');
+      setErr(humanizeApiError(e));
     } finally {
       setApplying(false);
     }
-  }, [surveyId, sliceRows]);
+  }, [surveyId, sliceRows, legacySliceApi]);
 
   const resetSliceVals = useCallback(() => {
     setSliceRows((rows) => rows.map((r) => ({ ...r, value: '' })));
@@ -274,6 +297,14 @@ export default function SurveyAnalytics() {
             данных. Условия объединяются по И — остаются только анкеты, где совпали <strong>все</strong> выбранные ответы.
             Один и тот же вопрос нельзя выбрать в двух строках (уберите дубль или ослабьте срез).
           </p>
+          {legacySliceApi && (
+            <div className="analytics-slice-legacy-banner" role="status">
+              <strong>Сервер без новых маршрутов API.</strong> Показаны полные результаты опроса. Чтобы включить срезы и чат
+              с аналитиком, обновите версию Cloud Function (залейте актуальный ZIP из каталога{' '}
+              <code className="inline-code">survey-app/backend/functions</code>, см.{' '}
+              <code className="inline-code">scripts/deploy-functions.sh</code>).
+            </div>
+          )}
           <div className="analytics-slice-grid">
             {sliceRows.map((row, ri) => {
               const takenIds = new Set(
@@ -287,6 +318,7 @@ export default function SurveyAnalytics() {
                   <span className="analytics-slice-dim-label">Условие {ri + 1}</span>
                   <select
                     className="field analytics-slice-select"
+                    disabled={legacySliceApi}
                     value={row.question_id ?? ''}
                     onChange={(e) => {
                       const v = e.target.value ? Number(e.target.value) : null;
@@ -314,7 +346,7 @@ export default function SurveyAnalytics() {
                     onChange={(e) =>
                       setSliceRows((rows) => rows.map((r) => (r.uid === row.uid ? { ...r, value: e.target.value } : r)))
                     }
-                    disabled={row.question_id == null}
+                    disabled={row.question_id == null || legacySliceApi}
                   >
                     <option value="">Все значения</option>
                     {(facets[String(row.question_id ?? '')] || []).map((opt) => (
@@ -326,7 +358,7 @@ export default function SurveyAnalytics() {
                   <button
                     type="button"
                     className="btn analytics-slice-row-remove"
-                    disabled={sliceRows.length <= 1}
+                    disabled={sliceRows.length <= 1 || legacySliceApi}
                     title="Удалить условие"
                     onClick={() => removeSliceRow(row.uid)}
                   >
@@ -340,15 +372,20 @@ export default function SurveyAnalytics() {
             <button
               type="button"
               className="btn"
-              disabled={sliceRows.length >= MAX_SLICE_ROWS}
+              disabled={sliceRows.length >= MAX_SLICE_ROWS || legacySliceApi}
               onClick={addSliceRow}
             >
               Добавить условие
             </button>
-            <button type="button" className="btn primary" disabled={applying || loading} onClick={() => void applyFilters()}>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={applying || loading || legacySliceApi}
+              onClick={() => void applyFilters()}
+            >
               {applying ? 'Считаем…' : 'Применить срез'}
             </button>
-            <button type="button" className="btn" disabled={applying} onClick={resetSliceVals}>
+            <button type="button" className="btn" disabled={applying || legacySliceApi} onClick={resetSliceVals}>
               Сбросить значения
             </button>
           </div>
@@ -437,7 +474,9 @@ export default function SurveyAnalytics() {
           >
             <h2 className="results-fill-analytics-title">Динамика в выборке</h2>
             <p className="muted results-fill-analytics-lead">
-              Графики строятся только по ответам, попавшим в текущий срез (после «Применить срез»).
+              {legacySliceApi
+                ? 'Показаны все ответы опроса. После обновления API здесь можно будет строить графики по срезу.'
+                : 'Графики строятся только по ответам, попавшим в текущий срез (после «Применить срез»).'}
             </p>
             <div className="results-fill-stats-row" aria-label="Ключевые показатели">
               <motion.div
@@ -481,7 +520,17 @@ export default function SurveyAnalytics() {
           autoRun
         />
 
-        <AnalyticsAnalystChat surveyId={surveyId} filters={appliedFilters} />
+        {!legacySliceApi ? (
+          <AnalyticsAnalystChat surveyId={surveyId} filters={appliedFilters} />
+        ) : (
+          <section className="card analytics-analyst-chat glass-surface analytics-analyst-chat--disabled" aria-label="Чат недоступен">
+            <h2 className="analytics-analyst-chat-title">Чат с аналитиком</h2>
+            <p className="muted">
+              Чат с аналитиком появится после обновления Cloud Function (маршрут{' '}
+              <code className="inline-code">POST /api/surveys/:id/analytics-chat</code>).
+            </p>
+          </section>
+        )}
 
         <TextAnswersExplorerModal
           open={textModal.open}
