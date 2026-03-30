@@ -16,10 +16,13 @@ function shuffle<T>(arr: T[]): T[] {
 type Props = {
   /** Слайдшоу только пока респондент заполняет форму */
   active: boolean;
+  /** Если передано — используем эти фото вместо кампуса */
+  sources?: string[];
 };
 
-export default function PublicCampusSlideshow({ active }: Props) {
-  const order = useMemo(() => shuffle([...PUBLIC_CAMPUS_PHOTOS]), []);
+export default function PublicCampusSlideshow({ active, sources }: Props) {
+  const srcs = sources && sources.length ? sources : PUBLIC_CAMPUS_PHOTOS;
+  const order = useMemo(() => shuffle([...srcs]), [srcs]);
   const [idx, setIdx] = useState(() => Math.floor(Math.random() * order.length));
 
   useEffect(() => {

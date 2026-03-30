@@ -7,6 +7,7 @@ export const QUESTION_TYPE_LABEL_RU: Record<QuestionType, string> = {
   scale: 'Числовая шкала',
   rating: 'Оценка по звёздам',
   text: 'Свободный ответ',
+  date: 'Дата',
 };
 
 export function questionTypeLabelRu(type: string): string {

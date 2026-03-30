@@ -1,4 +1,4 @@
-const { json, parseBody } = require('./lib/http');
+const { json, parseBody, parseQuery } = require('./lib/http');
 const { loadSurveyWithQuestions } = require('./get-survey');
 const { validatePayload } = require('./lib/validation');
 
@@ -16,6 +16,8 @@ async function handleSaveResponse(pool, surveyId, event) {
   if (!check.ok) return json(check.code, { error: check.error });
 
   const body = parseBody(event) || {};
+  const query = parseQuery(event);
+  const invite = query.invite ? String(query.invite).trim() : '';
   const respondent_id = body.respondent_id != null ? String(body.respondent_id).trim() : '';
   if (!respondent_id || respondent_id.length > 512) {
     return json(400, { error: 'respondent_id is required (max 512 chars)' });
@@ -41,6 +43,16 @@ async function handleSaveResponse(pool, surveyId, event) {
         [responseId, a.question_id, JSON.stringify(a.value)]
       );
     }
+
+    if (invite) {
+      await client.query(
+        `UPDATE survey_invites
+         SET status = 'responded', responded_at = NOW(), last_error = NULL
+         WHERE survey_id = $1 AND invite_token = $2`,
+        [surveyId, invite]
+      );
+    }
+
     await client.query('COMMIT');
     return json(201, { ok: true, response_id: responseId });
   } catch (e) {

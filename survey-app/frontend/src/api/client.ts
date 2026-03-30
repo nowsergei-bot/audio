@@ -1,10 +1,15 @@
 import type {
   AiInsightsPayload,
+  AnalyticsChatMessage,
+  AnalyticsChatResponse,
+  AnalyticsFilter,
   TextQuestionInsightsPayload,
   AnswerSubmit,
   CommentRow,
   ResultsPayload,
   Survey,
+  SurveyInviteRow,
+  SurveyInviteTemplate,
   SurveyExportRowsPayload,
   SurveyWorkbook,
   TextAnswersPage,
@@ -32,8 +37,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
 
 function adminHeaders(): HeadersInit {
   const key = localStorage.getItem('admin_api_key') || '';
+  const token = localStorage.getItem('auth_token') || '';
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (key) h['X-Api-Key'] = key;
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  else if (key) h['X-Api-Key'] = key;
   return h;
 }
 
@@ -111,11 +118,180 @@ export async function getResults(id: number): Promise<ResultsPayload> {
   return data;
 }
 
+export async function getAnalyticsFacets(surveyId: number): Promise<{ facets: Record<string, string[]> }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/analytics-facets`, { headers: adminHeaders() });
+  const data = await parseJson<{ facets?: Record<string, string[]>; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return { facets: data.facets || {} };
+}
+
+export async function postResultsFilter(surveyId: number, filters: AnalyticsFilter[]): Promise<ResultsPayload> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/results-filter`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ filters }),
+  });
+  const data = await parseJson<ResultsPayload & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 export async function getSurveyExportRows(surveyId: number): Promise<SurveyExportRowsPayload> {
   const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/export-rows`, { headers: adminHeaders() });
   const data = await parseJson<SurveyExportRowsPayload & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+export async function importRowsFromXlsxParse(
+  surveyId: number,
+  rows: { answers: AnswerSubmit[] }[],
+): Promise<{ ok: boolean; imported: number; skipped: number; batch_id: string; errors: { row: number; error: string }[] }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/import-rows`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ rows }),
+  });
+  const data = await parseJson<{ error?: string } & {
+    ok: boolean;
+    imported: number;
+    skipped: number;
+    batch_id: string;
+    errors: { row: number; error: string }[];
+  }>(res);
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
+  return data as any;
+}
+
+export async function authRegister(payload: { email: string; password: string }): Promise<{ user: { id: number; email: string; role: string } }> {
+  const res = await apiFetch(`${API_BASE}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ user?: { id: number; email: string; role: string }; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!data.user) throw new Error('Нет данных пользователя');
+  return { user: data.user };
+}
+
+export async function authLogin(payload: { email: string; password: string }): Promise<{ token: string; user: { id: number; email: string; role: string }; expires_at: string }> {
+  const res = await apiFetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ token?: string; user?: { id: number; email: string; role: string }; expires_at?: string; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!data.token || !data.user) throw new Error('Нет токена');
+  return { token: data.token, user: data.user, expires_at: data.expires_at || '' };
+}
+
+export async function authMe(): Promise<{ id: number; email: string; role: string }> {
+  const res = await apiFetch(`${API_BASE}/api/auth/me`, { headers: adminHeaders() });
+  const data = await parseJson<{ user?: { id: number; email: string; role: string }; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!data.user) throw new Error('Нет данных пользователя');
+  return data.user;
+}
+
+export async function getSurveyInvites(surveyId: number): Promise<SurveyInviteRow[]> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites`, { headers: adminHeaders() });
+  const data = await parseJson<{ invites?: SurveyInviteRow[]; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data.invites || [];
+}
+
+export async function saveSurveyInvites(surveyId: number, emailsText: string): Promise<{ ok: boolean; saved: number }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ emails: emailsText }),
+  });
+  const data = await parseJson<{ ok?: boolean; saved?: number; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return { ok: Boolean(data.ok), saved: Number(data.saved || 0) };
+}
+
+export async function getSurveyInviteTemplate(surveyId: number): Promise<SurveyInviteTemplate> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites/template`, { headers: adminHeaders() });
+  const data = await parseJson<{ template?: SurveyInviteTemplate; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data.template || { subject: '', html: '', updated_at: null };
+}
+
+export async function putSurveyInviteTemplate(
+  surveyId: number,
+  payload: { subject: string; html: string }
+): Promise<{ ok: boolean }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites/template`, {
+    method: 'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ ok?: boolean; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return { ok: Boolean(data.ok) };
+}
+
+export async function sendSurveyInvites(
+  surveyId: number,
+  payload?: { limit?: number; subject?: string }
+): Promise<{ ok: boolean; attempted: number; sent: number; errors: number; details: { email: string; ok: boolean; error?: string }[] }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites/send`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await parseJson<
+    | {
+        ok?: boolean;
+        attempted?: number;
+        sent?: number;
+        errors?: number;
+        details?: { email: string; ok: boolean; error?: string }[];
+        error?: string;
+      }
+    | any
+  >(res);
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
+  return {
+    ok: Boolean(data.ok),
+    attempted: Number(data.attempted || 0),
+    sent: Number(data.sent || 0),
+    errors: Number(data.errors || 0),
+    details: Array.isArray(data.details) ? data.details : [],
+  };
+}
+
+export async function remindSurveyInvites(
+  surveyId: number,
+  payload?: { limit?: number; min_hours_between?: number; subject?: string }
+): Promise<{ ok: boolean; attempted: number; sent: number; errors: number; details: { email: string; ok: boolean; error?: string }[] }> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/invites/remind`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await parseJson<
+    | {
+        ok?: boolean;
+        attempted?: number;
+        sent?: number;
+        errors?: number;
+        details?: { email: string; ok: boolean; error?: string }[];
+        error?: string;
+      }
+    | any
+  >(res);
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
+  return {
+    ok: Boolean(data.ok),
+    attempted: Number(data.attempted || 0),
+    sent: Number(data.sent || 0),
+    errors: Number(data.errors || 0),
+    details: Array.isArray(data.details) ? data.details : [],
+  };
 }
 
 function textAnswersQueryString(params: { question_id?: number; q?: string; offset?: number; limit?: number }) {
@@ -139,13 +315,28 @@ export async function getSurveyTextAnswers(
 }
 
 /** Аналитика: структурированный дашборд + опционально текст от нейросети (ключ только на функции). */
-export async function requestAiInsights(surveyId: number): Promise<AiInsightsPayload> {
+export async function requestAiInsights(surveyId: number, filters?: AnalyticsFilter[]): Promise<AiInsightsPayload> {
   const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/ai-insights`, {
     method: 'POST',
     headers: adminHeaders(),
-    body: JSON.stringify({}),
+    body: JSON.stringify({ filters: filters ?? [] }),
   });
   const data = await parseJson<AiInsightsPayload & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** Диалог с нейроаналитиком по текущей выборке и срезу (на функции нужен OPENAI_API_KEY). */
+export async function postAnalyticsChat(
+  surveyId: number,
+  payload: { filters: AnalyticsFilter[]; messages: AnalyticsChatMessage[] },
+): Promise<AnalyticsChatResponse> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/analytics-chat`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ filters: payload.filters, messages: payload.messages }),
+  });
+  const data = await parseJson<AnalyticsChatResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }

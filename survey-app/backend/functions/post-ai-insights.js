@@ -1,7 +1,11 @@
-const { json } = require('./lib/http');
+const { json, parseBody } = require('./lib/http');
+const { loadSurveyWithQuestions } = require('./get-survey');
 const { fetchResultsSnapshot } = require('./get-results');
+const { normalizeFiltersFromBody, resolveFilteredResponseIds } = require('./lib/response-filters');
 const { buildHeuristicDashboard, truncate } = require('./lib/insight-dashboard');
 const { buildTextCorpusForLlm } = require('./lib/llm-text-digest');
+const { buildInsightRelations } = require('./lib/insight-relations');
+const { buildHeuristicNarrative } = require('./lib/heuristic-narrative');
 
 async function fetchLlmNarrative(snapshot) {
   const key = process.env.OPENAI_API_KEY;
@@ -36,12 +40,15 @@ async function fetchLlmNarrative(snapshot) {
       {
         role: 'system',
         content:
-          'Ты аналитик опросов. Пиши только по-русски. Структура ответа:\n' +
-          '1) Краткие выводы по цифрам и рейтингам (2–4 тезиса).\n' +
+          'Ты аналитик опросов. Пиши только по-русски. Форматируй как короткую записку с заголовками.\n' +
+          'Структура ответа:\n' +
+          '1) «Выводы» — 5–10 пунктов, обязательно раздели на «Положительные» и «Зоны внимания/отрицательные».\n' +
+          '2) «По цифрам» — 2–4 тезиса по шкалам/рейтингам/распределениям.\n' +
           '2) Если в JSON есть блок text_corpus — обязательно отдельный раздел «Темы из развёрнутых ответов»: ' +
           'выдели 5–10 самых важных смысловых линий, типичные жалобы и пожелания; можно короткие обобщения, ' +
           'не пересказывай каждый фрагмент. Не выдумывай того, чего нет в выборке.\n' +
-          '3) Итог: 1–2 предложения с приоритетом действий для организатора.\n' +
+          '3) «Рекомендации» — 3–6 конкретных действий, что улучшить/что усилить.\n' +
+          '4) Итог: 1–2 предложения с приоритетом действий для организатора.\n' +
           'Без вводных про нейросеть и ИИ. Опирайся только на данные JSON.',
       },
       {
@@ -71,22 +78,41 @@ async function fetchLlmNarrative(snapshot) {
   }
 }
 
-async function handlePostAiInsights(pool, surveyId, _event) {
-  const snapshot = await fetchResultsSnapshot(pool, surveyId, { forPublicApi: false });
+async function handlePostAiInsights(pool, surveyId, event) {
+  const body = parseBody(event) || {};
+  const filters = normalizeFiltersFromBody(body);
+
+  const survey = await loadSurveyWithQuestions(pool, surveyId);
+  if (!survey) return json(404, { error: 'Not found' });
+
+  let responseIds;
+  if (filters.length) {
+    const resolved = await resolveFilteredResponseIds(pool, surveyId, survey.questions, filters);
+    responseIds = resolved === null ? undefined : resolved;
+  }
+
+  const snapshot = await fetchResultsSnapshot(pool, surveyId, { forPublicApi: false, responseIds });
   if (!snapshot) return json(404, { error: 'Not found' });
 
   const dashboard = buildHeuristicDashboard(snapshot);
-  let narrative = null;
+  const relations = await buildInsightRelations(pool, surveyId, snapshot.survey.questions || [], {
+    responseIds,
+  });
+  let narrative = buildHeuristicNarrative(snapshot);
   let source = 'heuristic';
 
   if (process.env.OPENAI_API_KEY) {
-    narrative = await fetchLlmNarrative(snapshot);
-    if (narrative) source = 'llm_hybrid';
+    const llm = await fetchLlmNarrative(snapshot);
+    if (llm) {
+      narrative = llm;
+      source = 'llm_hybrid';
+    }
   }
 
   return json(200, {
     source,
     dashboard,
+    relations,
     narrative,
     survey: snapshot.survey,
     total_responses: snapshot.total_responses,

@@ -1,13 +1,21 @@
-const QUESTION_TYPES = new Set(['radio', 'checkbox', 'scale', 'text', 'rating']);
+const QUESTION_TYPES = new Set(['radio', 'checkbox', 'scale', 'text', 'rating', 'date']);
 
 function normalizeOptions(options) {
   if (!Array.isArray(options)) return [];
   return options.map((o) => (typeof o === 'string' ? o : o && o.label != null ? String(o.label) : String(o)));
 }
 
-function validateAnswer(question, rawValue) {
+function isOtherPrefixed(v) {
+  return typeof v === 'string' && /^другое\s*:/i.test(v.trim());
+}
+
+function validateAnswer(question, rawValue, opts = {}) {
   const { id, type, options } = question;
   const labels = normalizeOptions(options);
+  const hasOther = labels.includes('Другое') || labels.includes('другое');
+  const allowUnknownOptionsAsOther = opts.allowUnknownOptionsAsOther === true;
+  /** Импорт из Excel: в БД поле TEXT; не режем по maxLength формы. */
+  const relaxTextLengthForImport = opts.relaxTextLengthForImport === true;
 
   switch (type) {
     case 'radio': {
@@ -16,6 +24,8 @@ function validateAnswer(question, rawValue) {
       }
       const v = String(rawValue).trim();
       if (labels.length && !labels.includes(v)) {
+        if (allowUnknownOptionsAsOther) return { ok: true, value: `Другое: ${v}` };
+        if (hasOther && isOtherPrefixed(v)) return { ok: true, value: v };
         return { ok: false, error: `Question ${id}: invalid option` };
       }
       return { ok: true, value: v };
@@ -26,11 +36,19 @@ function validateAnswer(question, rawValue) {
       }
       const arr = rawValue.map((x) => String(x).trim()).filter(Boolean);
       if (labels.length) {
+        const out = [];
         for (const x of arr) {
           if (!labels.includes(x)) {
+            if (allowUnknownOptionsAsOther) {
+              out.push(`Другое: ${x}`);
+              continue;
+            }
+            if (hasOther && isOtherPrefixed(x)) continue;
             return { ok: false, error: `Question ${id}: invalid option` };
           }
+          out.push(x);
         }
+        return { ok: true, value: out };
       }
       return { ok: true, value: arr };
     }
@@ -55,9 +73,21 @@ function validateAnswer(question, rawValue) {
       if (!s.length) {
         return { ok: false, error: `Question ${id}: empty text` };
       }
-      const maxLen = (options && options.maxLength) || 10000;
+      const maxLen = relaxTextLengthForImport
+        ? 1048576
+        : (options && options.maxLength) || 10000;
       if (s.length > maxLen) {
         return { ok: false, error: `Question ${id}: too long` };
+      }
+      return { ok: true, value: s };
+    }
+    case 'date': {
+      if (rawValue == null) {
+        return { ok: false, error: `Question ${id}: date required` };
+      }
+      const s = String(rawValue).trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return { ok: false, error: `Question ${id}: invalid date format` };
       }
       return { ok: true, value: s };
     }
@@ -124,7 +154,10 @@ function validatePartialImportAnswers(questions, answersPayload) {
       return { ok: false, error: `Duplicate answer for question ${qid}` };
     }
     const q = byId.get(qid);
-    const res = validateAnswer(q, raw);
+    const res = validateAnswer(q, raw, {
+      allowUnknownOptionsAsOther: true,
+      relaxTextLengthForImport: true,
+    });
     if (!res.ok) return res;
     seen.add(qid);
     normalized.push({ question_id: qid, value: res.value });

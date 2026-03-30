@@ -2,10 +2,13 @@ const { json, parseBody } = require('./lib/http');
 const { QUESTION_TYPES } = require('./lib/validation');
 const { loadSurveyWithQuestions } = require('./get-survey');
 
-async function handleUpdateSurvey(pool, id, event) {
+async function handleUpdateSurvey(pool, id, event, user) {
   const body = parseBody(event) || {};
   const existing = await loadSurveyWithQuestions(pool, id);
   if (!existing) return json(404, { error: 'Not found' });
+  if (user && user.role !== 'admin' && Number(existing.owner_user_id || 0) !== Number(user.id || -1)) {
+    return json(403, { error: 'Forbidden' });
+  }
 
   const client = await pool.connect();
   try {
@@ -17,11 +20,21 @@ async function handleUpdateSurvey(pool, id, event) {
     body.status != null && allowedStatus.has(body.status) ? body.status : existing.status;
     const access_link =
       body.access_link != null ? String(body.access_link).trim() : existing.access_link;
+    const media = body.media && typeof body.media === 'object' ? body.media : null;
 
-    await client.query(
-      `UPDATE surveys SET title = $1, description = $2, status = $3::survey_status, access_link = $4 WHERE id = $5`,
-      [title, description, status, access_link, id]
-    );
+    if (media) {
+      await client.query(
+        `UPDATE surveys
+         SET title = $1, description = $2, status = $3::survey_status, access_link = $4, media = $5::jsonb
+         WHERE id = $6`,
+        [title, description, status, access_link, JSON.stringify(media), id]
+      );
+    } else {
+      await client.query(
+        `UPDATE surveys SET title = $1, description = $2, status = $3::survey_status, access_link = $4 WHERE id = $5`,
+        [title, description, status, access_link, id]
+      );
+    }
 
     if (Array.isArray(body.questions)) {
       await client.query(`DELETE FROM questions WHERE survey_id = $1`, [id]);

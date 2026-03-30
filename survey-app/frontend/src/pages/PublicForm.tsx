@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { getPublicSurvey, submitResponse } from '../api/client';
 import PublicCampusSlideshow from '../components/PublicCampusSlideshow';
+import PublicDictationField from '../components/PublicDictationField';
 import type { AnswerSubmit, Question, Survey } from '../types';
 
 const RESP_PREFIX = 'survey_resp_id_';
@@ -33,6 +34,8 @@ function initialAnswers(questions: Question[]): Record<number, string | number |
     else if (q.type === 'scale' || q.type === 'rating') {
       const o = q.options as { min?: number };
       acc[q.id] = Number.isFinite(o?.min) ? Number(o.min) : 1;
+    } else if (q.type === 'date') {
+      acc[q.id] = '';
     } else acc[q.id] = '';
   }
   return acc;
@@ -52,6 +55,7 @@ export default function PublicForm() {
   const { accessLink = '' } = useParams();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [answers, setAnswers] = useState<Record<number, string | number | string[]>>({});
+  const [otherTexts, setOtherTexts] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(() => alreadyDone(accessLink));
@@ -71,6 +75,7 @@ export default function PublicForm() {
         if (cancelled) return;
         setSurvey(s);
         setAnswers(initialAnswers(s.questions || []));
+        setOtherTexts({});
       } catch (e) {
         if (!cancelled) setErr(e instanceof Error ? e.message : 'Ошибка загрузки');
       } finally {
@@ -85,8 +90,26 @@ export default function PublicForm() {
   const questions = survey?.questions || [];
 
   const payload = useMemo((): AnswerSubmit[] => {
-    return questions.map((q) => ({ question_id: q.id, value: answers[q.id] }));
-  }, [questions, answers]);
+    return questions.map((q) => {
+      const v = answers[q.id];
+      const other = (otherTexts[q.id] || '').trim();
+      const hasOtherOpt = Array.isArray(q.options) && q.options.map(String).includes('Другое');
+
+      if ((q.type === 'radio' || q.type === 'checkbox') && hasOtherOpt) {
+        if (q.type === 'radio') {
+          if (v === 'Другое') {
+            return { question_id: q.id, value: other ? `Другое: ${other}` : 'Другое' };
+          }
+          return { question_id: q.id, value: v as string };
+        }
+        const arr = Array.isArray(v) ? v.map(String) : [];
+        const out = arr.map((x) => (x === 'Другое' ? (other ? `Другое: ${other}` : 'Другое') : x));
+        return { question_id: q.id, value: out };
+      }
+
+      return { question_id: q.id, value: v as string | number | string[] };
+    });
+  }, [questions, answers, otherTexts]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -250,7 +273,7 @@ export default function PublicForm() {
             </AnimatePresence>
           </motion.div>
 
-          <PublicCampusSlideshow active />
+          <PublicCampusSlideshow active sources={survey?.media?.photos?.map((p) => p.src) || undefined} />
 
           <AnimatePresence mode="popLayout">
             {questions.map((q, i) => (
@@ -264,7 +287,7 @@ export default function PublicForm() {
                 layout
               >
                 <label style={{ display: 'block', marginBottom: '0.35rem' }}>
-                  <strong>{q.text}</strong>
+                  <strong className="public-question-title">{q.text}</strong>
                 </label>
                 {q.type === 'radio' && (
                   <div className="public-choice-row" role="radiogroup" aria-label={q.text}>
@@ -272,20 +295,30 @@ export default function PublicForm() {
                       const label = String(opt);
                       const selected = answers[q.id] === label;
                       return (
-                        <motion.button
-                          key={label}
-                          type="button"
-                          className={`public-choice-btn${selected ? ' is-selected' : ''}`}
-                          onClick={() => setAnswers((a) => ({ ...a, [q.id]: label }))}
-                          aria-checked={selected}
-                          role="radio"
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.99 }}
-                          transition={{ type: 'spring', stiffness: 420, damping: 26 }}
-                        >
-                          <span className="public-choice-dot" />
-                          <span>{label}</span>
-                        </motion.button>
+                        <div key={label} style={{ width: '100%' }}>
+                          <motion.button
+                            type="button"
+                            className={`public-choice-btn${selected ? ' is-selected' : ''}`}
+                            onClick={() => setAnswers((a) => ({ ...a, [q.id]: label }))}
+                            aria-checked={selected}
+                            role="radio"
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                          >
+                            <span className="public-choice-dot" />
+                            <span>{label}</span>
+                          </motion.button>
+                          {label === 'Другое' && selected && (
+                            <input
+                              className="public-other-input"
+                              value={otherTexts[q.id] ?? ''}
+                              onChange={(e) => setOtherTexts((m) => ({ ...m, [q.id]: e.target.value }))}
+                              placeholder="Уточните…"
+                              style={{ marginTop: '0.35rem' }}
+                            />
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -297,26 +330,38 @@ export default function PublicForm() {
                       const arr = (answers[q.id] as string[]) || [];
                       const checked = arr.includes(label);
                       return (
-                        <motion.button
-                          key={label}
-                          type="button"
-                          className={`public-choice-btn${checked ? ' is-selected' : ''}`}
-                          onClick={() => {
-                            setAnswers((a) => {
-                              const cur = new Set((a[q.id] as string[]) || []);
-                              if (cur.has(label)) cur.delete(label);
-                              else cur.add(label);
-                              return { ...a, [q.id]: [...cur] };
-                            });
-                          }}
-                          aria-pressed={checked}
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.99 }}
-                          transition={{ type: 'spring', stiffness: 420, damping: 26 }}
-                        >
-                          <span className="public-choice-dot" />
-                          <span>{label}</span>
-                        </motion.button>
+                        <div key={label} style={{ width: '100%' }}>
+                          <motion.button
+                            type="button"
+                            className={`public-choice-btn${checked ? ' is-selected' : ''}`}
+                            onClick={() => {
+                              setAnswers((a) => {
+                                const cur = new Set((a[q.id] as string[]) || []);
+                                if (cur.has(label)) cur.delete(label);
+                                else cur.add(label);
+                                return { ...a, [q.id]: [...cur] };
+                              });
+                            }}
+                            aria-pressed={checked}
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                          >
+                            <span className="public-choice-dot" />
+                            <span>{label}</span>
+                          </motion.button>
+                          {label === 'Другое' && checked && (
+                            <div style={{ marginTop: '0.35rem' }}>
+                              <PublicDictationField
+                                multiline={false}
+                                inputClassName="public-other-input"
+                                value={otherTexts[q.id] ?? ''}
+                                onChange={(v) => setOtherTexts((m) => ({ ...m, [q.id]: v }))}
+                                placeholder="Уточните…"
+                              />
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -345,10 +390,20 @@ export default function PublicForm() {
                     </motion.p>
                   </>
                 )}
+                {q.type === 'date' && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <input
+                      type="date"
+                      className="field"
+                      value={String(answers[q.id] ?? '')}
+                      onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                    />
+                  </div>
+                )}
                 {q.type === 'text' && (
-                  <textarea
+                  <PublicDictationField
                     value={String(answers[q.id] ?? '')}
-                    onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
+                    onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))}
                   />
                 )}
               </motion.div>
@@ -356,20 +411,22 @@ export default function PublicForm() {
           </AnimatePresence>
 
           <motion.div
-            className="row public-submit-row"
+            className="public-submit-row"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: Math.min(0.15 + questions.length * 0.04, 0.5) }}
           >
-            <motion.button
-              type="submit"
-              className="btn primary"
-              disabled={submitting}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {submitting ? 'Отправка…' : 'Отправить ответы'}
-            </motion.button>
+            <div className="public-submit-actions">
+              <motion.button
+                type="submit"
+                className="btn primary public-btn-submit"
+                disabled={submitting}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                {submitting ? 'Отправка…' : 'Отправить ответы'}
+              </motion.button>
+            </div>
           </motion.div>
         </form>
       </div>

@@ -15,6 +15,12 @@ function pickTextHighlight(strings) {
   return [...byKey.values()].sort((a, b) => b.length - a.length).slice(0, 8);
 }
 
+function normalizeOtherLabel(v) {
+  const s = String(v ?? '').trim();
+  if (!s) return '';
+  return /^другое\s*:/i.test(s) ? 'Другое' : s;
+}
+
 function aggregateForQuestion(question, rows) {
   const { id, type, text } = question;
   const qid = Number(id);
@@ -23,7 +29,7 @@ function aggregateForQuestion(question, rows) {
   if (type === 'radio') {
     const counts = {};
     for (const r of rows) {
-      const v = r.value != null ? String(r.value) : '';
+      const v = normalizeOtherLabel(r.value != null ? String(r.value) : '');
       counts[v] = (counts[v] || 0) + 1;
     }
     return {
@@ -32,12 +38,27 @@ function aggregateForQuestion(question, rows) {
     };
   }
 
+  if (type === 'date') {
+    const counts = {};
+    for (const r of rows) {
+      const v = String(r.value ?? '').trim().slice(0, 10);
+      if (!v) continue;
+      counts[v] = (counts[v] || 0) + 1;
+    }
+    return {
+      ...base,
+      distribution: Object.entries(counts)
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label))),
+    };
+  }
+
   if (type === 'checkbox') {
     const counts = {};
     for (const r of rows) {
       const arr = Array.isArray(r.value) ? r.value : [];
       for (const x of arr) {
-        const v = String(x);
+        const v = normalizeOtherLabel(String(x));
         counts[v] = (counts[v] || 0) + 1;
       }
     }
@@ -84,33 +105,51 @@ function aggregateForQuestion(question, rows) {
 /**
  * @param {import('pg').Pool} pool
  * @param {number} surveyId
- * @param {{ forPublicApi?: boolean }} [opts]
+ * @param {{ forPublicApi?: boolean; responseIds?: Set<number> | null }} [opts]
+ * responseIds: null/undefined — все ответы; пустой Set — нет строк; непустой Set — только эти response id
  */
 async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
   const forPublicApi = opts.forPublicApi !== false;
+  const responseIds = opts.responseIds;
 
   const survey = await loadSurveyWithQuestions(pool, surveyId);
   if (!survey) return null;
 
-  const respCount = await pool.query(
-    `SELECT COUNT(*)::int AS c FROM responses WHERE survey_id = $1`,
-    [surveyId]
-  );
-  const totalResponses = respCount.rows[0].c;
+  let totalResponses = 0;
+  /** @type {Array<{ question_id: number; value: unknown }>} */
+  let answerRows = [];
 
-  const answers = await pool.query(
-    `SELECT av.question_id, av.value
-     FROM answer_values av
-     INNER JOIN responses r ON r.id = av.response_id
-     WHERE r.survey_id = $1`,
-    [surveyId]
-  );
+  if (responseIds && responseIds.size === 0) {
+    totalResponses = 0;
+    answerRows = [];
+  } else {
+    const params = [surveyId];
+    let extra = '';
+    if (responseIds && responseIds.size > 0) {
+      params.push([...responseIds]);
+      extra = 'AND r.id = ANY($2::int[])';
+    }
+    const respCount = await pool.query(
+      `SELECT COUNT(*)::int AS c FROM responses r WHERE r.survey_id = $1 ${extra}`,
+      params
+    );
+    totalResponses = respCount.rows[0].c;
+
+    const answers = await pool.query(
+      `SELECT av.question_id, av.value
+       FROM answer_values av
+       INNER JOIN responses r ON r.id = av.response_id
+       WHERE r.survey_id = $1 ${extra}`,
+      params
+    );
+    answerRows = answers.rows;
+  }
 
   const byQ = new Map();
   for (const q of survey.questions) {
     byQ.set(Number(q.id), []);
   }
-  for (const row of answers.rows) {
+  for (const row of answerRows) {
     const qid = Number(row.question_id);
     const list = byQ.get(qid);
     if (list) {
@@ -139,7 +178,7 @@ async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
   const wcWords = buildWordCloudFromTexts(textCorpus);
   const text_word_cloud = wcWords.length ? { words: wcWords } : undefined;
 
-  const charts = await fetchChartAggregates(pool, surveyId, perQuestion);
+  const charts = await fetchChartAggregates(pool, surveyId, perQuestion, responseIds || null);
 
   const questionsOut = forPublicApi
     ? perQuestion.map((p) => {

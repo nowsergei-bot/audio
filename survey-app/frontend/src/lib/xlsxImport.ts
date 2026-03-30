@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import type { AnswerSubmit, Question } from '../types';
 
 const SKIP_HEADER =
-  /^(id|id\s|№|номер|почта|email|дата|время|timestamp|респондент|respondent|имя|фамилия|телефон)$/i;
+  /^(id|id\s|№|номер|почта|email|время|timestamp|респондент|respondent|имя|фамилия|телефон|дата\s+ответа|дата\s+заполнения)$/i;
 
 function norm(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -72,12 +72,21 @@ function cellToPrimitive(cell: unknown): string | number | boolean | Date | null
   return String(cell);
 }
 
+function excelSerialToIsoDate(n: number): string | null {
+  if (!Number.isFinite(n)) return null;
+  // Excel serial date base (Windows): 1899-12-30
+  const ms = Math.round((n - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  if (!Number.isFinite(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 export function coerceCell(cell: unknown, q: Question): string | number | string[] | null {
   const v = cellToPrimitive(cell);
   if (v == null) return null;
   if (v instanceof Date) {
     const s = v.toISOString().slice(0, 10);
-    return q.type === 'text' || q.type === 'radio' ? s : null;
+    return q.type === 'text' || q.type === 'radio' || q.type === 'date' ? s : null;
   }
   if (typeof v === 'boolean') {
     const s = v ? 'да' : 'нет';
@@ -90,6 +99,14 @@ export function coerceCell(cell: unknown, q: Question): string | number | string
   if (q.type === 'radio') {
     const s = String(v).trim();
     return s.length ? s : null;
+  }
+  if (q.type === 'date') {
+    if (typeof v === 'number') return excelSerialToIsoDate(v);
+    const s = String(v).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
   }
   if (q.type === 'scale' || q.type === 'rating') {
     const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.').trim());
@@ -111,7 +128,7 @@ export type ParsedImportBatch = {
   headers: string[];
 };
 
-const MAX_CLIENT_ROWS = 500;
+const MAX_CLIENT_ROWS = 3000;
 
 export function parseSurveyXlsxBuffer(buffer: ArrayBuffer, questions: Question[]): ParsedImportBatch {
   if (!questions.length) {

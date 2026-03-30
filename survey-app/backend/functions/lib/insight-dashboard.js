@@ -116,6 +116,9 @@ function buildHeuristicDashboard(snapshot) {
       type: q.type,
       response_count: q.response_count,
       detail,
+      avg: q.average ?? null,
+      min: q.min ?? null,
+      max: q.max ?? null,
       bars: bars.slice(0, 4).map((b) => ({ label: truncate(b.label, 40), pct: b.pct })),
     };
   });

@@ -19,17 +19,11 @@ export default function AdminLayout() {
       <header className="admin-header glass-header">
         <div className="admin-header-inner">
           <div className="admin-header-brands">
-            <NavLink to="/" className="admin-brand admin-brand-glass" end>
-              <img
-                src="/branding/logo-horizontal-dark-bg.png"
-                alt="Гимназия им. Е.М. Примакова"
-                className="admin-brand-logo"
-              />
-            </NavLink>
-            <div className="admin-brand-ekg-track glass-surface">
+            <NavLink to="/" className="admin-brand admin-brand-glass" end aria-label="Пульс">
+              <img src="/branding/primakov-mark.png" alt="" className="admin-brand-mark" />
               <span className="admin-brand-pulse-label">Пульс</span>
               <PulseEkg size="brand" />
-            </div>
+            </NavLink>
           </div>
           <nav className="admin-nav">
             <NavLink
@@ -37,19 +31,19 @@ export default function AdminLayout() {
               end
               className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
             >
-              Опросы
-            </NavLink>
-            <NavLink
-              to="/import-workbook"
-              className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
-            >
-              Дашборд из Excel
+              Администратор
             </NavLink>
             <NavLink
               to="/surveys/new"
               className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
             >
               Новый опрос
+            </NavLink>
+            <NavLink
+              to="/surveys/quick"
+              className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
+            >
+              Написать письмо для гостей
             </NavLink>
           </nav>
         </div>

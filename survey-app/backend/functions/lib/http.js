@@ -2,7 +2,7 @@ const CORS_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key, Authorization',
 };
 
 function json(statusCode, body, extraHeaders = {}) {
@@ -24,6 +24,22 @@ function parseBody(event) {
   } catch {
     return null;
   }
+}
+
+function parseQuery(event) {
+  const out = {};
+  const q = event.queryStringParameters || event.query || null;
+  if (q && typeof q === 'object') {
+    for (const [k, v] of Object.entries(q)) out[String(k)] = v == null ? '' : String(v);
+    return out;
+  }
+  const raw =
+    (event.rawQueryString ? String(event.rawQueryString) : '') ||
+    (event.requestContext?.http?.queryString ? String(event.requestContext.http.queryString) : '');
+  if (!raw) return out;
+  const sp = new URLSearchParams(raw);
+  for (const [k, v] of sp.entries()) out[k] = v;
+  return out;
 }
 
 /** Шлюз иногда подставляет литерал шаблона OpenAPI вместо захваченного пути. */
@@ -91,4 +107,4 @@ function getMethod(event) {
   return String(m).toUpperCase();
 }
 
-module.exports = { json, parseBody, normalizePath, getMethod, CORS_HEADERS };
+module.exports = { json, parseBody, parseQuery, normalizePath, getMethod, CORS_HEADERS };

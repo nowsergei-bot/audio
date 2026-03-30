@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { adminStagger, adminStaggerItem, templateCardHover } from '../motion/adminMotion';
-import { SURVEY_TEMPLATES, templateCategories } from '../data/surveyTemplates';
+import { listSurveyTemplates, templateCategories } from '../data/surveyTemplates';
 
 function questionWord(n: number): string {
   const m10 = n % 10;
@@ -14,16 +15,18 @@ function questionWord(n: number): string {
 
 type Props = {
   onPickTemplate: (templateId: string) => void;
+  onCreateTemplate?: () => void;
 };
 
-export default function TemplateGallery({ onPickTemplate }: Props) {
+export default function TemplateGallery({ onPickTemplate, onCreateTemplate }: Props) {
   const categories = useMemo(() => templateCategories(), []);
   const [cat, setCat] = useState('Все');
+  const templates = useMemo(() => listSurveyTemplates(), []);
 
   const filtered = useMemo(() => {
-    if (cat === 'Все') return SURVEY_TEMPLATES;
-    return SURVEY_TEMPLATES.filter((t) => t.category === cat);
-  }, [cat]);
+    if (cat === 'Все') return templates;
+    return templates.filter((t) => t.category === cat);
+  }, [cat, templates]);
 
   return (
     <div className="page admin-templates-page">
@@ -39,16 +42,45 @@ export default function TemplateGallery({ onPickTemplate }: Props) {
           Выберите готовый сценарий с вопросами на русском или начните с чистого листа — всё можно изменить перед
           сохранением.
         </p>
-        <motion.button
-          type="button"
-          className="btn admin-templates-blank-btn"
-          onClick={() => onPickTemplate('blank')}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-        >
-          ✨ Пустой опрос — собрать самим
-        </motion.button>
+        <div className="row" style={{ flexWrap: 'wrap', gap: '0.6rem' }}>
+          <motion.button
+            type="button"
+            className="btn admin-templates-blank-btn"
+            onClick={() => onPickTemplate('blank')}
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+          >
+            ✨ Пустой опрос — собрать самим
+          </motion.button>
+          {onCreateTemplate && (
+            <motion.button
+              type="button"
+              className="btn"
+              onClick={onCreateTemplate}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              ➕ Создать шаблон
+            </motion.button>
+          )}
+        </div>
       </motion.header>
+
+      <section className="card glass-surface" style={{ marginTop: '1rem' }}>
+        <p className="admin-templates-kicker" style={{ marginBottom: '0.25rem' }}>
+          Подгрузка данных из старых опросов
+        </p>
+        <h2 className="admin-templates-title admin-templates-title--section">Инфографика по вашим данным</h2>
+        <p className="muted" style={{ marginTop: 0, maxWidth: '48rem' }}>
+          Если у вас уже есть Excel с ответами (из Google Forms, анкеты, прошлых мероприятий) — можно загрузить его в существующий опрос и сразу
+          получить страницу результатов с аналитикой.
+        </p>
+        <div className="row" style={{ gap: '0.6rem', flexWrap: 'wrap' }}>
+          <Link to="/import-old-surveys" className="btn primary">
+            Подгрузить ответы в существующий опрос
+          </Link>
+        </div>
+      </section>
 
       <div className="admin-templates-filters" role="tablist" aria-label="Категории шаблонов">
         {categories.map((c) => (

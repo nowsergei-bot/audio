@@ -6,16 +6,13 @@ export default function PublicLayout() {
     <div className="app-public">
       <header className="public-header glass-header-public">
         <div className="public-header-inner">
-          <div className="public-wordmark" aria-label="Гимназия им. Е.М. Примакова">
-            <span className="public-wordmark-accent" />
-            <div className="public-wordmark-text">
-              <span className="public-wordmark-line1">Гимназия</span>
-              <span className="public-wordmark-line2">им. Е.М. Примакова</span>
-            </div>
-          </div>
-          <div className="public-header-ekg glass-surface-public">
+          <div className="public-wordmark" aria-label="Пульс">
+            <img src="/branding/primakov-mark.png" alt="" className="public-brand-mark" />
+            <span className="public-pulse-word">Пульс</span>
             <PulseEkg size="brand" className="public-pulse-ekg-svg" />
-            <p className="public-tagline muted">Пульс · опрос</p>
+          </div>
+          <div className="public-header-ekg">
+            <p className="public-tagline">Пульс · опрос</p>
           </div>
         </div>
       </header>

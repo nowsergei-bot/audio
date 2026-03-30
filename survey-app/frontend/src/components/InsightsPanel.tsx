@@ -1,12 +1,20 @@
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { requestAiInsights } from '../api/client';
 import AnimatedNumber from './AnimatedNumber';
-import { barEase, springCard, staggerContainer, staggerItem } from '../motion/resultsMotion';
+import { springCard, staggerContainer, staggerItem } from '../motion/resultsMotion';
 import { questionTypeLabelRu } from '../lib/labels';
-import type { AiInsightsPayload, InsightBlock, InsightTone } from '../types';
+import type { AiInsightsPayload, AnalyticsFilter, InsightBlock, InsightTone } from '../types';
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-type Props = { surveyId: number };
+type Props = {
+  surveyId: number;
+  onDrillDown?: (questionId: number) => void;
+  filters?: AnalyticsFilter[];
+  autoRun?: boolean;
+};
+
+const NO_SLICE_FILTERS: AnalyticsFilter[] = [];
 
 function toneClass(tone: InsightTone): string {
   switch (tone) {
@@ -67,22 +75,31 @@ function formatNarrative(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function InsightsPanel({ surveyId }: Props) {
+function trimOneLine(s: string, n: number) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  if (t.length <= n) return t;
+  return `${t.slice(0, n - 1)}…`;
+}
+
+export default function InsightsPanel({ surveyId, onDrillDown, filters, autoRun = false }: Props) {
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<AiInsightsPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  const effectiveFilters = filters ?? NO_SLICE_FILTERS;
+  const filterKey = JSON.stringify(effectiveFilters);
 
   useEffect(() => {
     setPayload(null);
     setErr(null);
     setLoading(false);
-  }, [surveyId]);
+  }, [surveyId, filterKey]);
 
-  async function run() {
+  const run = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const data = await requestAiInsights(surveyId);
+      const data = await requestAiInsights(surveyId, effectiveFilters);
       setPayload(data);
     } catch (e) {
       setPayload(null);
@@ -90,9 +107,45 @@ export default function InsightsPanel({ surveyId }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [surveyId, effectiveFilters]);
+
+  useEffect(() => {
+    if (!autoRun) return;
+    void run();
+  }, [surveyId, filterKey, autoRun, run]);
 
   const d = payload?.dashboard;
+  const orderById = new Map<number, number>();
+  for (const q of (payload?.survey?.questions || []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))) {
+    orderById.set(q.id, orderById.size + 1);
+  }
+  const showQ = (id: number) => orderById.get(id) ?? id;
+  const showQTitle = (qid: number, title: string) => `#${showQ(qid)} · ${trimOneLine(title, 34)}`;
+
+  const topByResponses =
+    d?.questions
+      ?.slice()
+      .sort((a, b) => (b.response_count || 0) - (a.response_count || 0))
+      .slice(0, 10)
+      .map((q) => ({
+        name: showQTitle(q.question_id, q.title),
+        value: q.response_count || 0,
+        question_id: q.question_id,
+      })) || [];
+
+  const scaleAverages =
+    d?.questions
+      ?.filter((q) => (q.type === 'scale' || q.type === 'rating') && typeof q.avg === 'number')
+      .slice()
+      .sort((a, b) => (b.avg || 0) - (a.avg || 0))
+      .slice(0, 10)
+      .map((q) => ({
+        name: showQTitle(q.question_id, q.title),
+        avg: q.avg ?? 0,
+        min: q.min ?? null,
+        max: q.max ?? null,
+        question_id: q.question_id,
+      })) || [];
 
   return (
     <MotionConfig reducedMotion="user">
@@ -198,14 +251,15 @@ export default function InsightsPanel({ surveyId }: Props) {
                 ))}
               </motion.div>
 
+              <h3 className="ai-insights-section-title ai-insights-section-title--spaced">Дашборд</h3>
               {payload.narrative && (
                 <motion.div
                   className="ai-insights-narrative"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
+                  transition={{ delay: 0.08 }}
                 >
-                  <h3 className="ai-insights-section-title">Текстовая записка</h3>
+                  <h3 className="ai-insights-section-title">ИИ-аналитика по опросу</h3>
                   <div className="ai-insights-narrative-inner">
                     {formatNarrative(payload.narrative).map((para, i) => (
                       <motion.p
@@ -221,6 +275,111 @@ export default function InsightsPanel({ surveyId }: Props) {
                   </div>
                 </motion.div>
               )}
+              <div className="ai-insights-charts">
+                <div className="ai-insights-chart-card">
+                  <h4 className="ai-insights-chart-title">Ответов по вопросам (топ)</h4>
+                  <div className="ai-insights-chart-wrap">
+                    {topByResponses.length === 0 ? (
+                      <p className="muted">Пока нет данных.</p>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%" minHeight={220}>
+                        <BarChart
+                          data={topByResponses}
+                          layout="vertical"
+                          margin={{ top: 6, right: 16, left: 4, bottom: 0 }}
+                        >
+                          <CartesianGrid stroke="rgba(17,24,39,0.08)" strokeDasharray="3 3" />
+                          <XAxis type="number" tick={{ fill: 'rgba(17,24,39,0.55)', fontSize: 11 }} width={36} />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            tick={{ fill: 'rgba(17,24,39,0.65)', fontSize: 11 }}
+                            width={170}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: 'rgba(255,255,255,0.98)',
+                              border: '1px solid rgba(17,24,39,0.12)',
+                              borderRadius: 12,
+                              boxShadow: '0 18px 50px rgba(17,24,39,0.18)',
+                              padding: '10px 14px',
+                            }}
+                            labelStyle={{ color: '#111827', fontWeight: 800 }}
+                            itemStyle={{ color: '#111827' }}
+                            formatter={(v: number) => [`${v} ответов`, '']}
+                          />
+                          <Bar
+                            dataKey="value"
+                            name="Ответов"
+                            fill="rgba(227,6,19,0.72)"
+                            radius={[8, 8, 8, 8]}
+                            onClick={(d) => {
+                              const qid = (d as { question_id?: number }).question_id;
+                              if (qid != null) onDrillDown?.(qid);
+                            }}
+                            style={{ cursor: onDrillDown ? 'pointer' : undefined }}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ai-insights-chart-card">
+                  <h4 className="ai-insights-chart-title">Средние оценки (шкалы/рейтинг)</h4>
+                  <div className="ai-insights-chart-wrap">
+                    {scaleAverages.length === 0 ? (
+                      <p className="muted">Нет шкал/рейтингов с данными.</p>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%" minHeight={220}>
+                        <BarChart
+                          data={scaleAverages}
+                          layout="vertical"
+                          margin={{ top: 6, right: 16, left: 4, bottom: 0 }}
+                        >
+                          <CartesianGrid stroke="rgba(17,24,39,0.08)" strokeDasharray="3 3" />
+                          <XAxis type="number" tick={{ fill: 'rgba(17,24,39,0.55)', fontSize: 11 }} width={36} />
+                          <YAxis
+                            type="category"
+                            dataKey="name"
+                            tick={{ fill: 'rgba(17,24,39,0.65)', fontSize: 11 }}
+                            width={170}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: 'rgba(255,255,255,0.98)',
+                              border: '1px solid rgba(17,24,39,0.12)',
+                              borderRadius: 12,
+                              boxShadow: '0 18px 50px rgba(17,24,39,0.18)',
+                              padding: '10px 14px',
+                            }}
+                            labelStyle={{ color: '#111827', fontWeight: 800 }}
+                            itemStyle={{ color: '#111827' }}
+                            formatter={(v: number, _name: string, ctx) => {
+                              const row = (ctx as { payload?: { min?: number | null; max?: number | null } }).payload;
+                              const range =
+                                row && row.min != null && row.max != null ? ` (диапазон ${row.min}…${row.max})` : '';
+                              return [`${Number(v).toFixed(2)}${range}`, 'Среднее'];
+                            }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 12, color: '#6b7280' }} />
+                          <Bar
+                            dataKey="avg"
+                            name="Среднее"
+                            fill="rgba(17,94,89,0.70)"
+                            radius={[8, 8, 8, 8]}
+                            onClick={(d) => {
+                              const qid = (d as { question_id?: number }).question_id;
+                              if (qid != null) onDrillDown?.(qid);
+                            }}
+                            style={{ cursor: onDrillDown ? 'pointer' : undefined }}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <div className="ai-insights-split">
                 <div className="ai-insights-col">
@@ -256,7 +415,7 @@ export default function InsightsPanel({ surveyId }: Props) {
                   <motion.article key={q.question_id} className="ai-insights-q-card" variants={staggerItem}>
                     <motion.div initial="rest" whileHover="hover" whileTap="tap" variants={springCard}>
                       <div className="ai-insights-q-top">
-                        <span className="ai-insights-q-badge">#{q.question_id}</span>
+                        <span className="ai-insights-q-badge">#{showQ(q.question_id)}</span>
                         <span className="ai-insights-q-type">{questionTypeLabelRu(q.type)}</span>
                         <span className="ai-insights-q-n">
                           ответов: <AnimatedNumber value={q.response_count} duration={0.8} />
@@ -264,33 +423,6 @@ export default function InsightsPanel({ surveyId }: Props) {
                       </div>
                       <h4 className="ai-insights-q-title">{q.title}</h4>
                       <p className="ai-insights-q-detail">{q.detail}</p>
-                      {q.bars.length > 0 && (
-                        <div className="ai-insights-q-bars" aria-hidden>
-                          {q.bars.map((b, i) => (
-                            <div key={i} className="ai-insights-mini-row">
-                              <div className="ai-insights-mini-label">
-                                <span>{b.label}</span>
-                                <motion.span
-                                  className="ai-insights-mini-pct"
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  transition={{ delay: 0.15 + i * 0.05 }}
-                                >
-                                  {b.pct}%
-                                </motion.span>
-                              </div>
-                              <div className="ai-insights-mini-track">
-                                <motion.div
-                                  className="ai-insights-mini-fill"
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${Math.min(100, b.pct)}%` }}
-                                  transition={{ duration: 0.85, delay: i * 0.07, ease: barEase }}
-                                />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </motion.div>
                   </motion.article>
                 ))}

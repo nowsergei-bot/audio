@@ -22,15 +22,32 @@ function fillDailySeries(rows, daysBack = 30) {
 
 const DOW_LABELS = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
-async function fetchChartAggregates(pool, surveyId, questionMeta) {
+async function fetchChartAggregates(pool, surveyId, questionMeta, responseIds = null) {
+  if (responseIds && responseIds.size === 0) {
+    const dailySeries = fillDailySeries([], 30);
+    return {
+      daily: dailySeries,
+      top_questions_timeseries: [],
+      dow_stacked: [],
+    };
+  }
+
+  let filterSql = '';
+  const baseParams = [surveyId];
+  if (responseIds && responseIds.size > 0) {
+    baseParams.push([...responseIds]);
+    filterSql = 'AND r.id = ANY($2::int[])';
+  }
+
   const dailyFixed = await pool.query(
     `SELECT (r.submitted_at AT TIME ZONE 'UTC')::date AS d, COUNT(*)::int AS c
      FROM responses r
      WHERE r.survey_id = $1
+       ${filterSql}
        AND r.submitted_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '30 days')
      GROUP BY 1
      ORDER BY 1`,
-    [surveyId]
+    baseParams
   );
 
   const dailySeries = fillDailySeries(dailyFixed.rows);
@@ -45,6 +62,12 @@ async function fetchChartAggregates(pool, surveyId, questionMeta) {
   let dow_stacked = [];
 
   if (topIds.length > 0) {
+    const tsParams = [surveyId, topIds];
+    let ridClause = '';
+    if (responseIds && responseIds.size > 0) {
+      tsParams.push([...responseIds]);
+      ridClause = 'AND r.id = ANY($3::int[])';
+    }
     const ts = await pool.query(
       `SELECT (r.submitted_at AT TIME ZONE 'UTC')::date AS d,
               av.question_id::int AS qid,
@@ -52,11 +75,12 @@ async function fetchChartAggregates(pool, surveyId, questionMeta) {
        FROM responses r
        INNER JOIN answer_values av ON av.response_id = r.id
        WHERE r.survey_id = $1
+         ${ridClause}
          AND r.submitted_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '30 days')
          AND av.question_id = ANY($2::int[])
        GROUP BY 1, 2
        ORDER BY 1, 2`,
-      [surveyId, topIds]
+      tsParams
     );
 
     const byQ = new Map();
@@ -81,6 +105,12 @@ async function fetchChartAggregates(pool, surveyId, questionMeta) {
       };
     });
 
+    const dowParams = [surveyId, topIds];
+    let dowRid = '';
+    if (responseIds && responseIds.size > 0) {
+      dowParams.push([...responseIds]);
+      dowRid = 'AND r.id = ANY($3::int[])';
+    }
     const dow = await pool.query(
       `SELECT EXTRACT(ISODOW FROM r.submitted_at AT TIME ZONE 'UTC')::int AS dow,
               av.question_id::int AS qid,
@@ -88,11 +118,12 @@ async function fetchChartAggregates(pool, surveyId, questionMeta) {
        FROM responses r
        INNER JOIN answer_values av ON av.response_id = r.id
        WHERE r.survey_id = $1
+         ${dowRid}
          AND r.submitted_at >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' - INTERVAL '90 days')
          AND av.question_id = ANY($2::int[])
        GROUP BY 1, 2
        ORDER BY 1, 2`,
-      [surveyId, topIds]
+      dowParams
     );
 
     const byDow = new Map();

@@ -2,7 +2,7 @@ const { json } = require('./lib/http');
 
 async function loadSurveyWithQuestions(pool, id) {
   const s = await pool.query(
-    `SELECT id, title, description, created_at, created_by, status, access_link FROM surveys WHERE id = $1`,
+    `SELECT id, title, description, created_at, created_by, status, access_link, media, owner_user_id FROM surveys WHERE id = $1`,
     [id]
   );
   if (!s.rows.length) return null;

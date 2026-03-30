@@ -78,7 +78,8 @@ export default function AdminDashboard() {
             <h1 className="admin-dash-title">Опросы</h1>
             <p className="muted admin-dash-lead">
               Создавайте опросы из русскоязычных шаблонов или с нуля, публикуйте ссылку и смотрите результаты с графиками.
-              Отдельно — <strong>дашборд из Excel</strong>: новый опрос только с таблицей и графиками.
+              Если есть готовые ответы из прошлых опросов — используйте раздел <strong>«Подгрузка данных из старых опросов»</strong> в шаблонах,
+              чтобы импортировать Excel в существующий опрос и сразу получить аналитику.
             </p>
           </div>
           <motion.div
@@ -91,9 +92,6 @@ export default function AdminDashboard() {
               Новый опрос
             </Link>
             <p className="muted admin-dash-cta-hint">Сначала выберите шаблон или пустую форму</p>
-            <Link to="/import-workbook" className="btn admin-dash-cta-secondary">
-              Дашборд из Excel
-            </Link>
           </motion.div>
         </div>
       </motion.header>

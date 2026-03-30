@@ -2,23 +2,25 @@ const { v4: uuidv4 } = require('uuid');
 const { json, parseBody } = require('./lib/http');
 const { QUESTION_TYPES } = require('./lib/validation');
 
-async function handleCreateSurvey(pool, event) {
+async function handleCreateSurvey(pool, event, user) {
   const body = parseBody(event) || {};
   const title = String(body.title || '').trim() || 'Без названия';
   const description = String(body.description || '').trim();
   const access_link = (body.access_link && String(body.access_link).trim()) || uuidv4().replace(/-/g, '');
   const questions = Array.isArray(body.questions) ? body.questions : [];
+  const media = body.media && typeof body.media === 'object' ? body.media : {};
   const allowedStatus = new Set(['draft', 'published', 'closed']);
   const status = allowedStatus.has(body.status) ? body.status : 'draft';
+  const ownerUserId = user && user.id != null ? Number(user.id) : null;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const ins = await client.query(
-      `INSERT INTO surveys (title, description, status, access_link)
-       VALUES ($1, $2, $3::survey_status, $4)
-       RETURNING id, title, description, created_at, created_by, status, access_link`,
-      [title, description, status, access_link]
+      `INSERT INTO surveys (title, description, status, access_link, media, owner_user_id)
+       VALUES ($1, $2, $3::survey_status, $4, $5::jsonb, $6)
+       RETURNING id, title, description, created_at, created_by, status, access_link, media, owner_user_id`,
+      [title, description, status, access_link, JSON.stringify(media), ownerUserId]
     );
     const survey = ins.rows[0];
 

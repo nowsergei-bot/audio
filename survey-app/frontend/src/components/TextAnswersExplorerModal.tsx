@@ -106,6 +106,7 @@ export default function TextAnswersExplorerModal({
                 <label className="text-answers-modal-field">
                   <span className="text-answers-modal-label">Вопрос</span>
                   <select
+                    className="field"
                     value={questionId === '' ? '' : String(questionId)}
                     onChange={(e) => setQuestionId(e.target.value === '' ? '' : Number(e.target.value))}
                   >
@@ -121,6 +122,7 @@ export default function TextAnswersExplorerModal({
               <label className="text-answers-modal-field text-answers-modal-field-grow">
                 <span className="text-answers-modal-label">Поиск по тексту</span>
                 <input
+                  className="field"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Слово или фраза…"
@@ -138,9 +140,7 @@ export default function TextAnswersExplorerModal({
               <ul className="text-answers-modal-list">
                 {rows.map((r, i) => (
                   <li key={`${r.question_id}-${i}-${r.submitted_at}`} className="text-answers-modal-item">
-                    <span className="text-answers-modal-item-q">Вопрос #{r.question_id}</span>
                     <p className="text-answers-modal-item-text">{r.text || '—'}</p>
-                    {r.submitted_at && <span className="text-answers-modal-item-date muted">{r.submitted_at}</span>}
                   </li>
                 ))}
               </ul>

@@ -154,6 +154,11 @@ export default function SurveyResults() {
               transition={{ delay: 0.2 }}
             >
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                <Link to={`/surveys/${surveyId}/analytics`} className="btn primary">
+                  Перейти к аналитике по выборке
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                 <Link to={`/surveys/${surveyId}/edit`} className="btn">
                   Редактировать опрос
                 </Link>
@@ -169,7 +174,7 @@ export default function SurveyResults() {
                 </button>
               </motion.div>
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                <Link to="/" className="btn primary">
+                <Link to="/" className="btn">
                   К списку опросов
                 </Link>
               </motion.div>
@@ -272,7 +277,6 @@ export default function SurveyResults() {
             {data.charts && data.total_responses > 0 && (
               <ResultsChartsGrid
                 charts={data.charts}
-                questions={data.questions}
                 onDrillDown={drillToQuestion}
                 compact
               />
@@ -283,7 +287,7 @@ export default function SurveyResults() {
           </motion.section>
         )}
 
-        <InsightsPanel surveyId={surveyId} />
+        <InsightsPanel surveyId={surveyId} onDrillDown={drillToQuestion} />
 
         <TextAnswersExplorerModal
           open={textModal.open}

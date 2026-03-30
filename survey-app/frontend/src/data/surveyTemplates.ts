@@ -453,17 +453,66 @@ export const SURVEY_TEMPLATES: SurveyTemplate[] = [
   },
 ];
 
-const byId = new Map<string, SurveyTemplate>([[blank.id, blank]]);
-for (const t of SURVEY_TEMPLATES) {
-  byId.set(t.id, t);
+const CUSTOM_STORAGE_KEY = 'pulse_custom_survey_templates_v1';
+
+function safeParseJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export function loadCustomTemplates(): SurveyTemplate[] {
+  if (typeof localStorage === 'undefined') return [];
+  const parsed = safeParseJson<SurveyTemplate[]>(localStorage.getItem(CUSTOM_STORAGE_KEY));
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((t) => t && typeof t.id === 'string' && typeof t.title === 'string' && Array.isArray(t.questions))
+    .slice(0, 200);
+}
+
+function storeCustomTemplates(list: SurveyTemplate[]) {
+  if (typeof localStorage === 'undefined') return;
+  localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(list.slice(0, 200)));
+}
+
+export function saveCustomTemplate(t: Omit<SurveyTemplate, 'id'> & { id?: string }): SurveyTemplate {
+  const id = (t.id && String(t.id).trim()) || `custom-${crypto.randomUUID()}`;
+  const next: SurveyTemplate = {
+    id,
+    emoji: String(t.emoji || '🧩').slice(0, 6),
+    category: String(t.category || 'Пользовательские').slice(0, 60),
+    title: String(t.title || '').slice(0, 180),
+    description: String(t.description || '').slice(0, 600),
+    questions: Array.isArray(t.questions) ? t.questions : [],
+  };
+  const prev = loadCustomTemplates();
+  const merged = [next, ...prev.filter((x) => x.id !== id)];
+  storeCustomTemplates(merged);
+  return next;
+}
+
+export function deleteCustomTemplate(id: string) {
+  const prev = loadCustomTemplates();
+  storeCustomTemplates(prev.filter((t) => t.id !== id));
+}
+
+export function listSurveyTemplates(): SurveyTemplate[] {
+  return [...SURVEY_TEMPLATES, ...loadCustomTemplates()];
 }
 
 export function getSurveyTemplate(id: string): SurveyTemplate | undefined {
-  return byId.get(id);
+  if (id === blank.id) return blank;
+  for (const t of SURVEY_TEMPLATES) if (t.id === id) return t;
+  for (const t of loadCustomTemplates()) if (t.id === id) return t;
+  return undefined;
 }
 
 export function templateCategories(): string[] {
   const s = new Set<string>();
   for (const t of SURVEY_TEMPLATES) s.add(t.category);
+  for (const t of loadCustomTemplates()) s.add(t.category);
   return ['Все', ...Array.from(s).sort((a, b) => a.localeCompare(b, 'ru'))];
 }

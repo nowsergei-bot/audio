@@ -15,17 +15,18 @@ function getHeader(event, name) {
   return '';
 }
 
-function requireApiKey(event) {
-  const headers = event.headers || {};
+function isAdminApiKey(event) {
   const expected = process.env.ADMIN_API_KEY;
-  if (!expected) {
-    return { ok: false, error: 'Server misconfiguration: ADMIN_API_KEY' };
-  }
+  if (!expected) return false;
   const key = String(getHeader(event, 'X-Api-Key') || getHeader(event, 'x-api-key') || '').trim();
-  if (!key || key !== expected) {
-    return { ok: false, error: 'Unauthorized' };
-  }
-  return { ok: true };
+  return Boolean(key && key === expected);
 }
 
-module.exports = { requireApiKey, getHeader };
+function parseBearerToken(event) {
+  const raw = String(getHeader(event, 'Authorization') || getHeader(event, 'authorization') || '').trim();
+  if (!raw) return '';
+  const m = /^Bearer\s+(.+)$/i.exec(raw);
+  return m ? String(m[1]).trim() : '';
+}
+
+module.exports = { isAdminApiKey, parseBearerToken, getHeader };

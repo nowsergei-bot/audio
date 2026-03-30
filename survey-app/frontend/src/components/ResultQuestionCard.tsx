@@ -6,48 +6,6 @@ import { barEase, springCard, staggerContainer, staggerItem } from '../motion/re
 import { QUESTION_TYPE_LABEL_RU } from '../lib/labels';
 import type { ResultQuestion } from '../types';
 
-function totalFromDistribution(q: ResultQuestion): number {
-  if (!q.distribution?.length) return 0;
-  return q.distribution.reduce((s, d) => s + d.count, 0);
-}
-
-function DistributionBars({ q }: { q: ResultQuestion }) {
-  const dist = q.distribution;
-  if (!dist?.length) return null;
-  const total = totalFromDistribution(q) || 1;
-  return (
-    <motion.div
-      className="results-dist-bars"
-      aria-label="Распределение ответов"
-      variants={staggerContainer}
-      initial="hidden"
-      animate="show"
-    >
-      {dist.map((d, i) => {
-        const pct = Math.round((d.count / total) * 1000) / 10;
-        return (
-          <motion.div key={i} className="results-dist-row" variants={staggerItem}>
-            <div className="results-dist-row-top">
-              <span className="results-dist-label">{String(d.label)}</span>
-              <span className="results-dist-meta">
-                {d.count} <span className="results-dist-pct">({pct}%)</span>
-              </span>
-            </div>
-            <div className="results-dist-track">
-              <motion.div
-                className="results-dist-fill"
-                initial={{ width: 0 }}
-                animate={{ width: `${pct}%` }}
-                transition={{ duration: 0.85, delay: i * 0.055, ease: barEase }}
-              />
-            </div>
-          </motion.div>
-        );
-      })}
-    </motion.div>
-  );
-}
-
 type Props = {
   q: ResultQuestion;
   index: number;
@@ -61,7 +19,7 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
   const [chartsOpen, setChartsOpen] = useState(true);
   const hasChart =
     q.response_count > 0 &&
-    (q.type === 'radio' || q.type === 'checkbox' || q.type === 'scale' || q.type === 'rating');
+    (q.type === 'radio' || q.type === 'checkbox' || q.type === 'scale' || q.type === 'rating' || q.type === 'date');
 
   return (
     <motion.article
@@ -100,11 +58,10 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
         </header>
 
         <div className="results-q-body">
-          {(q.type === 'radio' || q.type === 'checkbox') && (
+          {(q.type === 'radio' || q.type === 'checkbox' || q.type === 'date') && (
             <>
               {q.response_count > 0 ? (
                 <>
-                  <DistributionBars q={q} />
                   {hasChart && (
                     <div className="results-chart-toggle-row">
                       <button
@@ -141,24 +98,6 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
             <>
               {q.response_count > 0 ? (
                 <>
-                  <motion.div
-                    className="results-metrics"
-                    variants={staggerContainer}
-                    initial="hidden"
-                    animate="show"
-                  >
-                    {[
-                      { label: 'Среднее значение', val: q.average != null ? q.average.toFixed(2) : '—' },
-                      { label: 'Минимум', val: q.min ?? '—' },
-                      { label: 'Максимум', val: q.max ?? '—' },
-                    ].map((m) => (
-                      <motion.div key={m.label} className="results-metric" variants={staggerItem}>
-                        <span className="results-metric-value">{m.val}</span>
-                        <span className="results-metric-label">{m.label}</span>
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                  <DistributionBars q={q} />
                   <div className="results-chart-toggle-row">
                     <button
                       type="button"

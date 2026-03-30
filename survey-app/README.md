@@ -8,6 +8,7 @@
 - `backend/functions/` — единая HTTP-функция с маршрутизацией (`index.handler`)
 - `backend/db/schema.sql` — DDL
 - `scripts/` — деплой-скрипт и сид БД
+- `infra/superset/` — опционально: **Apache Superset** (Docker) для BI по PostgreSQL; подключение к данным опросов и заметки про AI/MCP — [infra/superset/README.md](infra/superset/README.md)
 
 ## Оформление и бренд
 
