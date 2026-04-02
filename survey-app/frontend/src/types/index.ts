@@ -8,6 +8,7 @@ export interface Question {
   type: QuestionType;
   options: unknown;
   sort_order: number;
+  required: boolean;
 }
 
 export interface Survey {
@@ -132,6 +133,13 @@ export interface AnalyticsChatResponse {
   source: string;
   reply: string;
   total_responses: number;
+}
+
+/** Ответ ПУЛЬСА по Excel-дашборду: текст + опционально срез фильтров. */
+export interface PulseExcelChatResponse {
+  source: string;
+  reply: string;
+  apply_filters: Record<string, string[]> | null;
 }
 
 export interface ResultsPayload {

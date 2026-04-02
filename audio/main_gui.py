@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import json
+import multiprocessing
 import subprocess
 import sys
 import tempfile
@@ -13,9 +14,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QKeySequence, QPalette, QTextOption
 from PyQt6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -48,9 +50,10 @@ try:
 except ImportError:
     darkdetect = None
 
-PROJECT_ROOT = Path(__file__).resolve().parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+if not getattr(sys, "frozen", False):
+    _dev_root = Path(__file__).resolve().parent
+    if str(_dev_root) not in sys.path:
+        sys.path.insert(0, str(_dev_root))
 
 from config import CONFIG, PROJECT_ROOT as CFG_ROOT  # noqa: E402
 from name_segmenter import (  # noqa: E402
@@ -60,11 +63,26 @@ from name_segmenter import (  # noqa: E402
 )
 from qlab_playlist_generator import (  # noqa: E402
     QLabPlaylistGenerator,
+    clear_qlab_export_artifacts,
     load_children_dataframe,
 )
 
 GUI_SETTINGS_PATH = CFG_ROOT / "gui_settings.json"
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+
+
+def set_button_busy(btn: QPushButton, busy: bool) -> None:
+    """Подсветка «идёт процесс» (для QSS [busy=true])."""
+    btn.setProperty("busy", busy)
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
+
+
+def style_pushbutton_role(btn: QPushButton, *, primary: bool) -> None:
+    btn.setProperty("primary", primary)
+    btn.setProperty("secondary", not primary)
+    btn.style().unpolish(btn)
+    btn.style().polish(btn)
 
 
 def load_gui_settings() -> None:
@@ -85,6 +103,7 @@ def save_gui_settings() -> None:
         "output_directory",
         "children_list_file",
         "qlab_output_directory",
+        "class_audio_directory",
         "whisper_model",
         "fuzzy_threshold",
         "use_enhanced_segmentation",
@@ -188,13 +207,22 @@ class PlaylistWorker(QThread):
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
 
+    def __init__(self, segments_dir_override: Path | None = None) -> None:
+        super().__init__()
+        self.segments_dir_override = segments_dir_override
+
     def run(self) -> None:
         try:
             self.progress.emit(10, "Загрузка списка…")
             gen = QLabPlaylistGenerator.from_config(CONFIG)
             gen.load_children_list()
             self.progress.emit(40, "Сканирование сегментов…")
-            gen.scan_audio_segments()
+            if self.segments_dir_override is not None:
+                # Принудительный корень архива сегментов (все классы внутри папки).
+                gen.class_filter = None
+                gen.scan_audio_segments(self.segments_dir_override)
+            else:
+                gen.scan_audio_segments()
             self.progress.emit(70, "Сопоставление…")
             gen.match_names()
             self.progress.emit(100, "Готово")
@@ -217,17 +245,34 @@ class AudioLibraryWidget(QWidget):
         row = QHBoxLayout()
         self.path_edit = QLineEdit(CONFIG.get("input_directory", ""))
         browse = QPushButton("Изменить…")
+        style_pushbutton_role(browse, primary=False)
         browse.clicked.connect(self._browse)
         row.addWidget(self.path_edit, 1)
         row.addWidget(browse)
         cl.addLayout(row)
+        list_frame = QFrame()
+        list_frame.setObjectName("trackListFrame")
+        list_lay = QVBoxLayout(list_frame)
+        list_lay.setContentsMargins(0, 0, 0, 0)
         self.file_list = QListWidget()
-        self.file_list.setMinimumHeight(180)
-        cl.addWidget(self.file_list)
+        self.file_list.setObjectName("trackList")
+        self.file_list.setMinimumHeight(220)
+        self.file_list.setFrameShape(QFrame.Shape.NoFrame)
+        self.file_list.setAlternatingRowColors(True)
+        self.file_list.setSpacing(2)
+        self.file_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.file_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.file_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        list_lay.addWidget(self.file_list)
+        cl.addWidget(list_frame)
         btn_row = QHBoxLayout()
         self.btn_refresh = QPushButton("Обновить")
         self.btn_segment = QPushButton("Нарезать все")
         self.btn_cancel = QPushButton("Отмена")
+        style_pushbutton_role(self.btn_refresh, primary=False)
+        style_pushbutton_role(self.btn_segment, primary=True)
+        style_pushbutton_role(self.btn_cancel, primary=False)
         self.btn_cancel.setEnabled(False)
         self.btn_refresh.clicked.connect(self.refresh_list)
         self.btn_segment.clicked.connect(self.run_segmentation)
@@ -254,7 +299,15 @@ class AudioLibraryWidget(QWidget):
         try:
             from PyQt6.QtCore import QFileSystemWatcher
 
-            self._watcher = QFileSystemWatcher([self.path_edit.text()])
+            raw = self.path_edit.text().strip()
+            if not raw:
+                self._watcher = None
+                return
+            watch_path = Path(raw)
+            if not watch_path.is_dir():
+                self._watcher = None
+                return
+            self._watcher = QFileSystemWatcher([str(watch_path.resolve())])
             self._watcher.directoryChanged.connect(lambda _p: self.refresh_list())
         except Exception:
             self._watcher = None
@@ -311,8 +364,11 @@ class AudioLibraryWidget(QWidget):
         CONFIG["output_directory"] = str(out)
         save_gui_settings()
         out.mkdir(parents=True, exist_ok=True)
+        set_button_busy(self.btn_segment, True)
+        set_button_busy(self.btn_refresh, True)
         self.btn_segment.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        set_button_busy(self.btn_cancel, True)
         self.progress.setValue(0)
         self.worker = SegmentationWorker(inp, out)
         self.worker.progress.connect(self._on_progress)
@@ -325,6 +381,9 @@ class AudioLibraryWidget(QWidget):
         self.progress_label.setText(name)
 
     def _on_done(self, report: Any) -> None:
+        set_button_busy(self.btn_segment, False)
+        set_button_busy(self.btn_refresh, False)
+        set_button_busy(self.btn_cancel, False)
         self.btn_segment.setEnabled(True)
         self.btn_cancel.setEnabled(False)
         self.progress.setValue(100)
@@ -342,6 +401,9 @@ class AudioLibraryWidget(QWidget):
             )
 
     def _on_error(self, msg: str) -> None:
+        set_button_busy(self.btn_segment, False)
+        set_button_busy(self.btn_refresh, False)
+        set_button_busy(self.btn_cancel, False)
         self.btn_segment.setEnabled(True)
         self.btn_cancel.setEnabled(False)
         QMessageBox.critical(self, "Ошибка", msg)
@@ -360,6 +422,8 @@ class ChildrenListWidget(QWidget):
         top = QHBoxLayout()
         self.btn_paste = QPushButton("Вставить из буфера")
         self.btn_load = QPushButton("Загрузить файл…")
+        style_pushbutton_role(self.btn_paste, primary=True)
+        style_pushbutton_role(self.btn_load, primary=True)
         self.btn_paste.clicked.connect(self._paste)
         self.btn_load.clicked.connect(self._load_file)
         top.addWidget(self.btn_paste)
@@ -377,8 +441,16 @@ class ChildrenListWidget(QWidget):
         row_f.addWidget(self.search, 1)
         cl.addLayout(row_f)
         self.table = QTableWidget(0, 5)
+        self.table.setObjectName("childrenTable")
         self.table.setHorizontalHeaderLabels(["№", "Фамилия", "Имя", "Класс", "Статус"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         cl.addWidget(self.table)
         self.match_label = QLabel("Загрузите список")
         cl.addWidget(self.match_label)
@@ -487,7 +559,13 @@ class ChildrenListWidget(QWidget):
         try:
             gen = QLabPlaylistGenerator.from_config(CONFIG)
             gen.load_children_list()
-            gen.scan_audio_segments()
+            class_dir = str(CONFIG.get("class_audio_directory", "") or "").strip()
+            if class_dir:
+                forced = Path(class_dir)
+                gen.class_filter = None
+                gen.scan_audio_segments(forced)
+            else:
+                gen.scan_audio_segments()
             gen.match_names()
             ok = 0
             by_num: dict[int, bool] = {}
@@ -546,15 +624,28 @@ class QLabPlaylistWidget(QWidget):
         out_row = QHBoxLayout()
         self.out_edit = QLineEdit(CONFIG.get("qlab_output_directory", ""))
         self.out_btn = QPushButton("Папка…")
+        style_pushbutton_role(self.out_btn, primary=False)
         self.out_btn.clicked.connect(self._browse_out)
         out_row.addWidget(QLabel("Папка:"))
         out_row.addWidget(self.out_edit, 1)
         out_row.addWidget(self.out_btn)
         cl.addLayout(out_row)
+        class_row = QHBoxLayout()
+        self.class_dir_edit = QLineEdit(CONFIG.get("class_audio_directory", ""))
+        self.class_dir_btn = QPushButton("Архив…")
+        style_pushbutton_role(self.class_dir_btn, primary=False)
+        self.class_dir_btn.clicked.connect(self._browse_class_dir)
+        class_row.addWidget(QLabel("Принудительно архив классов:"))
+        class_row.addWidget(self.class_dir_edit, 1)
+        class_row.addWidget(self.class_dir_btn)
+        cl.addLayout(class_row)
         btn_row = QHBoxLayout()
         self.btn_build = QPushButton("Собрать предпросмотр")
         self.btn_export = QPushButton("Экспортировать")
         self.btn_qlab = QPushButton("QLab: сценарий")
+        style_pushbutton_role(self.btn_build, primary=True)
+        style_pushbutton_role(self.btn_export, primary=True)
+        style_pushbutton_role(self.btn_qlab, primary=False)
         self.btn_build.clicked.connect(self.run_build)
         self.btn_export.clicked.connect(self._export)
         self.btn_qlab.clicked.connect(self._open_qlab)
@@ -577,22 +668,52 @@ class QLabPlaylistWidget(QWidget):
             CONFIG["qlab_output_directory"] = d
             save_gui_settings()
 
+    def _browse_class_dir(self) -> None:
+        d = QFileDialog.getExistingDirectory(
+            self,
+            "Папка архива сегментов (все классы)",
+            self.class_dir_edit.text() or CONFIG.get("output_directory", ""),
+        )
+        if d:
+            self.class_dir_edit.setText(d)
+            CONFIG["class_audio_directory"] = d
+            save_gui_settings()
+
     def run_build(self) -> None:
         CONFIG["qlab_output_directory"] = self.out_edit.text()
+        class_dir = self.class_dir_edit.text().strip()
+        CONFIG["class_audio_directory"] = class_dir
+        save_gui_settings()
+        try:
+            clear_qlab_export_artifacts(Path(self.out_edit.text()))
+        except OSError:
+            pass
+        set_button_busy(self.btn_build, True)
+        set_button_busy(self.btn_export, True)
         self.btn_build.setEnabled(False)
-        self.worker = PlaylistWorker()
+        self.btn_export.setEnabled(False)
+        seg_override: Path | None = None
+        if class_dir:
+            seg_override = Path(class_dir)
+        self.worker = PlaylistWorker(seg_override)
         self.worker.progress.connect(lambda _p, m: self.preview.setPlainText(m))
         self.worker.finished.connect(self._on_built)
         self.worker.error.connect(self._on_err)
         self.worker.start()
 
     def _on_built(self, gen: Any) -> None:
+        set_button_busy(self.btn_build, False)
+        set_button_busy(self.btn_export, False)
         self.btn_build.setEnabled(True)
+        self.btn_export.setEnabled(True)
         self._gen = gen
         self._preview()
 
     def _on_err(self, msg: str) -> None:
+        set_button_busy(self.btn_build, False)
+        set_button_busy(self.btn_export, False)
         self.btn_build.setEnabled(True)
+        self.btn_export.setEnabled(True)
         QMessageBox.critical(self, "Ошибка", msg)
 
     def _preview(self) -> None:
@@ -637,6 +758,10 @@ class QLabPlaylistWidget(QWidget):
             return
         out = Path(self.out_edit.text())
         out.mkdir(parents=True, exist_ok=True)
+        try:
+            clear_qlab_export_artifacts(out)
+        except OSError:
+            pass
         CONFIG["qlab_output_directory"] = str(out)
         save_gui_settings()
         g = self._gen
@@ -735,6 +860,7 @@ class SettingsWidget(QWidget):
         g.addWidget(self.enh, r, 0, 1, 2)
         r += 1
         save = QPushButton("Сохранить в gui_settings.json")
+        style_pushbutton_role(save, primary=True)
         save.clicked.connect(self._save)
         g.addWidget(save, r, 0, 1, 2)
         card.layout().addLayout(g)
@@ -820,22 +946,91 @@ class MainWindow(QMainWindow):
             }
             QLabel#cardTitle { font-weight: 600; font-size: 14px; color: #1D1D1F; }
             QTabWidget::pane { border: none; background: #FFFFFF; border-radius: 12px; }
-            QTabBar::tab { padding: 10px 18px; border-radius: 8px; margin: 4px; }
-            QTabBar::tab:selected { background-color: #007AFF; color: white; }
-            QPushButton {
-                background-color: #007AFF; color: white; border: none;
+            QTabBar::tab { padding: 10px 18px; border-radius: 8px; margin: 4px; color: #636366; }
+            QTabBar::tab:selected { background-color: #FF3B30; color: white; font-weight: 600; }
+            QTabBar::tab:hover { background-color: #E5E5EA; }
+            QPushButton[primary="true"] {
+                background-color: #FF3B30; color: white; border: none;
+                border-radius: 8px; padding: 8px 16px; font-weight: 600;
+            }
+            QPushButton[primary="true"]:hover { background-color: #FF6961; }
+            QPushButton[primary="true"]:pressed { background-color: #D70015; }
+            QPushButton[primary="true"][busy="true"] {
+                background-color: #B91C1C; border: 2px solid #8B0000;
+            }
+            QPushButton[primary="true"]:disabled {
+                background-color: #C7C7CC; color: #F2F2F7;
+            }
+            QPushButton[primary="true"][busy="true"]:disabled {
+                background-color: #B91C1C; color: #FFFFFF; border: 2px solid #8B0000;
+            }
+            QPushButton[secondary="true"] {
+                background-color: #E5E5EA; color: #1D1D1F; border: none;
                 border-radius: 8px; padding: 8px 16px; font-weight: 500;
             }
-            QPushButton:hover { background-color: #0056CC; }
-            QPushButton:pressed { background-color: #004499; }
-            QProgressBar { border: none; border-radius: 4px; background: #E5E5EA; height: 10px; }
-            QProgressBar::chunk { background-color: #007AFF; border-radius: 4px; }
+            QPushButton[secondary="true"]:hover { background-color: #D1D1D6; }
+            QPushButton[secondary="true"]:pressed { background-color: #C7C7CC; }
+            QPushButton[secondary="true"][busy="true"] {
+                background-color: #FFD4D1; color: #1D1D1F; border: 2px solid #FF3B30;
+            }
+            QPushButton[secondary="true"]:disabled {
+                background-color: #F2F2F7; color: #C7C7CC;
+            }
+            QProgressBar { border: none; border-radius: 5px; background: #E5E5EA; height: 10px; }
+            QProgressBar::chunk { background-color: #FF3B30; border-radius: 5px; }
             QLineEdit, QTextEdit, QComboBox {
                 border: 1px solid #D1D1D6; border-radius: 8px; padding: 6px;
                 background: #FFFFFF;
             }
-            QTableWidget { border: none; border-radius: 12px; gridline-color: #E5E5EA; }
-            QTableWidget::item:selected { background-color: #007AFF; color: white; }
+            QFrame#trackListFrame {
+                border: 1px solid #E5E5EA; border-radius: 10px;
+                background: #FAFAFA;
+            }
+            QListWidget#trackList {
+                background: transparent; padding: 4px; outline: none;
+            }
+            QListWidget#trackList::item {
+                padding: 8px 10px; border-radius: 8px; min-height: 1.25em;
+            }
+            QListWidget#trackList::item:selected {
+                background: #FFE8E6; color: #1D1D1F;
+            }
+            QListWidget#trackList::item:hover {
+                background: #F2F2F7;
+            }
+            QTableWidget#childrenTable {
+                border: 1px solid #E5E5EA; border-radius: 10px;
+                background: #FFFFFF; gridline-color: transparent;
+            }
+            QTableWidget#childrenTable::item {
+                padding: 6px 8px;
+            }
+            QTableWidget#childrenTable::item:selected {
+                background-color: #FFE8E6; color: #1D1D1F;
+            }
+            QHeaderView::section {
+                background: #FAFAFA; padding: 8px; border: none;
+                border-bottom: 1px solid #E5E5EA; font-weight: 600;
+            }
+            QScrollBar:vertical {
+                background: transparent; width: 11px; margin: 4px 2px 4px 0;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(0, 0, 0, 0.22); border-radius: 5px;
+                min-height: 28px;
+            }
+            QScrollBar::handle:vertical:hover { background: rgba(0, 0, 0, 0.38); }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QScrollBar:horizontal {
+                background: transparent; height: 11px; margin: 0 4px 2px 4px;
+            }
+            QScrollBar::handle:horizontal {
+                background: rgba(0, 0, 0, 0.22); border-radius: 5px;
+                min-width: 28px;
+            }
+            QScrollBar::handle:horizontal:hover { background: rgba(0, 0, 0, 0.38); }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
         """
 
     def _stylesheet_dark(self) -> str:
@@ -848,24 +1043,96 @@ class MainWindow(QMainWindow):
             QLabel#cardTitle { font-weight: 600; font-size: 14px; color: #FFFFFF; }
             QTabWidget::pane { border: none; background: #2C2C2E; border-radius: 12px; }
             QTabBar::tab { padding: 10px 18px; border-radius: 8px; margin: 4px; color: #98989D; }
-            QTabBar::tab:selected { background-color: #0A84FF; color: white; }
-            QPushButton {
-                background-color: #0A84FF; color: white; border: none;
+            QTabBar::tab:selected { background-color: #FF453A; color: white; font-weight: 600; }
+            QTabBar::tab:hover { background-color: #3A3A3C; }
+            QPushButton[primary="true"] {
+                background-color: #FF453A; color: white; border: none;
+                border-radius: 8px; padding: 8px 16px; font-weight: 600;
+            }
+            QPushButton[primary="true"]:hover { background-color: #FF6961; }
+            QPushButton[primary="true"]:pressed { background-color: #C41E16; }
+            QPushButton[primary="true"][busy="true"] {
+                background-color: #8B1A12; border: 2px solid #5C0F0A;
+            }
+            QPushButton[primary="true"]:disabled {
+                background-color: #48484A; color: #8E8E93;
+            }
+            QPushButton[primary="true"][busy="true"]:disabled {
+                background-color: #8B1A12; color: #FFFFFF; border: 2px solid #5C0F0A;
+            }
+            QPushButton[secondary="true"] {
+                background-color: #3A3A3C; color: #FFFFFF; border: none;
                 border-radius: 8px; padding: 8px 16px; font-weight: 500;
             }
-            QPushButton:hover { background-color: #409CFF; }
-            QProgressBar { border: none; border-radius: 4px; background: #3A3A3C; height: 10px; }
-            QProgressBar::chunk { background-color: #0A84FF; border-radius: 4px; }
+            QPushButton[secondary="true"]:hover { background-color: #48484A; }
+            QPushButton[secondary="true"]:pressed { background-color: #636366; }
+            QPushButton[secondary="true"][busy="true"] {
+                background-color: #5C2A26; border: 2px solid #FF453A;
+            }
+            QPushButton[secondary="true"]:disabled {
+                background-color: #2C2C2E; color: #636366;
+            }
+            QProgressBar { border: none; border-radius: 5px; background: #3A3A3C; height: 10px; }
+            QProgressBar::chunk { background-color: #FF453A; border-radius: 5px; }
             QLineEdit, QTextEdit, QComboBox {
                 border: 1px solid #48484A; border-radius: 8px; padding: 6px;
                 background: #3A3A3C; color: #FFFFFF;
             }
-            QTableWidget { border: none; border-radius: 12px; gridline-color: #48484A; }
-            QTableWidget::item:selected { background-color: #0A84FF; color: white; }
+            QFrame#trackListFrame {
+                border: 1px solid #3A3A3C; border-radius: 10px;
+                background: #1C1C1E;
+            }
+            QListWidget#trackList {
+                background: transparent; padding: 4px; outline: none;
+            }
+            QListWidget#trackList::item {
+                padding: 8px 10px; border-radius: 8px; min-height: 1.25em;
+            }
+            QListWidget#trackList::item:selected {
+                background: #5C2A26; color: #FFFFFF;
+            }
+            QListWidget#trackList::item:hover {
+                background: #3A3A3C;
+            }
+            QTableWidget#childrenTable {
+                border: 1px solid #3A3A3C; border-radius: 10px;
+                background: #2C2C2E; gridline-color: transparent;
+            }
+            QTableWidget#childrenTable::item:selected {
+                background-color: #5C2A26; color: #FFFFFF;
+            }
+            QHeaderView::section {
+                background: #2C2C2E; padding: 8px; border: none;
+                border-bottom: 1px solid #48484A; font-weight: 600; color: #FFFFFF;
+            }
+            QScrollBar:vertical {
+                background: transparent; width: 11px; margin: 4px 2px 4px 0;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 255, 255, 0.22); border-radius: 5px;
+                min-height: 28px;
+            }
+            QScrollBar::handle:vertical:hover { background: rgba(255, 255, 255, 0.38); }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QScrollBar:horizontal {
+                background: transparent; height: 11px; margin: 0 4px 2px 4px;
+            }
+            QScrollBar::handle:horizontal {
+                background: rgba(255, 255, 255, 0.22); border-radius: 5px;
+                min-width: 28px;
+            }
+            QScrollBar::handle:horizontal:hover { background: rgba(255, 255, 255, 0.38); }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
         """
 
 def main() -> int:
     load_gui_settings()
+    try:
+        clear_qlab_export_artifacts(
+            Path(CONFIG.get("qlab_output_directory", str(CFG_ROOT / "qlab_playlist")))
+        )
+    except OSError:
+        pass
     app = QApplication(sys.argv)
     app.setOrganizationName("AudioSeg")
     app.setApplicationName("AudioSegmentationQLab")
@@ -875,4 +1142,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # PyInstaller + torch/whisper: дочерние процессы multiprocessing иначе снова запускают GUI.
+    multiprocessing.freeze_support()
+    if multiprocessing.current_process().name != "MainProcess":
+        raise SystemExit(0)
     raise SystemExit(main())

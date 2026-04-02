@@ -48,10 +48,11 @@ async function handleUpdateSurvey(pool, id, event, user) {
         }
         const options = q.options != null ? q.options : type === 'scale' ? { min: 1, max: 10 } : [];
         const sort_order = Number.isFinite(q.sort_order) ? q.sort_order : i;
+        const required = q.required !== false;
         await client.query(
-          `INSERT INTO questions (survey_id, text, type, options, sort_order)
-           VALUES ($1, $2, $3::question_type, $4::jsonb, $5)`,
-          [id, text, type, JSON.stringify(options), sort_order]
+          `INSERT INTO questions (survey_id, text, type, options, sort_order, required)
+           VALUES ($1, $2, $3::question_type, $4::jsonb, $5, $6)`,
+          [id, text, type, JSON.stringify(options), sort_order, required]
         );
       }
     }

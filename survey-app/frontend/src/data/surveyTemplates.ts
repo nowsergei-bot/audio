@@ -4,6 +4,7 @@ export type SurveyTemplateQuestion = {
   text: string;
   type: QuestionType;
   options: unknown;
+  required?: boolean;
 };
 
 export type SurveyTemplate = {

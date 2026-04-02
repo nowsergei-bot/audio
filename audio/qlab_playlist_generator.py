@@ -22,6 +22,32 @@ from config import CONFIG, PROJECT_ROOT, SEGMENTED_OUTPUT_DIR
 
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
+# Файлы одного цикла экспорта (старые мешают AppleScript / «cat» sidecar в QLab).
+QLAB_EXPORT_ARTIFACT_NAMES: tuple[str, ...] = (
+    "playlist.csv",
+    "playlist.cue",
+    "qlab_workspace.json",
+    "matching_report.txt",
+    "build_qlab_playlist.applescript",
+    "build_qlab_playlist.paths.txt",
+    "build_qlab_playlist.names.txt",
+    "build_qlab_playlist.colors.txt",
+)
+
+
+def clear_qlab_export_artifacts(output_dir: Path | str) -> None:
+    """Удаляет артефакты предыдущего экспорта в папке плейлиста (устаревшие sidecar ломают макрос)."""
+    d = Path(output_dir)
+    if not d.is_dir():
+        return
+    for name in QLAB_EXPORT_ARTIFACT_NAMES:
+        p = d / name
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
 
 def _applescript_escape_quoted(s: str) -> str:
     """Экранирование для строк в двойных кавычках AppleScript."""
@@ -338,16 +364,53 @@ class QLabPlaylistGenerator:
 
     @staticmethod
     def normalize_name(text: str) -> str:
-        t = re.sub(r"\s+", " ", text.strip().lower())
+        t = re.sub(r"\s+", " ", text.strip().lower().replace("ё", "е"))
         return t
 
     @staticmethod
+    def _name_tokens(text: str) -> set[str]:
+        t = QLabPlaylistGenerator.normalize_name(text)
+        t = re.sub(r"[^0-9a-zа-я]+", " ", t, flags=re.IGNORECASE)
+        return {x for x in t.split() if len(x) >= 2}
+
+    @staticmethod
+    def _matches_child_by_tokens(seg_label: str, child_name: str, child_surname: str) -> bool:
+        seg_tokens = QLabPlaylistGenerator._name_tokens(seg_label)
+        if not seg_tokens:
+            return False
+        name_tokens = QLabPlaylistGenerator._name_tokens(child_name)
+        surname_tokens = QLabPlaylistGenerator._name_tokens(child_surname)
+        if not name_tokens or not surname_tokens:
+            return False
+        return any(t in seg_tokens for t in name_tokens) and any(t in seg_tokens for t in surname_tokens)
+
+    @staticmethod
+    def _normalize_class_token(text: str) -> str:
+        """Приводит класс к каноничному виду (лат/кир: A/А, B/В, C/С, D/Д, I/И)."""
+        t = QLabPlaylistGenerator.normalize_name(text)
+        t = re.sub(r"[^0-9a-zа-яё]+", "", t, flags=re.IGNORECASE)
+        if not t:
+            return ""
+        map_chars = {
+            "а": "a", "a": "a",
+            "в": "b", "b": "b",
+            "с": "c", "c": "c",
+            "д": "d", "d": "d",
+            "и": "i", "i": "i",
+            "е": "e", "ё": "e", "e": "e",
+        }
+        return "".join(map_chars.get(ch, ch) for ch in t)
+
+    @staticmethod
     def filename_to_label(stem: str) -> str:
-        """`01_Иван_Петров` → «Иван Петров»."""
-        parts = stem.split("_")
-        if len(parts) >= 2 and parts[0].isdigit():
-            parts = parts[1:]
-        return " ".join(p for p in parts if p).strip()
+        """Нормализует имя из файла: поддерживает «Фамилия Имя» и «Имя Фамилия»."""
+        s = stem.strip()
+        # Убираем ведущий номер: "01_", "1.", "001 -" и подобные шаблоны.
+        s = re.sub(r"^\s*\d{1,4}\s*[._\-)]*\s*", "", s)
+        # Унифицируем разделители (подчёркивание/дефис/точка) как пробелы.
+        s = re.sub(r"[_\-]+", " ", s)
+        s = re.sub(r"\s+", " ", s).strip()
+        return s
 
     def scan_audio_segments(self, directory: Path | None = None) -> list[AudioSegmentInfo]:
         root = Path(directory or self.audio_segments_dir)
@@ -399,15 +462,29 @@ class QLabPlaylistGenerator:
 
     def _class_matches(self, child_class: str, folder: str) -> bool:
         if self.class_filter is not None and str(self.class_filter).strip() != "":
-            if self.normalize_name(folder) != self.normalize_name(str(self.class_filter)):
+            cf = self._normalize_class_token(str(self.class_filter))
+            ff = self._normalize_class_token(folder)
+            if cf and ff and cf != ff:
                 return False
-        c1 = self.normalize_name(child_class)
-        f1 = self.normalize_name(folder)
-        if c1 == f1:
+            if not (cf and ff) and self.normalize_name(folder) != self.normalize_name(str(self.class_filter)):
+                return False
+
+        c1 = self._normalize_class_token(child_class)
+        f1 = self._normalize_class_token(folder)
+        if c1 and f1:
+            if c1 == f1:
+                return True
+            if c1 in f1 or f1 in c1:
+                return True
+            return fuzz.ratio(c1, f1) >= 70
+
+        c_raw = self.normalize_name(child_class)
+        f_raw = self.normalize_name(folder)
+        if c_raw == f_raw:
             return True
-        if c1 and f1 and (c1 in f1 or f1 in c1):
+        if c_raw and f_raw and (c_raw in f_raw or f_raw in c_raw):
             return True
-        return fuzz.ratio(c1, f1) >= 70
+        return fuzz.ratio(c_raw, f_raw) >= 70
 
     def match_names(
         self,
@@ -427,11 +504,17 @@ class QLabPlaylistGenerator:
             for seg in self.audio_segments:
                 if not self._class_matches(ch.class_name, seg.class_folder):
                     continue
-                best_for_seg = 0
-                for cv in child_variants:
-                    sc = self.calculate_match_score(cv, seg.label)
-                    if sc > best_for_seg:
-                        best_for_seg = sc
+
+                # Приоритет: если в подписи файла явно есть и имя, и фамилия ребёнка,
+                # считаем это точным совпадением независимо от порядка и разделителей.
+                seg_label_full = f"{seg.label} {seg.path.stem}".strip()
+                best_for_seg = 100 if self._matches_child_by_tokens(seg_label_full, ch.name, ch.surname) else 0
+
+                if best_for_seg < 100:
+                    for cv in child_variants:
+                        sc = self.calculate_match_score(cv, seg_label_full)
+                        if sc > best_for_seg:
+                            best_for_seg = sc
                 if best_for_seg >= th:
                     candidates.append((seg, best_for_seg))
 
@@ -453,9 +536,12 @@ class QLabPlaylistGenerator:
                 for seg in self.audio_segments:
                     if not self._class_matches(ch.class_name, seg.class_folder):
                         continue
+                    seg_label_full = f"{seg.label} {seg.path.stem}".strip()
+                    if self._matches_child_by_tokens(seg_label_full, ch.name, ch.surname):
+                        best_score = max(best_score, 100)
                     for cv in child_variants:
                         best_score = max(
-                            best_score, self.calculate_match_score(cv, seg.label)
+                            best_score, self.calculate_match_score(cv, seg_label_full)
                         )
                 rows.append(
                     PlaylistCueRow(
@@ -768,6 +854,7 @@ def main() -> int:
 
     out_dir = gen.output_directory
     out_dir.mkdir(parents=True, exist_ok=True)
+    clear_qlab_export_artifacts(out_dir)
 
     tqdm.write("💾 Экспорт плейлистов...")
     fmt = [f.lower() for f in gen.export_formats]

@@ -63,10 +63,12 @@ CREATE TABLE IF NOT EXISTS questions (
     text TEXT NOT NULL DEFAULT '',
     type question_type NOT NULL,
     options JSONB NOT NULL DEFAULT '[]'::jsonb,
-    sort_order INTEGER NOT NULL DEFAULT 0
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    required BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_questions_survey ON questions (survey_id);
+ALTER TABLE questions ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS responses (
     id SERIAL PRIMARY KEY,

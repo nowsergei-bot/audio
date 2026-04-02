@@ -13,6 +13,7 @@ const { handlePostComment } = require('./post-comment');
 const { handleGetPublicSurveyByLink } = require('./get-public-survey');
 const { handlePostAiInsights } = require('./post-ai-insights');
 const { handlePostAnalyticsChat } = require('./post-analytics-chat');
+const { handlePostPulseExcelChat } = require('./post-pulse-excel-chat');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
 const { handlePostWorkbook } = require('./post-workbook');
@@ -128,6 +129,9 @@ async function handlerImpl(event) {
   }
   if (isPostFromWorkbookRoute()) {
     return handlePostSurveyFromWorkbook(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'pulse-excel-chat' && segs.length === 2) {
+    return handlePostPulseExcelChat(pool, event);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleCreateSurvey(pool, event, user);

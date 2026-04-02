@@ -16,6 +16,8 @@ def test_filename_to_label() -> None:
     )
     assert g.filename_to_label("01_Иван_Петров") == "Иван Петров"
     assert g.filename_to_label("Иван_Петров") == "Иван Петров"
+    assert g.filename_to_label("001 - Иван Петров") == "Иван Петров"
+    assert g.filename_to_label("1. Петров Иван") == "Петров Иван"
 
 
 def test_calculate_match_score() -> None:
@@ -172,3 +174,48 @@ def test_match_names_duplicates_all_red(tmp_path: Path) -> None:
     assert all(r.q_color == "red" for r in rows)
     assert rows[0].cue_name_suffix == " [1/2]"
     assert rows[1].cue_name_suffix == " [2/2]"
+
+
+def test_match_names_with_manual_name_surname_files(tmp_path: Path) -> None:
+    csv_path = tmp_path / "children.csv"
+    csv_path.write_text(
+        "№,Фамилия,Имя,Класс,Примечание\n"
+        "1,Петров,Иван,5A_test,\n",
+        encoding="utf-8-sig",
+    )
+
+    seg_dir = tmp_path / "segmented_output" / "5A_test"
+    seg_dir.mkdir(parents=True)
+    import numpy as np
+    import soundfile as sf
+
+    # Уже нарезанный трек в формате ИМЯ ФАМИЛИЯ
+    p = seg_dir / "001 - Иван Петров.wav"
+    sf.write(str(p), np.zeros(800, dtype=np.float32), 16000)
+
+    gen = QLabPlaylistGenerator(
+        children_list_file=csv_path,
+        audio_segments_dir=tmp_path / "segmented_output",
+        output_directory=tmp_path / "qlab_out",
+        fuzzy_threshold=80,
+    )
+    gen.load_children_list()
+    gen.scan_audio_segments()
+    rows = gen.match_names()
+
+    assert len(rows) == 1
+    assert rows[0].matched_path
+    assert "Иван" in rows[0].matched_file
+
+
+def test_class_matches_latin_cyrillic_sections() -> None:
+    g = QLabPlaylistGenerator(
+        children_list_file=Path("x.csv"),
+        audio_segments_dir=Path("seg"),
+        output_directory=Path("out"),
+    )
+    assert g._class_matches("5A", "5А")
+    assert g._class_matches("5B", "5В")
+    assert g._class_matches("5C", "5С")
+    assert g._class_matches("5I", "5И")
+    assert g._class_matches("D", "Д")

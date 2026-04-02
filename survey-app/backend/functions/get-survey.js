@@ -7,7 +7,7 @@ async function loadSurveyWithQuestions(pool, id) {
   );
   if (!s.rows.length) return null;
   const q = await pool.query(
-    `SELECT id, survey_id, text, type::text AS type, options, sort_order FROM questions WHERE survey_id = $1 ORDER BY sort_order, id`,
+    `SELECT id, survey_id, text, type::text AS type, options, sort_order, required FROM questions WHERE survey_id = $1 ORDER BY sort_order, id`,
     [id]
   );
   return { ...s.rows[0], questions: q.rows };

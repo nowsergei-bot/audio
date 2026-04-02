@@ -103,10 +103,10 @@ async function handlePostSurveyFromWorkbook(pool, event) {
       const spec = inferred[i];
       const opts = spec.options != null ? spec.options : spec.type === 'scale' ? { min: 1, max: 10 } : [];
       const qins = await client.query(
-        `INSERT INTO questions (survey_id, text, type, options, sort_order)
-         VALUES ($1, $2, $3::question_type, $4::jsonb, $5)
-         RETURNING id, survey_id, text, type, options, sort_order`,
-        [survey.id, spec.text.slice(0, 2000), spec.type, JSON.stringify(opts), i]
+        `INSERT INTO questions (survey_id, text, type, options, sort_order, required)
+         VALUES ($1, $2, $3::question_type, $4::jsonb, $5, $6)
+         RETURNING id, survey_id, text, type, options, sort_order, required`,
+        [survey.id, spec.text.slice(0, 2000), spec.type, JSON.stringify(opts), i, false]
       );
       colQuestions.push({ colIndex: spec.colIndex, question: qins.rows[0] });
     }

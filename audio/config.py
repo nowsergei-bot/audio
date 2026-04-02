@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+
+def _project_root() -> Path:
+    """Каталог данных: рядом с .app (портабельная папка) или Application Support."""
+    if getattr(sys, "frozen", False):
+        exe = Path(sys.executable).resolve()
+        if sys.platform == "darwin":
+            # .../MyFolder/App.app/Contents/MacOS/App → MyFolder (запись рядом с бандлом)
+            if exe.parent.name == "MacOS" and exe.parent.parent.name == "Contents":
+                sibling = exe.parent.parent.parent.parent
+                ap = str(sibling)
+                if ap not in ("/Applications", "/System/Applications", "/"):
+                    return sibling
+            base = Path.home() / "Library/Application Support/AudioSegmentationQLab"
+            base.mkdir(parents=True, exist_ok=True)
+            return base
+        # Windows / Linux: папка с exe (onedir)
+        return exe.parent
+    return Path(__file__).resolve().parent
+
+
+PROJECT_ROOT = _project_root()
 
 AUDIO_INPUT_DIR = PROJECT_ROOT / "audio_files"
 SEGMENTED_OUTPUT_DIR = PROJECT_ROOT / "segmented_output"
-CHILDREN_LIST_FILE = Path("/Users/sergejnovozilov/Downloads/cgbcjr.docx")
+CHILDREN_LIST_FILE = PROJECT_ROOT / "children_list.csv"
 QLAB_OUTPUT_DIR = PROJECT_ROOT / "qlab_playlist"
 
 WHISPER_MODEL = "base"
@@ -57,6 +78,7 @@ CONFIG: dict = {
     "device": DEVICE,
     "children_list_file": str(CHILDREN_LIST_FILE),
     "qlab_output_directory": str(QLAB_OUTPUT_DIR),
+    "class_audio_directory": "",
     "fuzzy_threshold": FUZZY_THRESHOLD,
     "export_formats": EXPORT_FORMATS,
     "class_filter": CLASS_FILTER,

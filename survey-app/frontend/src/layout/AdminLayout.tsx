@@ -9,13 +9,17 @@ export default function AdminLayout() {
   /** Полный путь + query: при смене опроса/шаблона дочерние экраны гарантированно перемонтируются */
   const layoutKey = `${location.pathname}${location.search}`;
   const resultsWideLayout = /\/results\/?$/.test(location.pathname);
+  const excelWideLayout = /\/analytics-excel\/?$/.test(location.pathname);
+  const wideDashboardLayout = resultsWideLayout || excelWideLayout;
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [layoutKey]);
 
   return (
-    <div className={`app-admin${resultsWideLayout ? ' app-admin--results-wide' : ''}`}>
+    <div
+      className={`app-admin${wideDashboardLayout ? ' app-admin--results-wide' : ''}${excelWideLayout ? ' app-admin--excel-canvas' : ''}`}
+    >
       <header className="admin-header glass-header">
         <div className="admin-header-inner">
           <div className="admin-header-brands">
@@ -45,10 +49,18 @@ export default function AdminLayout() {
             >
               Написать письмо для гостей
             </NavLink>
+            <NavLink
+              to="/analytics-excel"
+              className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
+            >
+              Наблюдения Excel
+            </NavLink>
           </nav>
         </div>
       </header>
-      <main className={`admin-main${resultsWideLayout ? ' admin-main--results-wide' : ''}`}>
+      <main
+        className={`admin-main${wideDashboardLayout ? ' admin-main--results-wide' : ''}${excelWideLayout ? ' admin-main--excel-canvas' : ''}`}
+      >
         {/*
           Без AnimatePresence mode="wait": при переходах между маршрутами exit иногда не завершался,
           и новая страница не монтировалась до полной перезагрузки (F5).

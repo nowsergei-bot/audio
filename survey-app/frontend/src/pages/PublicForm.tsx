@@ -32,13 +32,37 @@ function initialAnswers(questions: Question[]): Record<number, string | number |
   for (const q of questions) {
     if (q.type === 'checkbox') acc[q.id] = [];
     else if (q.type === 'scale' || q.type === 'rating') {
-      const o = q.options as { min?: number };
-      acc[q.id] = Number.isFinite(o?.min) ? Number(o.min) : 1;
+      // Не подставляем min (часто 1) — иначе «не трогал слайдер» уходит в статистику как реальный голос.
+      acc[q.id] = '';
     } else if (q.type === 'date') {
       acc[q.id] = '';
     } else acc[q.id] = '';
   }
   return acc;
+}
+
+function isEmptyAnswer(q: Question, value: string | number | string[], otherText?: string): boolean {
+  if (q.type === 'checkbox') {
+    const arr = Array.isArray(value) ? value : [];
+    if (!arr.length) return true;
+    if (arr.includes('Другое')) return !(otherText || '').trim();
+    return false;
+  }
+  if (q.type === 'radio') {
+    const s = String(value ?? '').trim();
+    if (!s) return true;
+    if (s === 'Другое') return !(otherText || '').trim();
+    return false;
+  }
+  if (q.type === 'text' || q.type === 'date') {
+    return !String(value ?? '').trim();
+  }
+  if (q.type === 'scale' || q.type === 'rating') {
+    if (value === '' || value === undefined || value === null) return true;
+    const n = Number(value);
+    return !Number.isFinite(n);
+  }
+  return false;
 }
 
 const cardEnter = {
@@ -113,6 +137,11 @@ export default function PublicForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    const missed = questions.find((q) => q.required !== false && isEmptyAnswer(q, answers[q.id], otherTexts[q.id]));
+    if (missed) {
+      setErr(`Заполните обязательный вопрос: «${missed.text}»`);
+      return;
+    }
     setSubmitting(true);
     setErr(null);
     try {
@@ -287,7 +316,10 @@ export default function PublicForm() {
                 layout
               >
                 <label style={{ display: 'block', marginBottom: '0.35rem' }}>
-                  <strong className="public-question-title">{q.text}</strong>
+                  <strong className="public-question-title">
+                    {q.text}
+                    {q.required !== false && <span className="public-required-mark"> *</span>}
+                  </strong>
                 </label>
                 {q.type === 'radio' && (
                   <div className="public-choice-row" role="radiogroup" aria-label={q.text}>
@@ -368,6 +400,16 @@ export default function PublicForm() {
                 )}
                 {(q.type === 'scale' || q.type === 'rating') && (
                   <>
+                    {q.required !== false && !Number.isFinite(Number(answers[q.id])) && (
+                      <p className="muted" style={{ margin: '0 0 0.35rem' }}>
+                        Выберите значение на шкале.
+                      </p>
+                    )}
+                    {q.required === false && !Number.isFinite(Number(answers[q.id])) && (
+                      <p className="muted" style={{ margin: '0 0 0.35rem' }}>
+                        Необязательный вопрос — можно пропустить.
+                      </p>
+                    )}
                     <div className="public-range-wrap">
                       <input
                         className="public-range"
@@ -375,7 +417,11 @@ export default function PublicForm() {
                         min={(q.options as { min?: number })?.min ?? 1}
                         max={(q.options as { max?: number })?.max ?? (q.type === 'rating' ? 5 : 10)}
                         step={1}
-                        value={Number(answers[q.id])}
+                        value={
+                          Number.isFinite(Number(answers[q.id]))
+                            ? Number(answers[q.id])
+                            : Number((q.options as { min?: number })?.min ?? 1)
+                        }
                         onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: Number(e.target.value) }))}
                       />
                     </div>
@@ -386,7 +432,7 @@ export default function PublicForm() {
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 22 }}
                     >
-                      {String(answers[q.id])}
+                      {Number.isFinite(Number(answers[q.id])) ? String(answers[q.id]) : '— не выбрано —'}
                     </motion.p>
                   </>
                 )}

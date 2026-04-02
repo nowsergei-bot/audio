@@ -15,6 +15,35 @@ pip install -r requirements.txt
 
 Для **m4a** / части **mp3** в системе нужен **ffmpeg**.
 
+## Standalone-приложение (macOS, без Python на целевом Mac)
+
+Сборка выполняется **один раз** на компьютере с Python (у вас):
+
+```bash
+cd audio
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+./build_mac_app.sh
+```
+
+В `dist/` появится `AudioSegmentationQLab.app` (размер большой: PyTorch + Whisper). Его можно копировать на другой Mac — **интерпретатор Python там не нужен**.
+
+**Установщик в виде DMG** (удобно переслать одним файлом):
+
+```bash
+./build_mac_app.sh    # сначала сборка .app
+./build_dmg.sh        # образ dist/AudioSegmentationQLab-1.0.0.dmg
+```
+
+Версию в имени файла можно задать: `AUDIOSEG_VERSION=1.2.0 ./build_dmg.sh`. На другом Mac пользователь открывает `.dmg`, перетаскивает приложение в **Программы** (или в свою папку). В образе также лежит **`Установить ffmpeg.command`**: двойной щелчок откроет Терминал и выполнит `brew install ffmpeg` (если установлен Homebrew; иначе предложит открыть brew.sh).
+
+**Куда класть файлы:** удобно положить `AudioSegmentationQLab.app` в отдельную папку (например «Концерт_2025»). Рядом с `.app` в **этой же папке** приложение создаст/использует `audio_files/`, `segmented_output/`, `qlab_playlist/`, `children_list.csv` и настройки. Если запускать только из **Программы** (`/Applications`), данные уйдут в `~/Library/Application Support/AudioSegmentationQLab/`.
+
+Первый запуск нарезки **скачивает модель Whisper** в `~/.cache/whisper` (нужны интернет и свободное место). На целевом Mac по-прежнему нужен **ffmpeg** для части форматов: `brew install ffmpeg`.
+
+Если macOS блокирует запуск неизвестного разработчика: ПКМ по приложению → **Открыть**. Для распространения без предупреждений обычно нужна подпись Apple Developer.
+
 ## Структура проекта
 
 | Путь | Назначение |

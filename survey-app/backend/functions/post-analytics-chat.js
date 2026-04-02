@@ -59,8 +59,8 @@ function normalizeChatMessages(body) {
 }
 
 async function fetchLlmChatReply(compact, messages) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
+  const key = String(process.env.OPENAI_API_KEY || '').trim();
+  if (!key) return { kind: 'no_key' };
 
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const system =
@@ -92,12 +92,24 @@ async function fetchLlmChatReply(compact, messages) {
         temperature: 0.35,
       }),
     });
-    if (!r.ok) return null;
+    if (!r.ok) {
+      let detail = `HTTP ${r.status}`;
+      try {
+        const errBody = await r.json();
+        if (errBody?.error?.message) detail = `${detail}: ${errBody.error.message}`;
+      } catch {
+        /* keep detail */
+      }
+      return { kind: 'openai_error', detail };
+    }
     const data = await r.json();
     const text = data.choices?.[0]?.message?.content;
-    return typeof text === 'string' && text.trim() ? text.trim() : null;
-  } catch {
-    return null;
+    if (typeof text === 'string' && text.trim()) {
+      return { kind: 'ok', text: text.trim() };
+    }
+    return { kind: 'openai_error', detail: 'Пустой ответ модели' };
+  } catch (e) {
+    return { kind: 'openai_error', detail: String(e?.message || e) };
   }
 }
 
@@ -129,23 +141,27 @@ async function handlePostAnalyticsChat(pool, surveyId, event) {
   const compact = buildCompactContext(snapshot, survey, filters, dashboard, relations, heuristic);
 
   const llm = await fetchLlmChatReply(compact, messages);
-  if (llm) {
+  if (llm.kind === 'ok') {
     return json(200, {
       source: 'llm',
-      reply: llm,
+      reply: llm.text,
       total_responses: snapshot.total_responses,
     });
   }
 
   const lastQ = messages[messages.length - 1].content;
+  let pre =
+    llm.kind === 'no_key'
+      ? 'Нейроаналитик в чате недоступен: переменная OPENAI_API_KEY не задана или пустая в этой версии Cloud Function. Создайте новую версию функции с переменной (имя ровно OPENAI_API_KEY) и убедитесь, что шлюз вызывает актуальную версию ($latest).\n\n'
+      : `Запрос к OpenAI не удался (${llm.detail}). Проверьте: ключ действителен, на счёте OpenAI есть лимит, в консоли Яндекса в значении нет лишних кавычек и пробелов.\n\n`;
+
   const fallback =
-    'Нейроаналитик в чате недоступен: на Cloud Function не задан OPENAI_API_KEY. ' +
-    'Добавьте ключ в окружение функции и пересоберите версию.\n\n' +
+    pre +
     'Краткая эвристическая сводка по текущей выборке:\n\n' +
     heuristic +
     '\n\n(Ваш вопрос был: «' +
     truncate(lastQ, 400) +
-    '» — после включения API-ключа ответы будут учитывать диалог и срез.)';
+    '».)';
 
   return json(200, {
     source: 'heuristic_fallback',

@@ -1,0 +1,2 @@
+# Только для сборки standalone-приложения (PyInstaller)
+pyinstaller>=6.0

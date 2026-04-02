@@ -34,16 +34,17 @@ async function handleCreateSurvey(pool, event, user) {
       }
       const options = q.options != null ? q.options : type === 'scale' ? { min: 1, max: 10 } : [];
       const sort_order = Number.isFinite(q.sort_order) ? q.sort_order : i;
+      const required = q.required !== false;
       await client.query(
-        `INSERT INTO questions (survey_id, text, type, options, sort_order)
-         VALUES ($1, $2, $3::question_type, $4::jsonb, $5)`,
-        [survey.id, text, type, JSON.stringify(options), sort_order]
+        `INSERT INTO questions (survey_id, text, type, options, sort_order, required)
+         VALUES ($1, $2, $3::question_type, $4::jsonb, $5, $6)`,
+        [survey.id, text, type, JSON.stringify(options), sort_order, required]
       );
     }
 
     await client.query('COMMIT');
     const qrows = await pool.query(
-      `SELECT id, survey_id, text, type, options, sort_order FROM questions WHERE survey_id = $1 ORDER BY sort_order, id`,
+      `SELECT id, survey_id, text, type, options, sort_order, required FROM questions WHERE survey_id = $1 ORDER BY sort_order, id`,
       [survey.id]
     );
     return json(201, { survey: { ...survey, questions: qrows.rows } });

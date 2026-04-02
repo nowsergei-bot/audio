@@ -20,6 +20,8 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
   const hasChart =
     q.response_count > 0 &&
     (q.type === 'radio' || q.type === 'checkbox' || q.type === 'scale' || q.type === 'rating' || q.type === 'date');
+  const totalByDistribution = (q.distribution || []).reduce((acc, row) => acc + Number(row.count || 0), 0);
+  const barsTotal = totalByDistribution > 0 ? totalByDistribution : Math.max(q.response_count || 0, 1);
 
   return (
     <motion.article
@@ -87,6 +89,32 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  {(q.distribution || []).length > 0 && (
+                    <div className="results-dist-bars">
+                      {(q.distribution || []).map((d) => {
+                        const count = Number(d.count || 0);
+                        const pct = Math.round((count / barsTotal) * 100);
+                        return (
+                          <div key={String(d.label)}>
+                            <div className="results-dist-row-top">
+                              <span className="results-dist-label">{String(d.label)}</span>
+                              <span className="results-dist-meta">
+                                {count} <span className="results-dist-pct">({pct}%)</span>
+                              </span>
+                            </div>
+                            <div className="results-dist-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                              <motion.div
+                                className="results-dist-fill"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.45, ease: barEase }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="muted results-empty">На этот вопрос пока никто не ответил.</p>
@@ -121,6 +149,32 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  {(q.distribution || []).length > 0 && (
+                    <div className="results-dist-bars">
+                      {(q.distribution || []).map((d) => {
+                        const count = Number(d.count || 0);
+                        const pct = Math.round((count / barsTotal) * 100);
+                        return (
+                          <div key={String(d.label)}>
+                            <div className="results-dist-row-top">
+                              <span className="results-dist-label">{String(d.label)}</span>
+                              <span className="results-dist-meta">
+                                {count} <span className="results-dist-pct">({pct}%)</span>
+                              </span>
+                            </div>
+                            <div className="results-dist-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                              <motion.div
+                                className="results-dist-fill"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${pct}%` }}
+                                transition={{ duration: 0.45, ease: barEase }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="muted results-empty">На этот вопрос пока никто не ответил.</p>

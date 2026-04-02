@@ -21,15 +21,21 @@ function normalizeOtherLabel(v) {
   return /^другое\s*:/i.test(s) ? 'Другое' : s;
 }
 
+function isBlankString(v) {
+  return typeof v === 'string' && !v.trim();
+}
+
 function aggregateForQuestion(question, rows) {
   const { id, type, text } = question;
   const qid = Number(id);
-  const base = { question_id: qid, type, text, response_count: rows.length };
 
   if (type === 'radio') {
+    const answered = rows
+      .map((r) => normalizeOtherLabel(r.value != null ? String(r.value) : ''))
+      .filter(Boolean);
+    const base = { question_id: qid, type, text, response_count: answered.length };
     const counts = {};
-    for (const r of rows) {
-      const v = normalizeOtherLabel(r.value != null ? String(r.value) : '');
+    for (const v of answered) {
       counts[v] = (counts[v] || 0) + 1;
     }
     return {
@@ -39,10 +45,12 @@ function aggregateForQuestion(question, rows) {
   }
 
   if (type === 'date') {
+    const answered = rows
+      .map((r) => String(r.value ?? '').trim().slice(0, 10))
+      .filter(Boolean);
+    const base = { question_id: qid, type, text, response_count: answered.length };
     const counts = {};
-    for (const r of rows) {
-      const v = String(r.value ?? '').trim().slice(0, 10);
-      if (!v) continue;
+    for (const v of answered) {
       counts[v] = (counts[v] || 0) + 1;
     }
     return {
@@ -54,9 +62,12 @@ function aggregateForQuestion(question, rows) {
   }
 
   if (type === 'checkbox') {
+    const answered = rows
+      .map((r) => (Array.isArray(r.value) ? r.value.map((x) => String(x).trim()).filter(Boolean) : []))
+      .filter((arr) => arr.length > 0);
+    const base = { question_id: qid, type, text, response_count: answered.length };
     const counts = {};
-    for (const r of rows) {
-      const arr = Array.isArray(r.value) ? r.value : [];
+    for (const arr of answered) {
       for (const x of arr) {
         const v = normalizeOtherLabel(String(x));
         counts[v] = (counts[v] || 0) + 1;
@@ -69,7 +80,12 @@ function aggregateForQuestion(question, rows) {
   }
 
   if (type === 'scale' || type === 'rating') {
-    const nums = rows.map((r) => Number(r.value)).filter((n) => Number.isFinite(n));
+    const nums = rows
+      .map((r) => r.value)
+      .filter((v) => v != null && !isBlankString(v))
+      .map((v) => Number(v))
+      .filter((n) => Number.isFinite(n));
+    const base = { question_id: qid, type, text, response_count: nums.length };
     const sum = nums.reduce((a, b) => a + b, 0);
     const hist = {};
     for (const n of nums) {
@@ -91,6 +107,7 @@ function aggregateForQuestion(question, rows) {
     const strings = rows
       .map((r) => parseJsonbText(r.value).trim())
       .filter(Boolean);
+    const base = { question_id: qid, type, text, response_count: strings.length };
     return {
       ...base,
       samples: strings,
@@ -99,7 +116,7 @@ function aggregateForQuestion(question, rows) {
     };
   }
 
-  return base;
+  return { question_id: qid, type, text, response_count: 0 };
 }
 
 /**

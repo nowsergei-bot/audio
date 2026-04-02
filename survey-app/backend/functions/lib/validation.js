@@ -96,6 +96,13 @@ function validateAnswer(question, rawValue, opts = {}) {
   }
 }
 
+function isSkippedValue(rawValue) {
+  if (rawValue == null) return true;
+  if (typeof rawValue === 'string') return rawValue.trim().length === 0;
+  if (Array.isArray(rawValue)) return rawValue.length === 0;
+  return false;
+}
+
 function validatePayload(questions, answersPayload) {
   if (!Array.isArray(answersPayload)) {
     return { ok: false, error: 'answers must be an array' };
@@ -114,6 +121,11 @@ function validatePayload(questions, answersPayload) {
     }
     seen.add(qid);
     const q = byId.get(qid);
+    const isRequired = q.required !== false;
+    if (!isRequired && isSkippedValue(row.value)) {
+      normalized.push({ question_id: qid, value: null });
+      continue;
+    }
     const res = validateAnswer(q, row.value);
     if (!res.ok) return res;
     normalized.push({ question_id: qid, value: res.value });
@@ -121,8 +133,11 @@ function validatePayload(questions, answersPayload) {
 
   for (const q of questions) {
     const qn = Number(q.id);
-    if (!seen.has(qn)) {
+    if (q.required !== false && !seen.has(qn)) {
       return { ok: false, error: `Missing answer for question ${q.id}` };
+    }
+    if (q.required === false && !seen.has(qn)) {
+      normalized.push({ question_id: qn, value: null });
     }
   }
 

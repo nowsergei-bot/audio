@@ -26,6 +26,7 @@ type DraftQuestion = {
   type: QuestionType;
   options: unknown;
   sort_order: number;
+  required: boolean;
 };
 
 function autosize(el: HTMLTextAreaElement | null) {
@@ -85,6 +86,7 @@ function toDraft(q: {
   type: QuestionType;
   options: unknown;
   sort_order: number;
+  required?: boolean;
 }): DraftQuestion {
   return {
     tempKey: crypto.randomUUID(),
@@ -92,6 +94,7 @@ function toDraft(q: {
     type: q.type,
     options: q.options,
     sort_order: q.sort_order,
+    required: q.required !== false,
   };
 }
 
@@ -154,6 +157,7 @@ export default function SurveyBuilder() {
           type: q.type,
           options: q.options,
           sort_order: i,
+          required: q.required,
         })
       )
     );
@@ -207,6 +211,7 @@ export default function SurveyBuilder() {
         type: q.type,
         options: q.options,
         sort_order: Number.isFinite(q.sort_order) ? q.sort_order : i,
+        required: q.required !== false,
       })),
     [questions]
   );
@@ -274,7 +279,7 @@ export default function SurveyBuilder() {
           category: tplCategory || 'Пользовательские',
           title,
           description,
-          questions: payloadQuestions.map((q) => ({ text: q.text, type: q.type, options: q.options })),
+          questions: payloadQuestions.map((q) => ({ text: q.text, type: q.type, options: q.options, required: q.required })),
         });
         setSearchParams({});
         navigate('/surveys/new', { replace: true });
@@ -388,6 +393,7 @@ export default function SurveyBuilder() {
         type,
         options: defaultOptions(type),
         sort_order: prev.length,
+        required: true,
       },
     ]);
   }
@@ -770,6 +776,25 @@ export default function SurveyBuilder() {
                 onChange={(e) => updateQ(q.tempKey, { text: e.target.value })}
               />
             </label>
+            <div className="admin-required-toggle-row">
+              <span className="muted">Ответ:</span>
+              <div className="admin-required-toggle" role="group" aria-label={`Режим ответа для вопроса ${idx + 1}`}>
+                <button
+                  type="button"
+                  className={`btn admin-required-btn${q.required ? ' is-active' : ''}`}
+                  onClick={() => updateQ(q.tempKey, { required: true })}
+                >
+                  Обязательный
+                </button>
+                <button
+                  type="button"
+                  className={`btn admin-required-btn${!q.required ? ' is-active' : ''}`}
+                  onClick={() => updateQ(q.tempKey, { required: false })}
+                >
+                  Необязательный
+                </button>
+              </div>
+            </div>
             {(q.type === 'radio' || q.type === 'checkbox') && (
               <label style={{ display: 'block', marginTop: '0.5rem' }}>
                 Варианты (по одному на строку)

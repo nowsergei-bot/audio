@@ -11,6 +11,10 @@ pipeline_run.pid
 audio_files/
 segmented_output/
 
+# PyInstaller (audio app)
+audio/build/
+audio/dist/
+
 # Локальный show QLab (большой bundle)
 qlab_playlist/Untitled Workspace/
 audio/qlab_playlist/Untitled Workspace/

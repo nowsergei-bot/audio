@@ -3,6 +3,7 @@ import type {
   AnalyticsChatMessage,
   AnalyticsChatResponse,
   AnalyticsFilter,
+  PulseExcelChatResponse,
   TextQuestionInsightsPayload,
   AnswerSubmit,
   CommentRow,
@@ -337,6 +338,27 @@ export async function postAnalyticsChat(
     body: JSON.stringify({ filters: payload.filters, messages: payload.messages }),
   });
   const data = await parseJson<AnalyticsChatResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** ПУЛЬС: диалог по Excel-дашборду (на функции нужен OPENAI_API_KEY). Может вернуть apply_filters для среза. */
+export async function postPulseExcelChat(payload: {
+  messages: AnalyticsChatMessage[];
+  context: {
+    facetOptions: Record<string, string[]>;
+    facetLabels: Record<string, string>;
+    currentFilters: Record<string, string[] | null>;
+    numericSummary: string;
+    extraContext?: string;
+  };
+}): Promise<PulseExcelChatResponse> {
+  const res = await apiFetch(`${API_BASE}/api/pulse-excel-chat`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<PulseExcelChatResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
