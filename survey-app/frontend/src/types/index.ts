@@ -142,6 +142,26 @@ export interface PulseExcelChatResponse {
   apply_filters: Record<string, string[]> | null;
 }
 
+/** План разделов боковой панели фильтров Excel-дашборда (ИИ или null + fallback на клиенте). */
+export interface ExcelFilterSectionPlan {
+  id: string;
+  title: string;
+  keys: string[];
+}
+
+export interface ExcelFilterSectionsResponse {
+  source: string;
+  sections: ExcelFilterSectionPlan[] | null;
+  hint?: string;
+}
+
+/** Связный текст сводки Excel-дашборда (ИИ по машинной сводке). */
+export interface ExcelNarrativeSummaryResponse {
+  source: string;
+  narrative: string | null;
+  hint?: string;
+}
+
 export interface ResultsPayload {
   survey: Pick<Survey, 'id' | 'title' | 'status' | 'access_link'>;
   total_responses: number;

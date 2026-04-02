@@ -187,6 +187,19 @@ chmod +x scripts/deploy-functions.sh
 | `ADMIN_API_KEY` | придумайте длинный секрет (латиница/цифры), **запомните** |
 | `CORS_ORIGIN` | `https://statisticsprimakov2.website.yandexcloud.net` |
 | `PG_SSL_REJECT_UNAUTHORIZED` | `false` — только если функция не подключается к БД из‑за сертификата. **Необязательно** для Neon: можно не добавлять эту строку. Имя копируйте **без пробела в конце** (`PG_SSL_REJECT_UNAUTHORIZED`). |
+| `OPENAI_API_KEY` | Ключ API OpenAI для ПУЛЬС, сводки Excel и др. **Важно:** запросы к `api.openai.com` с IP в РФ и из многих облаков дают **HTTP 403** (`Country, region, or territory not supported`). Тогда задайте YandexGPT (ниже) или прокси через `OPENAI_BASE_URL`. |
+| `OPENAI_MODEL` | Необязательно; по умолчанию в коде `gpt-4o-mini`. |
+| `OPENAI_BASE_URL` | Необязательно. База до суффикса `/v1` (например Azure OpenAI или прокси в поддерживаемом регионе). По умолчанию `https://api.openai.com/v1`. |
+| `LLM_PROVIDER` | `auto` (по умолчанию) — сначала OpenAI; при геоблоке 403 автоматически вызывается YandexGPT, если заданы `YANDEX_*`. Значение `yandex` — **только** YandexGPT (OpenAI не используется). |
+| `YANDEX_CLOUD_FOLDER_ID` | ID **каталога** Yandex Cloud (строка вида `b1g...`). |
+| `YANDEX_API_KEY` | **Api-Key** сервисного аккаунта с ролью на **Foundation Models** (генерация текста). |
+| `YANDEX_IAM_TOKEN` | Необязательно. **IAM-токен** того же сервисного аккаунта с `Authorization: Bearer` (если удобнее, чем Api-Key). Если задан, используется вместо `YANDEX_API_KEY`. Срок жизни токена ограничен — для продакшена обычно предпочтительнее Api-Key. |
+| `YANDEX_MODEL_URI` | Необязательно. По умолчанию в коде подставляется `gpt://<YANDEX_CLOUD_FOLDER_ID>/yandexgpt/latest` (при смене поколения модели см. [документацию Yandex Cloud](https://yandex.cloud/ru/docs/foundation-models/)). |
+| `YC_FOLDER_ID` / `YC_API_KEY` / `YC_IAM_TOKEN` | Синонимы для `YANDEX_CLOUD_FOLDER_ID` / `YANDEX_API_KEY` / `YANDEX_IAM_TOKEN`, если так удобнее. |
+
+Маршрут **`POST /api/excel-filter-sections`** (после входа в админку) строит группировку разделов фильтров на странице «Наблюдения из Excel»; без ключа возвращает `fallback`, клиент использует стандартные разделы.
+
+Маршрут **`POST /api/excel-narrative-summary`** (тело: `context.numericSummary`, опционально `extraContext`, `facetLabels`) — связный текст блока «Сводный анализ»; без ключа клиент оставляет машинную сводку из браузера.
 
 Имена переменных в консоли должны быть **ровно** как в таблице: латиница, цифра или `_`, **без пробела** в начале или в конце имени (иначе ошибка `Field does not match the pattern`).
 
@@ -279,6 +292,7 @@ export YC_OBJECT_ACL_PUBLIC_READ=1
 | **502 / Function error** | Логи функции в консоли; часто неверный `PG_CONNECTION_STRING` или БД не пускает (файрвол / нет публичного доступа). |
 | **CORS в консоли браузера** | `CORS_ORIGIN` на функции = точный URL сайта с `https://`. |
 | **401** после ввода ключа | Неверный ключ или опечатка; должен совпадать с `ADMIN_API_KEY`. |
+| **401** от YandexGPT в логах функции (`llm.api.cloud.yandex.net`) | Неверный или просроченный `YANDEX_API_KEY` / `YANDEX_IAM_TOKEN`, не тот тип ключа (нужен **Api-Key** сервисного аккаунта, не JSON ключа и не статический ключ), **scope** `yc.ai.foundationModels.execute`, каталог в `YANDEX_CLOUD_FOLDER_ID` должен совпадать с каталогом ключа. В коде запросы идут с заголовком **`x-folder-id`**. |
 | **Timeout** | Увеличить таймаут функции; проверить, что БД доступна из облака. |
 
 ---

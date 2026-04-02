@@ -160,35 +160,58 @@ export function splitMultiValues(raw: string): string[] {
 }
 
 /**
- * Одна строка Excel с «Иванов, Петров» в колонке педагога → две аналитические строки с одними метриками урока.
- * Ключ фильтра — как в filterKeyForRole для filter_teacher_code.
+ * Одна ячейка с несколькими значениями через запятую (Google Forms и т.п.) → несколько аналитических строк
+ * с теми же метриками; в фильтрах и графиках каждое значение — отдельный «пойнт».
+ * Для колонки наставника сохраняется нумерация splitPart (как раньше).
+ * Порядок развёртки — слева направо по колонкам в таблице (роли в массиве roles).
  */
-export function expandRowsForMultiTeacher(rows: AnalyticRow[], teacherFilterKey: string): AnalyticRow[] {
-  const out: AnalyticRow[] = [];
+function expandOneFilterColumn(rows: AnalyticRow[], key: string, role: ColumnRole): AnalyticRow[] {
+  const isTeacher = role === 'filter_teacher_code';
+  const next: AnalyticRow[] = [];
   for (const row of rows) {
-    const raw = row.filterValues[teacherFilterKey];
-    if (!raw || raw === '(не указано)') {
-      out.push(row);
+    const raw = row.filterValues[key];
+    if (raw == null || raw === '' || raw === '(не указано)') {
+      next.push(row);
       continue;
     }
     const parts = splitMultiValues(raw);
     if (parts.length <= 1) {
-      out.push({
+      next.push({
         ...row,
-        splitPart: undefined,
-        filterValues: { ...row.filterValues, [teacherFilterKey]: parts[0] ?? raw },
+        splitPart: isTeacher ? undefined : row.splitPart,
+        filterValues: { ...row.filterValues, [key]: parts[0] ?? raw },
       });
       continue;
     }
-    parts.forEach((teacher, si) => {
-      out.push({
+    parts.forEach((p, si) => {
+      next.push({
         ...row,
-        splitPart: si + 1,
-        filterValues: { ...row.filterValues, [teacherFilterKey]: teacher },
+        splitPart: isTeacher ? si + 1 : row.splitPart,
+        filterValues: { ...row.filterValues, [key]: p },
       });
     });
   }
+  return next;
+}
+
+export function expandRowsForMultiValueFilterColumns(
+  rows: AnalyticRow[],
+  roles: ColumnRole[],
+  customLabels: CustomFilterLabels,
+): AnalyticRow[] {
+  let out = rows;
+  for (let i = 0; i < roles.length; i++) {
+    const r = roles[i];
+    if (!isFilterRole(r)) continue;
+    const key = filterKeyForRole(r, customLabels);
+    out = expandOneFilterColumn(out, key, r);
+  }
   return out;
+}
+
+/** Одна колонка наставников (обратная совместимость). */
+export function expandRowsForMultiTeacher(rows: AnalyticRow[], teacherFilterKey: string): AnalyticRow[] {
+  return expandOneFilterColumn(rows, teacherFilterKey, 'filter_teacher_code');
 }
 
 export type FilterSelection = Record<string, string[] | null>;

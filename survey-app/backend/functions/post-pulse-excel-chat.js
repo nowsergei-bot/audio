@@ -1,4 +1,5 @@
 const { json, parseBody } = require('./lib/http');
+const { chatCompletion, isOpenAiUnsupportedRegion, formatGeoBlockHint } = require('./lib/llm-chat');
 
 function normalizeChatMessages(body) {
   const raw = body && Array.isArray(body.messages) ? body.messages : [];
@@ -34,10 +35,6 @@ function sanitizeApplyFilters(applyFilters, facetOptions) {
 }
 
 async function fetchPulseReply(context, messages) {
-  const key = String(process.env.OPENAI_API_KEY || '').trim();
-  if (!key) return { kind: 'no_key' };
-
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const facetJson = JSON.stringify(context.facetOptions || {}).slice(0, 120000);
   const labelsJson = JSON.stringify(context.facetLabels || {}).slice(0, 8000);
   const currentJson = JSON.stringify(context.currentFilters || {}).slice(0, 16000);
@@ -77,38 +74,25 @@ ${extra ? `\nдополнительно:\n${extra}` : ''}`;
   ];
 
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: apiMessages,
-        max_tokens: 3500,
-        temperature: 0.25,
-        response_format: { type: 'json_object' },
-      }),
+    const res = await chatCompletion(apiMessages, {
+      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      maxTokens: 3500,
+      temperature: 0.25,
+      jsonObject: true,
     });
-    if (!r.ok) {
-      let detail = `HTTP ${r.status}`;
-      try {
-        const errBody = await r.json();
-        if (errBody?.error?.message) detail = `${detail}: ${errBody.error.message}`;
-      } catch {
-        /* keep */
-      }
+    if (!res.ok) {
+      if (res.kind === 'no_key') return { kind: 'no_key' };
+      const detail =
+        res.kind === 'both_failed'
+          ? res.detail
+          : isOpenAiUnsupportedRegion(res.status, res.detail)
+            ? formatGeoBlockHint(res.status, res.detail)
+            : res.detail;
       return { kind: 'openai_error', detail };
-    }
-    const data = await r.json();
-    const text = data.choices?.[0]?.message?.content;
-    if (typeof text !== 'string' || !text.trim()) {
-      return { kind: 'openai_error', detail: 'Пустой ответ модели' };
     }
     let parsed;
     try {
-      parsed = JSON.parse(text.trim());
+      parsed = JSON.parse(res.text.trim());
     } catch {
       return { kind: 'openai_error', detail: 'Ответ не JSON' };
     }
@@ -145,8 +129,8 @@ async function handlePostPulseExcelChat(_pool, event) {
   const lastQ = messages[messages.length - 1].content;
   const pre =
     llm.kind === 'no_key'
-      ? 'ПУЛЬС недоступен: на Cloud Function не задана переменная OPENAI_API_KEY. Добавьте ключ в версию функции и пересоздайте деплой.\n\n'
-      : `Запрос к модели не выполнен (${llm.detail}).\n\n`;
+      ? 'ПУЛЬС недоступен: задайте в функции OPENAI_API_KEY или пару YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY (YandexGPT из РФ). Подробнее — BACKEND_AND_API.md.\n\n'
+      : `${llm.detail}\n\n`;
 
   return json(200, {
     source: 'error_fallback',

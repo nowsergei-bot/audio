@@ -14,6 +14,8 @@ const { handleGetPublicSurveyByLink } = require('./get-public-survey');
 const { handlePostAiInsights } = require('./post-ai-insights');
 const { handlePostAnalyticsChat } = require('./post-analytics-chat');
 const { handlePostPulseExcelChat } = require('./post-pulse-excel-chat');
+const { handlePostExcelFilterSections } = require('./post-excel-filter-sections');
+const { handlePostExcelNarrativeSummary } = require('./post-excel-narrative-summary');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
 const { handlePostWorkbook } = require('./post-workbook');
@@ -132,6 +134,12 @@ async function handlerImpl(event) {
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'pulse-excel-chat' && segs.length === 2) {
     return handlePostPulseExcelChat(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-filter-sections' && segs.length === 2) {
+    return handlePostExcelFilterSections(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-narrative-summary' && segs.length === 2) {
+    return handlePostExcelNarrativeSummary(pool, event);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleCreateSurvey(pool, event, user);

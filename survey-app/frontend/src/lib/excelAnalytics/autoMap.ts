@@ -2,6 +2,7 @@ import { parseAnalyticsDate, parseNumber } from './engine';
 import type { CellPrimitive } from './parse';
 import type { ColumnRole } from './types';
 import { roleAllowsDuplicate, validateRoles } from './types';
+import { applyServiceTimestampIgnore } from './serviceTimestamp';
 
 const SAMPLE = 200;
 
@@ -272,5 +273,6 @@ export function suggestColumnRoles(headers: string[], rows: CellPrimitive[][]): 
     if (!placed && n > 0) out[0] = 'metric_numeric';
   }
 
-  return out;
+  const { roles: afterStrip } = applyServiceTimestampIgnore(headers, rows, out);
+  return afterStrip;
 }

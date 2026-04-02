@@ -3559,6 +3559,17 @@ body {
   margin-top: 1rem;
 }
 
+.excel-service-strip-note {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(227, 6, 19, 0.2);
+  background: rgba(227, 6, 19, 0.05);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+
 .excel-analytics-filters {
   display: flex;
   flex-direction: column;
@@ -3707,6 +3718,39 @@ body {
   font-size: 0.98rem;
   font-weight: 900;
   letter-spacing: -0.02em;
+}
+
+.excel-dashboard-filter-ai-note {
+  margin: 0 0 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.excel-dashboard-filter-section {
+  margin-bottom: 1.35rem;
+}
+
+.excel-dashboard-filter-section:last-child {
+  margin-bottom: 0;
+}
+
+.excel-dashboard-filter-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.excel-analytics-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  margin-top: 0.4rem;
 }
 
 .excel-dashboard-sidebar-filters {

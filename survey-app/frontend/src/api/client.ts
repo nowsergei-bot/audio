@@ -4,6 +4,8 @@ import type {
   AnalyticsChatResponse,
   AnalyticsFilter,
   PulseExcelChatResponse,
+  ExcelFilterSectionsResponse,
+  ExcelNarrativeSummaryResponse,
   TextQuestionInsightsPayload,
   AnswerSubmit,
   CommentRow,
@@ -359,6 +361,52 @@ export async function postPulseExcelChat(payload: {
     body: JSON.stringify(payload),
   });
   const data = await parseJson<PulseExcelChatResponse & { error?: string }>(res);
+  if (!res.ok) {
+    if (res.status === 401) {
+      throw new Error(
+        'Нужна авторизация: на главной админки введите тот же X-Api-Key, что в ADMIN_API_KEY функции, или войдите по почте.',
+      );
+    }
+    throw new Error(data.error || res.statusText);
+  }
+  return data;
+}
+
+/** ИИ: сгруппировать ключи фильтров в разделы боковой панели по контексту колонок (нужен OPENAI_API_KEY). */
+export async function postExcelFilterSections(payload: {
+  filterKeys: string[];
+  columns: {
+    filterKey: string;
+    role: string;
+    roleLabel: string;
+    header: string;
+    samples: string[];
+  }[];
+}): Promise<ExcelFilterSectionsResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-filter-sections`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelFilterSectionsResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** Связный «Сводный анализ» по машинной сводке и контексту (нужен OPENAI_API_KEY). */
+export async function postExcelNarrativeSummary(payload: {
+  context: {
+    numericSummary: string;
+    extraContext?: string;
+    facetLabels?: Record<string, string>;
+  };
+}): Promise<ExcelNarrativeSummaryResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-narrative-summary`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelNarrativeSummaryResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }

@@ -1,5 +1,5 @@
 import { motion, MotionConfig } from 'framer-motion';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -12,6 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { postExcelFilterSections, postExcelNarrativeSummary } from '../api/client';
 import PulseExcelChat from '../components/PulseExcelChat';
 import { fadeIn } from '../motion/resultsMotion';
 import {
@@ -19,7 +20,7 @@ import {
   buildAnalyticRows,
   buildQuickSummaryRu,
   countsByMonth,
-  expandRowsForMultiTeacher,
+  expandRowsForMultiValueFilterColumns,
   filterKeyForRole,
   histogramNumeric,
   isFilterRole,
@@ -32,6 +33,7 @@ import {
   type AnalyticRow,
   type FilterSelection,
 } from '../lib/excelAnalytics/engine';
+import { applyServiceTimestampIgnore } from '../lib/excelAnalytics/serviceTimestamp';
 import {
   extractHeadersAndRows,
   getSheetMatrix,
@@ -51,6 +53,36 @@ import {
 } from '../lib/excelAnalytics/types';
 
 const MAX_ROWS = 8000;
+
+/** Разделы боковой панели фильтров (порядок колонок внутри раздела — как в таблице). */
+const FILTER_SIDEBAR_SECTIONS: { id: string; title: string; roles: ColumnRole[] }[] = [
+  { id: 'mentors', title: 'Наставники', roles: ['filter_teacher_code'] },
+  { id: 'class-subject', title: 'Параллель, класс, предмет', roles: ['filter_parallel', 'filter_class', 'filter_subject'] },
+  { id: 'format', title: 'Формат', roles: ['filter_format'] },
+  { id: 'extra', title: 'Дополнительные признаки', roles: ['filter_custom_1', 'filter_custom_2', 'filter_custom_3'] },
+];
+
+function buildStaticFilterSections(
+  roles: ColumnRole[],
+  customLabels: CustomFilterLabels,
+  filterKeys: string[],
+): { id: string; title: string; keys: string[] }[] {
+  const out: { id: string; title: string; keys: string[] }[] = [];
+  const seen = new Set<string>();
+  for (const sec of FILTER_SIDEBAR_SECTIONS) {
+    const keys: string[] = [];
+    roles.forEach((r) => {
+      if (!sec.roles.includes(r) || !isFilterRole(r)) return;
+      const k = filterKeyForRole(r, customLabels);
+      if (!keys.includes(k)) keys.push(k);
+    });
+    keys.forEach((k) => seen.add(k));
+    if (keys.length) out.push({ id: sec.id, title: sec.title, keys });
+  }
+  const rest = filterKeys.filter((k) => !seen.has(k));
+  if (rest.length) out.push({ id: 'other', title: 'Прочие фильтры', keys: rest });
+  return out;
+}
 
 const DASH_BAR_COLORS = [
   '#e30613',
@@ -99,9 +131,18 @@ export default function ExcelAnalyticsPage() {
 
   const [analyticRows, setAnalyticRows] = useState<AnalyticRow[]>([]);
   const [filterSelection, setFilterSelection] = useState<FilterSelection>({});
+  /** Разделы фильтров от ИИ; null — взять buildStaticFilterSections */
+  const [llmFilterSections, setLlmFilterSections] = useState<{ id: string; title: string; keys: string[] }[] | null>(
+    null,
+  );
+  const [filterLayoutMode, setFilterLayoutMode] = useState<'idle' | 'loading' | 'llm' | 'static'>('idle');
   const [metricPickIndex, setMetricPickIndex] = useState<number | null>(null);
   /** При загрузке листа сразу подбирать роли по заголовкам и данным */
   const [autoMapOnLoad, setAutoMapOnLoad] = useState(true);
+  /** Сообщение, если при анализе отсечена служебная колонка времени */
+  const [serviceStripNote, setServiceStripNote] = useState<string | null>(null);
+  const [summaryNarrative, setSummaryNarrative] = useState<string | null>(null);
+  const [summaryNarrativeLoading, setSummaryNarrativeLoading] = useState(false);
 
   const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -124,6 +165,11 @@ export default function ExcelAnalyticsPage() {
       setRoles([]);
       setAnalyticRows([]);
       setFilterSelection({});
+      setLlmFilterSections(null);
+      setFilterLayoutMode('idle');
+      setServiceStripNote(null);
+      setSummaryNarrative(null);
+      setSummaryNarrativeLoading(false);
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : 'Не удалось прочитать файл');
     }
@@ -147,6 +193,11 @@ export default function ExcelAnalyticsPage() {
       setRawRows(rows);
       setAnalyticRows([]);
       setFilterSelection({});
+      setLlmFilterSections(null);
+      setFilterLayoutMode('idle');
+      setServiceStripNote(null);
+      setSummaryNarrative(null);
+      setSummaryNarrativeLoading(false);
       setMetricPickIndex(null);
       if (autoMapOnLoad) applySuggestedRoles(h, rows);
       else {
@@ -210,17 +261,38 @@ export default function ExcelAnalyticsPage() {
       setErr('Для текстовой шкалы задайте порядок уровней (или нажмите «Подставить из данных»).');
       return;
     }
-    setErr(null);
-    let built = buildAnalyticRows(headers, rawRows, roles, customLabels, ordinalLevels);
-    if (roles.includes('filter_teacher_code')) {
-      const tk = filterKeyForRole('filter_teacher_code', customLabels);
-      built = expandRowsForMultiTeacher(built, tk);
+
+    const { roles: rolesForRun, strippedIndex } = applyServiceTimestampIgnore(headers, rawRows, roles);
+    const vRun = validateRoles(rolesForRun);
+    if (!vRun.ok) {
+      setErr(
+        vRun.message
+          ? `После автоотсечения служебной колонки: ${vRun.message}`
+          : 'Проверьте маппинг после автоотсечения служебной колонки.',
+      );
+      return;
     }
+
+    setErr(null);
+    if (strippedIndex != null) {
+      setServiceStripNote(
+        `Столбец «${headers[strippedIndex] || strippedIndex + 1}» распознан как служебная метка времени (например, момент голосования) и исключён из анализа. Роли колонок обновлены.`,
+      );
+    } else {
+      setServiceStripNote(null);
+    }
+
+    if (rolesForRun.some((r, i) => r !== roles[i])) {
+      setRoles(rolesForRun);
+    }
+
+    let built = buildAnalyticRows(headers, rawRows, rolesForRun, customLabels, ordinalLevels);
+    built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
     setAnalyticRows(built);
 
     const sel: FilterSelection = {};
     const keys = new Set<string>();
-    roles.forEach((r) => {
+    rolesForRun.forEach((r) => {
       if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
     });
     keys.forEach((k) => {
@@ -228,7 +300,8 @@ export default function ExcelAnalyticsPage() {
     });
     setFilterSelection(sel);
 
-    const firstMetric = metricNumericCols[0] ?? null;
+    const firstMetric =
+      rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
     setMetricPickIndex(firstMetric);
   };
 
@@ -270,6 +343,55 @@ export default function ExcelAnalyticsPage() {
     });
     return [...keys];
   }, [roles, customLabels]);
+
+  const staticFilterSections = useMemo(
+    () => buildStaticFilterSections(roles, customLabels, filterKeys),
+    [roles, customLabels, filterKeys],
+  );
+
+  const filterSections = llmFilterSections ?? staticFilterSections;
+
+  useEffect(() => {
+    if (!analyticRows.length || !filterKeys.length) {
+      setLlmFilterSections(null);
+      setFilterLayoutMode('idle');
+      return;
+    }
+    let cancelled = false;
+    setFilterLayoutMode('loading');
+    const columns = roles
+      .map((r, i) => ({ r, i }))
+      .filter(({ r }) => isFilterRole(r))
+      .map(({ r, i }) => {
+        const fk = filterKeyForRole(r, customLabels);
+        return {
+          filterKey: fk,
+          role: r,
+          roleLabel: COLUMN_ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r,
+          header: headers[i] || fk,
+          samples: uniqueFilterValues(analyticRows, fk).slice(0, 12),
+        };
+      });
+    void postExcelFilterSections({ filterKeys, columns })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.source === 'llm' && res.sections?.length) {
+          setLlmFilterSections(res.sections);
+          setFilterLayoutMode('llm');
+        } else {
+          setLlmFilterSections(null);
+          setFilterLayoutMode('static');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLlmFilterSections(null);
+        setFilterLayoutMode('static');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [analyticRows, filterKeys, roles, customLabels, headers]);
 
   const histogramData = useMemo(() => {
     if (metricPickIndex == null) return [];
@@ -352,6 +474,41 @@ export default function ExcelAnalyticsPage() {
   const applyPulseFilters = useCallback((update: (prev: FilterSelection) => FilterSelection) => {
     setFilterSelection(update);
   }, []);
+
+  useEffect(() => {
+    if (!quickText.trim()) {
+      setSummaryNarrative(null);
+      setSummaryNarrativeLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSummaryNarrative(null);
+    setSummaryNarrativeLoading(true);
+    void postExcelNarrativeSummary({
+      context: {
+        numericSummary: quickText.slice(0, 20000),
+        extraContext: pulseExtraContext || undefined,
+        facetLabels: pulseFacetLabels,
+      },
+    })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.source === 'llm' && res.narrative?.trim()) {
+          setSummaryNarrative(res.narrative.trim());
+        } else {
+          setSummaryNarrative(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryNarrative(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryNarrativeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [quickText, pulseExtraContext, pulseFacetLabels]);
 
   const saveTemplate = () => {
     const name = templateName.trim();
@@ -615,6 +772,12 @@ export default function ExcelAnalyticsPage() {
 
         {err && <p className="err import-workbook-err">{err}</p>}
 
+        {serviceStripNote && (
+          <p className="muted excel-service-strip-note" role="status">
+            {serviceStripNote}
+          </p>
+        )}
+
         {analyticRows.length > 0 && (
           <div className="excel-dashboard">
             <div className="excel-dashboard-workspace">
@@ -652,56 +815,82 @@ export default function ExcelAnalyticsPage() {
                   </div>
                   <div className="excel-dashboard-sidebar-filters">
                     <h3 className="excel-dashboard-filters-heading">Фильтры</h3>
+                    <p className="muted excel-dashboard-filter-ai-note">
+                      {(filterLayoutMode === 'loading' ||
+                        (filterLayoutMode === 'idle' && analyticRows.length > 0)) &&
+                        'ИИ подбирает разделы боковой панели по названиям колонок и примерам значений…'}
+                      {filterLayoutMode === 'llm' &&
+                        'Разделы предложены моделью по контексту таблицы (тот же OpenAI API, что и у ПУЛЬС).'}
+                      {filterLayoutMode === 'static' &&
+                        analyticRows.length > 0 &&
+                        'Стандартная группировка разделов (ИИ недоступен, нет ключа или ответ не подошёл).'}
+                    </p>
                     <p className="muted excel-dashboard-filter-hint">
-                      Снимите лишние метки — покажутся только выбранные категории. «Все значения» под блоком возвращает
-                      полный список по полю.
+                      Значения в одной ячейке через запятую (как в выгрузке Google Forms) считаются отдельными вариантами —
+                      каждая часть даёт свою точку в выборке. Снимите лишние метки, чтобы сузить срез. «Снять все» очищает
+                      поле (в выборке не останется строк, пока не отметите варианты снова). «Все значения» снова включает
+                      весь столбец.
                     </p>
                     <div className="excel-analytics-filters">
-                      {filterKeys.map((key) => {
-                        const all = uniqueFilterValues(analyticRows, key);
-                        const sel = filterSelection[key];
-                        return (
-                          <div key={key} className="excel-analytics-filter-block">
-                            <div className="excel-analytics-filter-title">{key}</div>
-                            <div className="excel-analytics-filter-chips">
-                              {all.map((val) => {
-                                const checked = sel === null || (sel?.includes(val) ?? false);
-                                return (
-                                  <label key={val} className="excel-analytics-chip">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => {
-                                        setFilterSelection((prev) => {
-                                          const cur = prev[key];
-                                          if (cur === null) {
-                                            const next = all.filter((x) => x !== val);
-                                            return { ...prev, [key]: next };
-                                          }
-                                          const set = new Set(cur);
-                                          if (set.has(val)) set.delete(val);
-                                          else set.add(val);
-                                          const next = [...set];
-                                          if (next.length === all.length) return { ...prev, [key]: null };
-                                          return { ...prev, [key]: next };
-                                        });
-                                      }}
-                                    />
-                                    <span>{val}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => setFilterSelection((p) => ({ ...p, [key]: null }))}
-                            >
-                              Все значения
-                            </button>
-                          </div>
-                        );
-                      })}
+                      {filterSections.map((section) => (
+                        <div key={section.id} className="excel-dashboard-filter-section">
+                          <h4 className="excel-dashboard-filter-section-title">{section.title}</h4>
+                          {section.keys.map((key) => {
+                            const all = uniqueFilterValues(analyticRows, key);
+                            const sel = filterSelection[key];
+                            return (
+                              <div key={key} className="excel-analytics-filter-block">
+                                <div className="excel-analytics-filter-title">{key}</div>
+                                <div className="excel-analytics-filter-chips">
+                                  {all.map((val) => {
+                                    const checked = sel === null || (sel?.includes(val) ?? false);
+                                    return (
+                                      <label key={val} className="excel-analytics-chip">
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            setFilterSelection((prev) => {
+                                              const cur = prev[key];
+                                              if (cur === null) {
+                                                const next = all.filter((x) => x !== val);
+                                                return { ...prev, [key]: next };
+                                              }
+                                              const set = new Set(cur);
+                                              if (set.has(val)) set.delete(val);
+                                              else set.add(val);
+                                              const next = [...set];
+                                              if (next.length === all.length) return { ...prev, [key]: null };
+                                              return { ...prev, [key]: next };
+                                            });
+                                          }}
+                                        />
+                                        <span>{val}</span>
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                                <div className="excel-analytics-filter-actions">
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => setFilterSelection((p) => ({ ...p, [key]: null }))}
+                                  >
+                                    Все значения
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => setFilterSelection((p) => ({ ...p, [key]: [] }))}
+                                  >
+                                    Снять все
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -730,7 +919,17 @@ export default function ExcelAnalyticsPage() {
                 <div className="excel-dashboard-main-charts">
                   <section className="card glass-surface excel-dash-card excel-dash-card--summary">
                     <h3 className="excel-dash-card-title">Сводный текстовый анализ</h3>
-                    <pre className="excel-analytics-pre excel-dash-pre">{quickText}</pre>
+                    <p className="muted excel-dash-card-sub excel-summary-source-note">
+                      {summaryNarrativeLoading &&
+                        'Запрашиваем связный текст у модели по тем же данным; ниже временно показана машинная сводка.'}
+                      {!summaryNarrativeLoading && summaryNarrative &&
+                        'Текст ниже сформирован моделью строго на основе машинной сводки и блока по наставникам; новые цифры не добавляются.'}
+                      {!summaryNarrativeLoading && !summaryNarrative &&
+                        'Машинная сводка (ИИ недоступен, нет ключа OpenAI на функции или ответ не получен).'}
+                    </p>
+                    <pre className="excel-analytics-pre excel-dash-pre">
+                      {summaryNarrative ?? quickText}
+                    </pre>
                   </section>
 
                   {mentorChartData.length > 0 && metricNumericCols.length > 0 && (
