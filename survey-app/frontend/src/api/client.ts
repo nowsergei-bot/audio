@@ -848,14 +848,19 @@ export async function patchPhotoWallPhoto(
   }
 }
 
+/** Корень SPA (не текущий путь — иначе из /surveys/1/results получится …/results/s/…). */
+function clientAppBase(): string {
+  const base = import.meta.env.BASE_URL ?? '/';
+  const path = base === '/' ? '' : base.replace(/\/$/, '');
+  return `${window.location.origin}${path}`;
+}
+
 export function publicFormUrl(accessLink: string): string {
-  const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
-  return `${base}/s/${accessLink}`;
+  return `${clientAppBase()}/s/${accessLink}`;
 }
 
 /** Публичная сводка для руководителя (без входа в админку). */
 export function directorSurveyUrl(directorToken: string): string {
   const enc = encodeURIComponent(directorToken);
-  const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
-  return `${base}/director/${enc}`;
+  return `${clientAppBase()}/director/${enc}`;
 }
