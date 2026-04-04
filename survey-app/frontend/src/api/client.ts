@@ -852,3 +852,10 @@ export function publicFormUrl(accessLink: string): string {
   const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
   return `${base}/s/${accessLink}`;
 }
+
+/** Публичная сводка для руководителя (без входа в админку). */
+export function directorSurveyUrl(directorToken: string): string {
+  const enc = encodeURIComponent(directorToken);
+  const base = window.location.origin + window.location.pathname.replace(/\/$/, '');
+  return `${base}/director/${enc}`;
+}

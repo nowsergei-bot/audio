@@ -1,7 +1,13 @@
 import { motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getResults, getSurveyExportRows, getSurveyTextAnswers, publicFormUrl } from '../api/client';
+import {
+  directorSurveyUrl,
+  getResults,
+  getSurveyExportRows,
+  getSurveyTextAnswers,
+  publicFormUrl,
+} from '../api/client';
 import { downloadSurveyResponsesXlsx } from '../lib/exportResponsesXlsx';
 import AnimatedNumber from '../components/AnimatedNumber';
 import CommentsWordCloud from '../components/CommentsWordCloud';
@@ -132,6 +138,18 @@ export default function SurveyResults() {
                   <a href={publicFormUrl(data.survey.access_link ?? '')} target="_blank" rel="noreferrer">
                     открыть в новой вкладке
                   </a>
+                  {data.survey.director_token ? (
+                    <>
+                      {' · '}
+                      <a
+                        href={directorSurveyUrl(data.survey.director_token)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        сводка для руководителя
+                      </a>
+                    </>
+                  ) : null}
                 </p>
               </>
             )}
@@ -158,6 +176,18 @@ export default function SurveyResults() {
                   Перейти к аналитике по выборке
                 </Link>
               </motion.div>
+              {data.survey.director_token ? (
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <a
+                    href={directorSurveyUrl(data.survey.director_token)}
+                    className="btn"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Ссылка для руководителя
+                  </a>
+                </motion.div>
+              ) : null}
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                 <Link to={`/surveys/${surveyId}/edit`} className="btn">
                   Редактировать опрос

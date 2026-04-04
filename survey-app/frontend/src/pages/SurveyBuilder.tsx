@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   createSurvey,
+  directorSurveyUrl,
   getSurvey,
   getSurveyExportRows,
   getSurveyInvites,
@@ -112,6 +113,7 @@ export default function SurveyBuilder() {
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<SurveyStatus>('draft');
   const [accessLink, setAccessLink] = useState('');
+  const [directorToken, setDirectorToken] = useState<string | null>(null);
   const [questions, setQuestions] = useState<DraftQuestion[]>([]);
   const [photos, setPhotos] = useState<{ src: string; name?: string }[]>([]);
   const [inviteText, setInviteText] = useState('');
@@ -176,6 +178,7 @@ export default function SurveyBuilder() {
         setDescription(s.description);
         setStatus(s.status);
         setAccessLink(s.access_link);
+        setDirectorToken(s.director_token != null && s.director_token !== '' ? s.director_token : null);
         setQuestions((s.questions || []).map((q) => toDraft(q)));
         setPhotos(s.media?.photos || []);
         setInvitesLoading(true);
@@ -315,6 +318,7 @@ export default function SurveyBuilder() {
           }
         }
       }
+      setDirectorToken(s.director_token != null && s.director_token !== '' ? s.director_token : null);
       navigate(`/surveys/${s.id}/edit`, { replace: true });
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка сохранения');
@@ -531,6 +535,31 @@ export default function SurveyBuilder() {
             'сохраните опрос, чтобы увидеть токен'
           )}
         </p>
+        {isEdit && directorToken && (
+          <p className="muted" style={{ marginTop: '0.5rem' }}>
+            Сводка для руководителя (без входа в админку):{' '}
+            <a href={directorSurveyUrl(directorToken)} target="_blank" rel="noreferrer">
+              открыть
+            </a>
+            {' · '}
+            <button
+              type="button"
+              className="muted"
+              style={{
+                padding: 0,
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                font: 'inherit',
+                color: 'inherit',
+              }}
+              onClick={() => void navigator.clipboard.writeText(directorSurveyUrl(directorToken))}
+            >
+              скопировать ссылку
+            </button>
+          </p>
+        )}
       </div>
 
       <div className="card">

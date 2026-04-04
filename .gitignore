@@ -23,6 +23,10 @@ audio/qlab_playlist/Untitled Workspace/
 survey-app/**/node_modules/
 survey-app/**/dist/
 survey-app/backend/function-bundle.zip
+survey-app/pg-migrate-backup.dump
+survey-app/pg-migrate-no-photo.dump
+survey-app/pg-neon-to-yandex-temp.dump
+survey-app/pg-neon-migrate.dump
 survey-app/frontend/.env
 survey-app/frontend/.env.*
 !survey-app/frontend/.env.example
