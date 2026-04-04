@@ -141,6 +141,9 @@ export function applyServiceTimestampIgnore(
   let bestScore = -1;
   for (let i = 0; i < n; i++) {
     if (roles[i] === 'ignore') continue;
+    const hn = normHeader(headers[i] ?? '');
+    /** Не отсекаем колонки, явно про дату урока/события — это не «время ответа формы». */
+    if (LESSON_OR_EVENT_DATE_HEADER.test(hn)) continue;
     const sc = scoreServiceTimestampColumn(headers, rows, i);
     if (sc > bestScore) {
       bestScore = sc;

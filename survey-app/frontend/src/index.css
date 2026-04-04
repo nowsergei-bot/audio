@@ -5080,6 +5080,86 @@ body {
   animation: none;
 }
 
+/* Режим «Романтика»: одна панель без горизонтального marquee */
+.photo-wall-marquee-root--romance .photo-wall-marquee-track--romance {
+  width: 100%;
+  min-height: min(72vh, 720px);
+  animation: none;
+  will-change: auto;
+}
+
+.photo-wall-marquee-panel--romance {
+  flex: 1 1 100%;
+  width: 100%;
+  min-width: 100%;
+  min-height: min(72vh, 720px);
+}
+
+.photo-wall-display-page--kiosk .photo-wall-marquee-root--romance .photo-wall-marquee-track--romance {
+  min-height: min(88dvh, 900px);
+}
+
+.photo-wall-display-page--kiosk .photo-wall-marquee-panel--romance {
+  min-height: min(88dvh, 900px);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--romance {
+  position: relative;
+  width: 100%;
+  min-height: min(72vh, 720px);
+  box-sizing: border-box;
+  padding: clamp(1rem, 4.5vw, 2.75rem);
+  background: linear-gradient(168deg, #fdfaf6 0%, #f4ece4 40%, #ebe3d8 100%);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.photo-wall-display-page--kiosk .photo-wall-collage--immersive.photo-wall-collage--romance {
+  min-height: min(88dvh, 900px);
+}
+
+.photo-wall-romance-card {
+  position: absolute;
+  width: clamp(118px, 20vmin, 210px);
+  box-sizing: border-box;
+  background: #fff;
+  padding: 9px 9px 28px 9px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 12px 28px rgba(45, 32, 22, 0.14);
+  border-radius: 2px;
+}
+
+.photo-wall-romance-card--hero {
+  width: clamp(168px, 30vmin, 300px);
+  padding: 11px 11px 38px 11px;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.07),
+    0 20px 44px rgba(45, 32, 22, 0.2);
+}
+
+.photo-wall-romance-card-frame {
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: #e8e4de;
+  border-radius: 1px;
+}
+
+.photo-wall-romance-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  filter: sepia(0.07) saturate(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-wall-marquee-root--romance .photo-wall-marquee-track--romance {
+    animation: none;
+  }
+}
+
 .photo-wall-marquee-panel {
   flex: 0 0 50%;
   width: 50%;
@@ -5092,7 +5172,8 @@ body {
 
 .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--mosaic,
 .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-fluid,
-.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform {
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform,
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--romance {
   flex: 1 1 auto;
   width: 100%;
   min-height: 100%;
@@ -5111,6 +5192,12 @@ body {
   flex: 0 0 auto;
   height: auto;
   min-height: 0;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-panel--romance > .photo-wall-collage--immersive.photo-wall-collage--romance {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: min(72vh, 720px);
 }
 
 @keyframes photo-wall-marquee-pan {
@@ -5337,15 +5424,31 @@ body {
   background: #f0f0f0;
 }
 
-/* Плотный коллаж: cover + якорь к верху. 12 колонок + низкий ряд дают «линзу» — cover оставляет одну горизонтальную полоску; ряд ≈ доля ширины колонки. */
+/* Cover-мозаика: высота ряда ≈ ширина колонки (иначе ячейки шире, чем выше — cover даёт горизонтальную «ленту» и режет лица). */
 .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic {
-  --photo-wall-mosaic-row: clamp(64px, 8.2vw, 112px);
+  container-type: inline-size;
+  container-name: pw-mosaic;
+  /* fallback без cqw */
+  --photo-wall-mosaic-row: max(92px, min(12vw, 220px));
   grid-auto-rows: var(--photo-wall-mosaic-row);
+}
+
+@supports (width: 1cqw) {
+  .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic {
+    --photo-wall-mosaic-row: max(92px, min(calc(100cqw / 12 * 0.9), 260px));
+  }
+}
+
+/* Широкая однорядная плитка (2×1) — самая «низкая»; в cover даём 2 ряда → почти квадрат 2×2 по треку */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic .photo-wall-slot--mos-w {
+  grid-row: span 2;
 }
 
 /* Подстраховка высоты плиток (WebKit / сложные span) */
 .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
-  .photo-wall-slot--mosaic:not(.photo-wall-slot--empty):not(.photo-wall-slot--mos2):not(.photo-wall-slot--mos-h):not(.photo-wall-slot--mos-xl) {
+  .photo-wall-slot--mosaic:not(.photo-wall-slot--empty):not(.photo-wall-slot--mos2):not(.photo-wall-slot--mos-h):not(.photo-wall-slot--mos-xl):not(
+    .photo-wall-slot--mos-w
+  ) {
   min-height: var(--photo-wall-mosaic-row);
 }
 
@@ -5354,7 +5457,9 @@ body {
 .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
   .photo-wall-slot--mos-h:not(.photo-wall-slot--empty),
 .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
-  .photo-wall-slot--mos-xl:not(.photo-wall-slot--empty) {
+  .photo-wall-slot--mos-xl:not(.photo-wall-slot--empty),
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--mos-w:not(.photo-wall-slot--empty) {
   min-height: calc(2 * var(--photo-wall-mosaic-row));
 }
 
@@ -5374,9 +5479,22 @@ body {
   max-width: none;
   max-height: none;
   object-fit: cover;
-  object-position: center 28%;
+  /* при низких ячейках верхний якорь усиливал горизонтальную обрезку портретов */
+  object-position: center center;
   z-index: 1;
   display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--ori-portrait
+  .photo-wall-img {
+  object-position: center 36%;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--ori-square
+  .photo-wall-img {
+  object-position: center center;
 }
 
 .photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-fluid

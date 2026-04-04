@@ -129,7 +129,7 @@ export default function SurveyResults() {
                 </motion.div>
                 <p className="results-hero-links muted">
                   Публичная форма:{' '}
-                  <a href={publicFormUrl(data.survey.access_link)} target="_blank" rel="noreferrer">
+                  <a href={publicFormUrl(data.survey.access_link ?? '')} target="_blank" rel="noreferrer">
                     открыть в новой вкладке
                   </a>
                 </p>

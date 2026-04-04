@@ -17,6 +17,22 @@ function topOption(q) {
   return { label: String(top.label), count: top.count, pct };
 }
 
+function topNOptions(q, n) {
+  const dist = q.distribution || [];
+  if (!dist.length) return [];
+  const sum = dist.reduce((a, d) => a + d.count, 0) || 1;
+  return [...dist]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, n)
+    .map((d) => ({
+      label: String(d.label),
+      pct: Math.round((d.count / sum) * 1000) / 10,
+    }));
+}
+
+/**
+ * Связная записка для руководителя без LLM: абзацы, а не набор шаблонных маркеров.
+ */
 function buildHeuristicNarrative(snapshot) {
   const title = snapshot?.survey?.title || 'Опрос';
   const total = Number(snapshot?.total_responses || 0);
@@ -24,87 +40,91 @@ function buildHeuristicNarrative(snapshot) {
 
   if (!total) {
     return (
-      `Выводы по опросу «${title}»\n\n` +
-      `Пока нет ответов, поэтому статистические выводы сделать нельзя. ` +
-      `Опубликуйте опрос и проверьте публичную ссылку — после первых анкет появятся распределения и аналитика.\n`
+      `По опросу «${title}» пока нет ни одной отправленной анкеты, поэтому интерпретировать результаты рано. ` +
+        `После появления ответов здесь появится краткая сводка по вопросам и оценкам.`
     );
   }
 
-  const positives = [];
-  const negatives = [];
-
-  positives.push(
-    `Собрано ${total} ${plural(total, 'анкета', 'анкеты', 'анкет')} — уже можно смотреть на устойчивые тенденции по большинству вопросов.`
-  );
+  const paragraphs = [];
 
   const answered = qs.filter((q) => (q.response_count || 0) > 0).length;
-  if (answered < qs.length) {
-    negatives.push(
-      `Не по всем вопросам есть ответы: ${qs.length - answered} ${plural(qs.length - answered, 'вопрос', 'вопроса', 'вопросов')} пока без данных (возможны пропуски или логика показа).`
-    );
-  } else {
-    positives.push(`Охват полный: ответы есть по всем вопросам конструктора.`);
+  const empty = qs.length - answered;
+  let intro = `По теме «${title}» получено ${total} ${plural(total, 'заполненная анкета', 'заполненные анкеты', 'заполненных анкет')}`;
+  if (empty > 0 && empty <= 3) {
+    intro += `; по ${empty} ${plural(empty, 'вопросу', 'вопросам', 'вопросам')} из конструктора ответов пока нет — это не ошибка, а неполный охват на текущий момент`;
+  } else if (answered === qs.length) {
+    intro += `; респонденты ответили на все вопросы анкеты`;
   }
+  intro += '. Ниже — что видно из уже собранных данных.';
+  paragraphs.push(intro);
 
-  // Сильные сигналы в выборах: высокая концентрация лидера
-  const strong = qs
-    .filter((q) => (q.type === 'radio' || q.type === 'checkbox') && (q.response_count || 0) > 0)
-    .map((q) => {
-      const t = topOption(q);
-      return t ? { q, t } : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.t.pct - a.t.pct)
-    .slice(0, 2);
-
-  for (const item of strong) {
-    const qText = truncate(item.q.text, 82);
-    const pct = item.t.pct;
-    if (pct >= 70) {
-      positives.push(`По вопросу «${qText}» лидер набрал ${pct}% — выраженная доминанта мнений.`);
-    } else if (pct <= 35) {
-      negatives.push(`По вопросу «${qText}» нет явного лидера (топ ${pct}%) — мнения распределены, стоит смотреть детали по сегментам.`);
-    }
-  }
-
-  // Низкие оценки по шкалам/рейтингу (если диапазон известен)
-  const scales = qs.filter((q) => (q.type === 'scale' || q.type === 'rating') && q.average != null);
-  for (const q of scales.slice(0, 3)) {
+  const scaleParts = [];
+  const scales = qs.filter((q) => (q.type === 'scale' || q.type === 'rating') && q.average != null && (q.response_count || 0) > 0);
+  for (const q of scales.slice(0, 4)) {
     const avg = Number(q.average);
     const min = Number.isFinite(Number(q.min)) ? Number(q.min) : null;
     const max = Number.isFinite(Number(q.max)) ? Number(q.max) : null;
-    const qText = truncate(q.text, 82);
+    const qText = truncate(q.text, 100);
     if (Number.isFinite(avg) && min != null && max != null && max > min) {
       const norm = (avg - min) / (max - min);
-      if (norm <= 0.45) negatives.push(`Низкая оценка по шкале «${qText}»: среднее ${avg.toFixed(2)} из диапазона ${min}…${max}.`);
-      else if (norm >= 0.75) positives.push(`Высокая оценка по шкале «${qText}»: среднее ${avg.toFixed(2)} из диапазона ${min}…${max}.`);
+      if (norm >= 0.72) {
+        scaleParts.push(
+          `по формулировке «${qText}» средняя оценка высокая (${avg.toFixed(2)} при шкале ${min}–${max})`,
+        );
+      } else if (norm <= 0.42) {
+        scaleParts.push(
+          `по «${qText}» оценки заметно ниже ожидаемого уровня (среднее ${avg.toFixed(2)} при шкале ${min}–${max})`,
+        );
+      } else {
+        scaleParts.push(`по «${qText}» средний балл ${avg.toFixed(2)} (шкала ${min}–${max})`);
+      }
     }
   }
+  if (scaleParts.length) {
+    paragraphs.push(
+      `По шкалам и рейтингам: ${scaleParts.join('; ')}. Эти цифры стоит сопоставить с конкретными формулировками вопросов ниже на странице.`,
+    );
+  }
 
-  // Текстовые ответы: есть/нет
+  const choiceParts = [];
+  const choiceQs = qs.filter((q) => (q.type === 'radio' || q.type === 'checkbox') && (q.response_count || 0) > 0);
+  for (const q of choiceQs.slice(0, 3)) {
+    const top3 = topNOptions(q, 3);
+    const t = topOption(q);
+    if (!t || !top3.length) continue;
+    const qText = truncate(q.text, 90);
+    if (t.pct >= 65) {
+      choiceParts.push(
+        `в блоке «${qText}» явно лидирует вариант «${truncate(t.label, 60)}» (${t.pct}% ответов)`,
+      );
+    } else if (top3.length >= 2) {
+      choiceParts.push(
+        `в вопросе «${qText}» мнения разделились: чаще выбирают «${truncate(top3[0].label, 50)}» (${top3[0].pct}%) и «${truncate(top3[1].label, 50)}» (${top3[1].pct}%)`,
+      );
+    }
+  }
+  if (choiceParts.length) {
+    paragraphs.push(`По вопросам с вариантами ответа: ${choiceParts.join('; ')}.`);
+  }
+
   const textCount = qs.filter((q) => q.type === 'text' && (q.samples_total || 0) > 0).length;
-  if (textCount > 0) positives.push(`Есть развернутые комментарии: текстовых вопросов с ответами — ${textCount}.`);
+  if (textCount > 0) {
+    paragraphs.push(
+      `Респонденты оставили развёрнутые комментарии по ${textCount} ${plural(textCount, 'текстовому блоку', 'текстовым блокам', 'текстовым блокам')} — смысловые акценты отражены в облаке тем и в выборочных цитатах на странице.`,
+    );
+  }
 
-  const pick = (arr) => arr.filter(Boolean).slice(0, 5);
-  const p = pick(positives);
-  const n = pick(negatives);
+  if (paragraphs.length === 1) {
+    paragraphs.push(
+      `Детальные распределения по каждому вопросу смотрите в блоках ниже: там видно доли ответов и графики.`,
+    );
+  }
 
-  const lines = [];
-  lines.push(`Выводы по опросу «${title}»`);
-  lines.push('');
-  lines.push('Положительные моменты:');
-  lines.push(...(p.length ? p.map((x) => `- ${x}`) : ['- Не выявлено явных положительных сигналов по текущим данным.']));
-  lines.push('');
-  lines.push('Зоны внимания / отрицательные моменты:');
-  lines.push(...(n.length ? n.map((x) => `- ${x}`) : ['- Явных проблемных сигналов не видно — проверьте детализацию по вопросам.']));
-  lines.push('');
-  lines.push('Итог:');
-  lines.push(
-    `Сфокусируйтесь на 1–2 ключевых темах из «зон внимания» и подтвердите их через детальные распределения и развернутые ответы.`
+  paragraphs.push(
+    `Рекомендация: опираясь на приоритетные для вас вопросы опроса, отметьте 1–2 направления для обсуждения с командой (например, где оценки ниже ожиданий или мнения разошлись сильнее всего).`,
   );
 
-  return lines.join('\n');
+  return paragraphs.join('\n\n');
 }
 
 module.exports = { buildHeuristicNarrative };
-

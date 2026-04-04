@@ -1,5 +1,6 @@
 const { json, parseBody } = require('./lib/http');
 const { chatCompletion, isOpenAiUnsupportedRegion, formatGeoBlockHint } = require('./lib/llm-chat');
+const { tryParseLlmJsonObject } = require('./lib/parse-llm-json');
 
 function normalizeChatMessages(body) {
   const raw = body && Array.isArray(body.messages) ? body.messages : [];
@@ -43,8 +44,8 @@ async function fetchPulseReply(context, messages) {
 
   const system = `Ты «ПУЛЬС» — ассистент директора по наблюдениям из Excel (уроки, наставники, оценки).
 Отвечай только по-русски.
-Тебе передают JSON с доступными значениями фильтров (facetOptions) — это точные строки из таблицы. Подбирай срез только из этих строк.
-Текущие выбранные фильтры: currentFilters (null по ключу = все значения).
+Тебе передают JSON с доступными значениями фильтров (facetOptions): для каждого ключа только те значения, которые сочетаются с уже выбранными фильтрами по другим колонкам (логическая цепочка среза). Подбирай срез только из этих строк.
+Текущие выбранные фильтры: currentFilters (null по ключу = все значения в этом измерении).
 Краткая сводка по цифрам: numericSummary.
 
 ОБЯЗАТЕЛЬНО ответь одним JSON-объектом со схемой:
@@ -90,11 +91,9 @@ ${extra ? `\nдополнительно:\n${extra}` : ''}`;
             : res.detail;
       return { kind: 'openai_error', detail };
     }
-    let parsed;
-    try {
-      parsed = JSON.parse(res.text.trim());
-    } catch {
-      return { kind: 'openai_error', detail: 'Ответ не JSON' };
+    const parsed = tryParseLlmJsonObject(res.text);
+    if (!parsed) {
+      return { kind: 'openai_error', detail: 'Ответ не JSON (модель не вернула объект { reply, apply_filters })' };
     }
     const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
     if (!reply) return { kind: 'openai_error', detail: 'В JSON нет поля reply' };
@@ -129,7 +128,7 @@ async function handlePostPulseExcelChat(_pool, event) {
   const lastQ = messages[messages.length - 1].content;
   const pre =
     llm.kind === 'no_key'
-      ? 'ПУЛЬС недоступен: задайте в функции OPENAI_API_KEY или пару YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY (YandexGPT из РФ). Подробнее — BACKEND_AND_API.md.\n\n'
+      ? 'ПУЛЬС недоступен: задайте DEEPSEEK_API_KEY и LLM_PROVIDER=deepseek, или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. Подробнее — BACKEND_AND_API.md.\n\n'
       : `${llm.detail}\n\n`;
 
   return json(200, {

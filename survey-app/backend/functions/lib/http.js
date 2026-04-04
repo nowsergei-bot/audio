@@ -1,15 +1,47 @@
 const CORS_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*',
-  'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Api-Key, Authorization',
 };
 
+/** Ниже лимита ответа API Gateway (иначе часто 502 без JSON). */
+const MAX_JSON_BODY_UTF16_UNITS = Math.floor(3.5 * 1024 * 1024);
+
 function json(statusCode, body, extraHeaders = {}) {
+  let raw;
+  try {
+    raw = JSON.stringify(body);
+  } catch (err) {
+    console.error('[json] stringify failed', err);
+    raw = JSON.stringify({
+      error: 'serialization_failed',
+      message: 'Не удалось сформировать JSON-ответ (слишком большие данные).',
+    });
+    return {
+      statusCode: 500,
+      headers: { ...CORS_HEADERS, ...extraHeaders },
+      body: raw,
+      isBase64Encoded: false,
+    };
+  }
+  if (raw.length > MAX_JSON_BODY_UTF16_UNITS) {
+    raw = JSON.stringify({
+      error: 'response_too_large',
+      message:
+        'Ответ превышает лимит шлюза. На фотостене слишком много или слишком тяжёлые снимки — одобрите меньше или очистите стену в админке.',
+    });
+    return {
+      statusCode: 413,
+      headers: { ...CORS_HEADERS, ...extraHeaders },
+      body: raw,
+      isBase64Encoded: false,
+    };
+  }
   return {
     statusCode,
     headers: { ...CORS_HEADERS, ...extraHeaders },
-    body: JSON.stringify(body),
+    body: raw,
     isBase64Encoded: false,
   };
 }

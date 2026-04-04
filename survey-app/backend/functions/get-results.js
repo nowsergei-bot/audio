@@ -211,6 +211,7 @@ async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
       title: survey.title,
       status: survey.status,
       access_link: survey.access_link,
+      director_token: survey.director_token != null ? String(survey.director_token) : null,
     },
     total_responses: totalResponses,
     questions: questionsOut,

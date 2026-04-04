@@ -19,8 +19,12 @@ export type ColumnRole =
   | 'id_row';
 
 export const COLUMN_ROLE_OPTIONS: { value: ColumnRole; label: string; group: string }[] = [
-  { value: 'ignore', label: 'Не использовать', group: 'Служебное' },
-  { value: 'id_row', label: 'ID строки', group: 'Служебное' },
+  {
+    value: 'ignore',
+    label: 'Исключить из дашборда',
+    group: 'Дополнительно',
+  },
+  { value: 'id_row', label: 'ID строки (редко нужен)', group: 'Дополнительно' },
   { value: 'date', label: 'Дата', group: 'Время и подпись' },
   { value: 'row_label', label: 'Подпись строки', group: 'Время и подпись' },
   { value: 'filter_teacher_code', label: 'Код/шифр педагога', group: 'Фильтры' },
@@ -39,7 +43,7 @@ export const COLUMN_ROLE_OPTIONS: { value: ColumnRole; label: string; group: str
 ];
 
 export function roleAllowsDuplicate(role: ColumnRole): boolean {
-  return role === 'ignore' || role === 'metric_numeric';
+  return role === 'ignore' || role === 'metric_numeric' || role.startsWith('text_');
 }
 
 export function validateRoles(roles: ColumnRole[]): { ok: boolean; message?: string } {

@@ -190,16 +190,22 @@ chmod +x scripts/deploy-functions.sh
 | `OPENAI_API_KEY` | Ключ API OpenAI для ПУЛЬС, сводки Excel и др. **Важно:** запросы к `api.openai.com` с IP в РФ и из многих облаков дают **HTTP 403** (`Country, region, or territory not supported`). Тогда задайте YandexGPT (ниже) или прокси через `OPENAI_BASE_URL`. |
 | `OPENAI_MODEL` | Необязательно; по умолчанию в коде `gpt-4o-mini`. |
 | `OPENAI_BASE_URL` | Необязательно. База до суффикса `/v1` (например Azure OpenAI или прокси в поддерживаемом регионе). По умолчанию `https://api.openai.com/v1`. |
-| `LLM_PROVIDER` | `auto` (по умолчанию) — сначала OpenAI; при геоблоке 403 автоматически вызывается YandexGPT, если заданы `YANDEX_*`. Значение `yandex` — **только** YandexGPT (OpenAI не используется). |
+| `DEEPSEEK_API_KEY` | Ключ [DeepSeek API](https://platform.deepseek.com/) (Bearer). Работает из РФ и с Cloud Functions. Используется для ПУЛЬС, сводки Excel, запесок директора и др., если задан `LLM_PROVIDER=deepseek` или если нет `OPENAI_API_KEY` (см. `LLM_PROVIDER`). |
+| `DEEPSEEK_MODEL` | Необязательно. По умолчанию `deepseek-chat`; можно `deepseek-reasoner` (дольше и дороже). |
+| `LLM_PROVIDER` | `auto` (по умолчанию) — сначала OpenAI, если есть ключ; при ошибке OpenAI в режиме `auto` пробуется DeepSeek (если есть `DEEPSEEK_API_KEY`); при геоблоке 403 — YandexGPT, затем при неудаче DeepSeek. Значение **`deepseek`** — **только** DeepSeek (удобно для дашборда Excel). Значение `yandex` — только YandexGPT. |
 | `YANDEX_CLOUD_FOLDER_ID` | ID **каталога** Yandex Cloud (строка вида `b1g...`). |
-| `YANDEX_API_KEY` | **Api-Key** сервисного аккаунта с ролью на **Foundation Models** (генерация текста). |
+| `YANDEX_API_KEY` | **Секрет** Api-Key сервисного аккаунта (в консоли: IAM → сервисные аккаунты → ключи API). На **каталог** у этого СА нужна роль **`ai.languageModels.user`**. У самого ключа при создании укажите scope **`yc.ai.languageModels.execute`** (так в [официальных примерах](https://github.com/yandex-cloud-examples/yc-serverless-ai-agent)) или **`yc.ai.foundationModels.execute`**, если в вашей версии консоли так назван пункт для Foundation Models. |
 | `YANDEX_IAM_TOKEN` | Необязательно. **IAM-токен** того же сервисного аккаунта с `Authorization: Bearer` (если удобнее, чем Api-Key). Если задан, используется вместо `YANDEX_API_KEY`. Срок жизни токена ограничен — для продакшена обычно предпочтительнее Api-Key. |
 | `YANDEX_MODEL_URI` | Необязательно. По умолчанию в коде подставляется `gpt://<YANDEX_CLOUD_FOLDER_ID>/yandexgpt/latest` (при смене поколения модели см. [документацию Yandex Cloud](https://yandex.cloud/ru/docs/foundation-models/)). |
 | `YC_FOLDER_ID` / `YC_API_KEY` / `YC_IAM_TOKEN` | Синонимы для `YANDEX_CLOUD_FOLDER_ID` / `YANDEX_API_KEY` / `YANDEX_IAM_TOKEN`, если так удобнее. |
 
-Маршрут **`POST /api/excel-filter-sections`** (после входа в админку) строит группировку разделов фильтров на странице «Наблюдения из Excel»; без ключа возвращает `fallback`, клиент использует стандартные разделы.
+Маршрут **`POST /api/excel-filter-sections`** (после входа в админку) — ИИ-группировка **разделов** боковой панели; на странице «Наблюдения из Excel» по умолчанию разделы строятся локально, по кнопке вызывается этот маршрут.
 
-Маршрут **`POST /api/excel-narrative-summary`** (тело: `context.numericSummary`, опционально `extraContext`, `facetLabels`) — связный текст блока «Сводный анализ»; без ключа клиент оставляет машинную сводку из браузера.
+Маршрут **`POST /api/excel-filter-value-groups`** (тело: `filterKey`, `header`, `values[]`) — ИИ раскладывает длинный список значений одного фильтра по **смысловым подгруппам** (классы, метки); не меняет данные, только подсказка для UI. Минимум 6 значений в запросе.
+
+Маршрут **`POST /api/excel-narrative-summary`** (тело: `context.numericSummary`, опционально `extraContext`, `facetLabels`, `meta.filteredRowCount`, `meta.uniqueLessonCount`, `filterSummary`, `userFocus`, `analysisMode`). На клиенте в `numericSummary` передаётся **расширенная выгрузка** (срезы, шкала, шифры педагогов, больше цитат). Режим **`analysisMode: "deep"`** — полный разбор текущего среза (фильтры дашборда = параметры отбора), отдельный системный промпт. **Минимальная длина ответа по числу слов не проверяется** — принимается любой непустой `narrative` из JSON. Ответ может содержать `wordCount` и `analysisMode`. `max_tokens` до 8192.
+
+Маршрут **`POST /api/excel-director-dossier`** (тело: `packets[]`, до **8** элементов за запрос) — записки для директора по сегментам; каждый элемент: `segmentId`, `teacher`, опционально `subject`, `factsSummary`. Ответ: `{ items: [{ segmentId, narrative }] }`. Страница «Наблюдения из Excel» вызывает маршрут несколько раз, если сегментов больше восьми.
 
 Имена переменных в консоли должны быть **ровно** как в таблице: латиница, цифра или `_`, **без пробела** в начале или в конце имени (иначе ошибка `Field does not match the pattern`).
 
@@ -292,8 +298,55 @@ export YC_OBJECT_ACL_PUBLIC_READ=1
 | **502 / Function error** | Логи функции в консоли; часто неверный `PG_CONNECTION_STRING` или БД не пускает (файрвол / нет публичного доступа). |
 | **CORS в консоли браузера** | `CORS_ORIGIN` на функции = точный URL сайта с `https://`. |
 | **401** после ввода ключа | Неверный ключ или опечатка; должен совпадать с `ADMIN_API_KEY`. |
-| **401** от YandexGPT в логах функции (`llm.api.cloud.yandex.net`) | Неверный или просроченный `YANDEX_API_KEY` / `YANDEX_IAM_TOKEN`, не тот тип ключа (нужен **Api-Key** сервисного аккаунта, не JSON ключа и не статический ключ), **scope** `yc.ai.foundationModels.execute`, каталог в `YANDEX_CLOUD_FOLDER_ID` должен совпадать с каталогом ключа. В коде запросы идут с заголовком **`x-folder-id`**. |
+| **401** от YandexGPT в логах (`llm.api.cloud.yandex.net`) | См. раздел **«YandexGPT и HTTP 401»** ниже. |
 | **Timeout** | Увеличить таймаут функции; проверить, что БД доступна из облака. |
+
+---
+
+### YandexGPT и HTTP 401
+
+1. **Тип ключа** — только **API Key** сервисного аккаунта (одна строка-секрет). Не JSON-файл ключа, не **статический ключ доступа** (access key id/secret), не идентификатор ключа без секрета.
+2. **Роль на каталог** — у сервисного аккаунта: **`ai.languageModels.user`** (в примерах Yandex для вызова YandexGPT через тот же HTTP API).
+3. **Scope у API-ключа** — при создании ключа в консоли или через CLI задайте scope для вызова моделей. В [примере Yandex Cloud](https://github.com/yandex-cloud-examples/yc-serverless-ai-agent/blob/main/create-simple-ai-agent.py) используется **`yc.ai.languageModels.execute`**. В других экранах консоли может фигурировать **`yc.ai.foundationModels.execute`** — суть та же (вызов генерации); если при создании ключа доступен список scope, выберите пункт про **Foundation / Language Models / генерацию текста**.
+4. **`YANDEX_CLOUD_FOLDER_ID`** — это **ID каталога** (`b1g…`), в котором лежит проект и к которому привязан сервисный аккаунт; должен совпадать с каталогом в `modelUri` (по умолчанию `gpt://<этот_id>/yandexgpt/latest`).
+5. **Повторная вставка** — в переменной окружения не должно быть пробела в начале/конце строки и BOM; в коде секрет нормализуется, но лучше вставить ключ заново.
+6. Альтернатива — **`YANDEX_IAM_TOKEN`**: IAM-токен того же СА, в заголовке `Bearer` (см. ниже). Срок жизни ~12 ч, для постоянной работы удобнее Api-Key.
+
+Пример создания **Api-Key** через CLI (подставьте ID сервисного аккаунта):
+
+```bash
+yc iam api-key create --service-account-id <ID_СА> --scopes yc.ai.languageModels.execute
+```
+
+В выводе скопируйте поле **`secret`** в `YANDEX_API_KEY`.
+
+#### IAM-токен для сервисного аккаунта (`yc iam create-token`)
+
+У команды **`yc iam create-token` нет флага `--service-account-id`** — она всегда выдаёт токен для **того субъекта, от имени которого настроен текущий профиль** `yc`.
+
+Чтобы получить IAM-токен **именно сервисного аккаунта**:
+
+1. Один раз создайте **авторизованный ключ** (JSON) для СА и сохраните в файл, например `~/sa-key.json`:
+
+   ```bash
+   yc iam key create --service-account-id <ID_СА> -o ~/sa-key.json
+   ```
+
+2. Создайте отдельный профиль CLI и привяжите к нему этот файл:
+
+   ```bash
+   yc config profile create sa-llm
+   yc config set service-account-key ~/sa-key.json --profile sa-llm
+   yc config set folder-id <ID_КАТАЛОГА> --profile sa-llm
+   ```
+
+3. Выпустите токен (в выводе — одна строка, её и кладите в `YANDEX_IAM_TOKEN`):
+
+   ```bash
+   yc iam create-token --profile sa-llm
+   ```
+
+Если выполнить **`yc iam create-token` без** профиля с `service-account-key`, токен будет для **вашего пользовательского** аккаунта (OAuth), а не для СА — для LLM это обычно не подходит.
 
 ---
 

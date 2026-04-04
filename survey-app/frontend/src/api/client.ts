@@ -5,7 +5,9 @@ import type {
   AnalyticsFilter,
   PulseExcelChatResponse,
   ExcelFilterSectionsResponse,
+  ExcelFilterValueGroupsResponse,
   ExcelNarrativeSummaryResponse,
+  ExcelDirectorDossierResponse,
   TextQuestionInsightsPayload,
   AnswerSubmit,
   CommentRow,
@@ -16,6 +18,8 @@ import type {
   SurveyExportRowsPayload,
   SurveyWorkbook,
   TextAnswersPage,
+  PhotoWallPhotoRow,
+  PhotoWallModerationStatus,
 } from '../types';
 
 function normalizeApiBase(raw: string): string {
@@ -42,26 +46,39 @@ function adminHeaders(): HeadersInit {
   const key = localStorage.getItem('admin_api_key') || '';
   const token = localStorage.getItem('auth_token') || '';
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) h['Authorization'] = `Bearer ${token}`;
-  else if (key) h['X-Api-Key'] = key;
+  // Ключ из главной админки должен иметь приоритет: иначе просроченный Bearer перекрывает валидный X-Api-Key.
+  if (key.trim()) h['X-Api-Key'] = key.trim();
+  else if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
+  let text = await res.text();
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   if (!text) return {} as T;
   const t = text.trim();
-  if (t.startsWith('<!') || t.startsWith('<html') || t.startsWith('<?xml')) {
+  const lead = t.trimStart().slice(0, 1);
+  if (lead === '<') {
     throw new Error(
       API_BASE
         ? 'Сервер ответил страницей/XML вместо JSON — проверьте VITE_API_BASE и путь API.'
-        : 'API не настроен: соберите фронт с VITE_API_BASE=https://… (URL функции или API Gateway) и залейте в бакет снова.'
+        : 'API не настроен: соберите фронт с VITE_API_BASE=https://… (URL функции или API Gateway) и залейте в бакет снова.',
     );
   }
   try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error('Ответ не JSON. Проверьте URL API и CORS на стороне функции.');
+    return JSON.parse(t) as T;
+  } catch (e) {
+    const preview = t.replace(/\s+/g, ' ').slice(0, 220);
+    const base = API_BASE || '(VITE_API_BASE не задан при сборке)';
+    const hint =
+      e instanceof SyntaxError
+        ? ' Похоже на обрезанный ответ, HTML вместо JSON или неверный URL (не вставляйте адрес API в консоль без fetch/кавычек).'
+        : '';
+    throw new Error(
+      `Ответ не JSON (HTTP ${res.status}).${hint} ` +
+        (preview ? `Начало ответа: ${preview}` : 'Пустой или битый ответ') +
+        `. Ожидался JSON с ${base}/api/… Проверьте адрес API в сборке, маршруты шлюза и CORS_ORIGIN на функции.`,
+    );
   }
 }
 
@@ -329,6 +346,27 @@ export async function requestAiInsights(surveyId: number, filters?: AnalyticsFil
   return data;
 }
 
+/** Публичная сводка по секретному токену директора (без авторизации). */
+export async function getDirectorSurveyResults(directorToken: string): Promise<ResultsPayload> {
+  const enc = encodeURIComponent(directorToken);
+  const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/results`, { cache: 'no-store' });
+  const data = await parseJson<ResultsPayload & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+export async function requestDirectorAiInsights(directorToken: string): Promise<AiInsightsPayload> {
+  const enc = encodeURIComponent(directorToken);
+  const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/ai-insights`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filters: [] }),
+  });
+  const data = await parseJson<AiInsightsPayload & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 /** Диалог с нейроаналитиком по текущей выборке и срезу (на функции нужен OPENAI_API_KEY). */
 export async function postAnalyticsChat(
   surveyId: number,
@@ -393,12 +431,35 @@ export async function postExcelFilterSections(payload: {
   return data;
 }
 
+/** ИИ: сгруппировать «сырые» значения одного фильтра (классы, метки) по смыслу. */
+export async function postExcelFilterValueGroups(payload: {
+  filterKey: string;
+  header: string;
+  values: string[];
+}): Promise<ExcelFilterValueGroupsResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-filter-value-groups`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelFilterValueGroupsResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
 /** Связный «Сводный анализ» по машинной сводке и контексту (нужен OPENAI_API_KEY). */
 export async function postExcelNarrativeSummary(payload: {
   context: {
     numericSummary: string;
     extraContext?: string;
     facetLabels?: Record<string, string>;
+    meta?: { filteredRowCount?: number; uniqueLessonCount?: number };
+    /** standard (по умолчанию) | deep — расширенный отчёт по тому же срезу */
+    analysisMode?: 'standard' | 'deep';
+    /** Человекочитаемое описание активных фильтров (параметры среза). */
+    filterSummary?: string;
+    /** Доп. пожелания к акцентам анализа. */
+    userFocus?: string;
   };
 }): Promise<ExcelNarrativeSummaryResponse> {
   const res = await apiFetch(`${API_BASE}/api/excel-narrative-summary`, {
@@ -407,6 +468,22 @@ export async function postExcelNarrativeSummary(payload: {
     body: JSON.stringify(payload),
   });
   const data = await parseJson<ExcelNarrativeSummaryResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** Пакет ИИ-записок для директора по нескольким педагогам (или парам педагог+предмет); до 8 сегментов за запрос. */
+export async function postExcelDirectorDossier(payload: {
+  packets: { segmentId: string; teacher: string; subject?: string | null; factsSummary: string }[];
+  /** Справочник шифр→ФИО с других листов книги (опционально). */
+  sharedCodebook?: string;
+}): Promise<ExcelDirectorDossierResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-director-dossier`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelDirectorDossierResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
@@ -558,6 +635,217 @@ export async function submitResponse(
   });
   const data = await parseJson<{ error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
+}
+
+export type PhotoWallApprovedPhoto = { id: number; image_data: string };
+
+/** Ответ публичного списка одобренных: часть снимков может быть отсечена лимитом размера JSON на бэкенде. */
+export type GetPublicPhotoWallApprovedResult = {
+  photos: PhotoWallApprovedPhoto[];
+  truncated?: boolean;
+  hint?: string;
+};
+
+export async function getPublicPhotoWallApproved(): Promise<GetPublicPhotoWallApprovedResult> {
+  const res = await apiFetch(`${API_BASE}/api/public/photo-wall/approved`, {
+    /** default: браузер может кэшировать при Cache-Control с бэкенда (лёгкие URL), меньше нагрузка на Neon */
+    cache: 'default',
+    headers: { Accept: 'application/json' },
+  });
+  const data = await parseJson<{
+    photos?: { id: number; image_data?: string; imageData?: string }[];
+    truncated?: boolean;
+    photo_wall_hint?: string;
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) {
+    const code =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    const detail = typeof data.message === 'string' && data.message && data.message !== code ? data.message : '';
+    let msg = code;
+    if (code === 'photo_wall_approved_failed' || /photo_wall_approved_failed/i.test(code)) {
+      msg =
+        'Не удалось загрузить коллаж. Проверьте миграции БД для фотостены (009–012), подключение к PostgreSQL и логи Cloud Function.';
+      if (detail) msg = `${msg} Технически: ${detail}`;
+    } else if (code === 'photo_wall_payload_too_large' || res.status === 413) {
+      msg =
+        'Ответ с фотостены слишком большой. Включите Object Storage (PHOTO_WALL_STORAGE=1) и URL в БД или уменьшите число одобренных снимков.';
+      if (detail) msg = `${msg} ${detail}`;
+    }
+    throw new Error(msg);
+  }
+  const rows = data.photos || [];
+  const photos = rows
+    .map((row) => {
+      const image_data = row.image_data ?? row.imageData ?? '';
+      return { id: row.id, image_data: typeof image_data === 'string' ? image_data : '' };
+    })
+    .filter((row) => row.image_data.length > 0);
+  return {
+    photos,
+    truncated: Boolean(data.truncated),
+    hint: typeof data.photo_wall_hint === 'string' ? data.photo_wall_hint : undefined,
+  };
+}
+
+export async function postPublicPhotoWallUpload(
+  respondentId: string,
+  imageData: string,
+  thumbData?: string,
+): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/public/photo-wall/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      respondent_id: respondentId,
+      image_data: imageData,
+      ...(thumbData ? { thumb_data: thumbData } : {}),
+    }),
+  });
+  const data = await parseJson<{ error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+}
+
+export async function getPhotoWallPhotos(): Promise<PhotoWallPhotoRow[]> {
+  const res = await apiFetch(`${API_BASE}/api/photo-wall/photos`, { headers: adminHeaders() });
+  const data = await parseJson<{ photos?: PhotoWallPhotoRow[]; error?: string; message?: string }>(res);
+  if (!res.ok) {
+    const msg =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return data.photos || [];
+}
+
+/** Полное фото одной записи (модерация): HTTPS из статики или data URL из БД. */
+export async function getPhotoWallPhotoFull(id: number): Promise<{ image_data: string }> {
+  const res = await apiFetch(`${API_BASE}/api/photo-wall/photos/${id}/full`, { headers: adminHeaders() });
+  const data = await parseJson<{ image_data?: string; image_url?: string; error?: string; message?: string }>(res);
+  if (!res.ok) {
+    const msg =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  const url = typeof data.image_url === 'string' ? data.image_url.trim() : '';
+  if (url) return { image_data: url };
+  const image_data = typeof data.image_data === 'string' ? data.image_data : '';
+  if (!image_data) throw new Error('Пустое изображение');
+  return { image_data };
+}
+
+export type PhotoWallClearScope = 'approved' | 'pending' | 'rejected' | 'all';
+
+export type PhotoWallClearResult = {
+  deleted: number;
+  storage_deleted?: number;
+  storage_skipped?: boolean;
+  storage_error?: string;
+};
+
+/** Массовая очистка фотостены (админ). При scope=all можно удалить объекты в бакете (photo-wall/). */
+export async function postPhotoWallClear(
+  scope: PhotoWallClearScope,
+  opts?: { purgeObjectStorage?: boolean },
+): Promise<PhotoWallClearResult> {
+  const body: Record<string, unknown> = { scope, confirm: true };
+  if (scope === 'all' && opts?.purgeObjectStorage) {
+    body.purge_object_storage = true;
+  }
+  const res = await apiFetch(`${API_BASE}/api/photo-wall/clear`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{
+    deleted?: number;
+    storage_deleted?: number;
+    storage_skipped?: boolean;
+    storage_error?: string;
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) {
+    const msg =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return {
+    deleted: Number(data.deleted ?? 0),
+    ...(typeof data.storage_deleted === 'number' ? { storage_deleted: data.storage_deleted } : {}),
+    ...(typeof data.storage_skipped === 'boolean' ? { storage_skipped: data.storage_skipped } : {}),
+    ...(typeof data.storage_error === 'string' ? { storage_error: data.storage_error } : {}),
+  };
+}
+
+export type PostPhotoWallApproveAllOptions = {
+  /** Если массовый POST недоступен (старая функция / 404), одобряем через уже существующий PATCH по списку id. */
+  fallbackPendingIds?: number[];
+};
+
+/** Одобрить все pending (админ). Два URL + при 404 запасной вариант PATCH по id. */
+export async function postPhotoWallApproveAll(options?: PostPhotoWallApproveAllOptions): Promise<{ updated: number }> {
+  const urls = [`${API_BASE}/api/photo-wall/photos/approve-all`, `${API_BASE}/api/photo-wall/approve-all`];
+  let lastFail: Error | null = null;
+
+  for (const url of urls) {
+    const res = await apiFetch(url, {
+      method: 'POST',
+      headers: adminHeaders(),
+      body: JSON.stringify({}),
+    });
+    const data = await parseJson<{ updated?: number; error?: string; message?: string }>(res);
+    if (res.ok) {
+      return { updated: Number(data.updated ?? 0) };
+    }
+    const msg =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    lastFail = new Error(msg);
+    if (res.status === 404) continue;
+    throw lastFail;
+  }
+
+  const ids = (options?.fallbackPendingIds ?? []).filter((id) => Number.isFinite(id));
+  if (ids.length === 0) {
+    throw lastFail ?? new Error('Not found');
+  }
+  await Promise.all(ids.map((id) => patchPhotoWallPhoto(id, 'approved')));
+  return { updated: ids.length };
+}
+
+export async function patchPhotoWallPhoto(
+  id: number,
+  moderation_status: PhotoWallModerationStatus,
+): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/photo-wall/photos/${id}`, {
+    method: 'PATCH',
+    headers: adminHeaders(),
+    body: JSON.stringify({ moderation_status }),
+  });
+  const data = await parseJson<{ error?: string; message?: string }>(res);
+  if (!res.ok) {
+    const msg =
+      (typeof data.error === 'string' && data.error) ||
+      (typeof data.message === 'string' && data.message) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
 }
 
 export function publicFormUrl(accessLink: string): string {

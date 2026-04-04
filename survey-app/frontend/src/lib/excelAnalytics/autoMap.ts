@@ -68,14 +68,21 @@ function matchHeader(header: string): HeaderMatch | null {
   if (!h) return null;
 
   const rules: [ColumnRole, RegExp, number][] = [
-    ['date', /дата|(^|[^а-я])время|date|timestamp|когда|посещен|отметка|проведен/i, 95],
+    /** «проведен» в общем виде не используем — иначе «Формат проведения урока» ошибочно становится «датой». */
+    [
+      'date',
+      /дата\s*посещ|дата\s*урока?|дата\s*наблюден|дата\s*мероприят|дата\s*проведени\w*\s*урок|lesson\s*date|date\s*of\s*visit/i,
+      99,
+    ],
+    ['date', /отметка\s*времени|время\s*ответ|время\s*отправ|время\s*заполн|submitted\s*at|created\s*at|дата\s*ответ|дата\s*отправ/i, 82],
+    ['date', /\bдата\b(?!\s*ответ)|\bdate\b|timestamp|когда\b/i, 87],
     ['filter_teacher_code', /шифр|код\s*педагог|код\s*учител|teacher|педагог.*код|id\s*педагог/i, 92],
     ['filter_parallel', /параллел|parallel/i, 90],
     ['filter_class', /(^|[^а-я])класс|class|группа\s*\d/i, 90],
     ['filter_subject', /предмет|дисциплин|тема\s*урок|subject|курс(?!\s*оцен)/i, 88],
     [
       'filter_format',
-      /формат|модаль|вид\s*урок|вид\s*занят|проведен|дистанц|очно|онлайн|гибрид|смеш|удалён|удален|remote|hybrid|zoom|teams|офлайн|офис|присутств/i,
+      /формат|модаль|вид\s*урок|вид\s*занят|дистанц|очно|онлайн|гибрид|смеш|удалён|удален|remote|hybrid|zoom|teams|офлайн|офис|присутств/i,
       86,
     ],
     ['text_ai_recommendations', /рекомендац|что\s*улучшить|на\s*что\s*обратить/i, 84],
@@ -135,9 +142,72 @@ function scoreFormatLikeness(vals: Set<string>, header: string): number {
   return 0;
 }
 
+function firstFreeFilterCustom(out: ColumnRole[]): ColumnRole | null {
+  for (const fk of ['filter_custom_1', 'filter_custom_2', 'filter_custom_3'] as ColumnRole[]) {
+    if (!out.includes(fk)) return fk;
+  }
+  return null;
+}
+
+/** Типичные заголовки критериев в листах наблюдения за уроком. */
+const STRONG_OBSERVATION_RUBRIC =
+  /методическ\w*\s*грамотност|общекультурн\w*\s*компетенц|взаимодействи\w*\s*участник|содержател\w*\s*урок|результативност|управлен\w*\s*деятельност|дидактич/i;
+
+/**
+ * Всё, что осталось «игнор», подключаем к дашборду: критерии, даты, короткие справочники, длинные тексты.
+ * Несколько текстовых колонок допускается (см. roleAllowsDuplicate для text_*).
+ */
+function inclusiveFillIgnored(headers: string[], rows: CellPrimitive[][], out: ColumnRole[]): void {
+  const n = headers.length;
+  const stats = headers.map((_, i) => computeStats(rows, i));
+
+  for (let i = 0; i < n; i++) {
+    if (out[i] !== 'ignore') continue;
+    const s = stats[i];
+    const h = norm(headers[i] ?? '');
+
+    if (s.nonEmptyRatio < 0.015) continue;
+
+    if (STRONG_OBSERVATION_RUBRIC.test(h)) {
+      out[i] = 'metric_numeric';
+      continue;
+    }
+    if (s.numericRatio >= 0.2) {
+      out[i] = 'metric_numeric';
+      continue;
+    }
+    if (!out.includes('date') && s.dateRatio >= 0.38) {
+      out[i] = 'date';
+      continue;
+    }
+    if (
+      s.numericRatio < 0.2 &&
+      s.uniqueStrCount >= 2 &&
+      s.uniqueStrCount <= 42 &&
+      s.medianStrLen < 50 &&
+      s.nonEmptyRatio > 0.08
+    ) {
+      const fk = firstFreeFilterCustom(out);
+      if (fk) {
+        out[i] = fk;
+        continue;
+      }
+    }
+    if (s.medianStrLen >= 24) {
+      out[i] = 'text_ai_summary';
+      continue;
+    }
+    if (s.medianStrLen >= 8) {
+      out[i] = 'text_list_features';
+      continue;
+    }
+    out[i] = 'text_ai_summary';
+  }
+}
+
 /**
  * Подбор ролей по названиям столбцов и первым строкам данных.
- * Уникальные роли не дублируются; несколько столбцов могут быть metric_numeric.
+ * Уникальные роли не дублируются; несколько столбцов могут быть metric_numeric и несколько — с ролями text_*.
  */
 export function suggestColumnRoles(headers: string[], rows: CellPrimitive[][]): ColumnRole[] {
   const n = headers.length;
@@ -207,7 +277,7 @@ export function suggestColumnRoles(headers: string[], rows: CellPrimitive[][]): 
   for (let i = 0; i < n; i++) {
     if (out[i] !== 'ignore') continue;
     const s = stats[i];
-    if (s.numericRatio >= 0.65 && s.filledStrCount > 0) {
+    if (s.numericRatio >= 0.48 && s.filledStrCount > 0) {
       out[i] = 'metric_numeric';
     }
   }
@@ -239,8 +309,12 @@ export function suggestColumnRoles(headers: string[], rows: CellPrimitive[][]): 
     .sort((a, b) => b.s.medianStrLen - a.s.medianStrLen);
 
   for (const { i } of longTextCols) {
-    if (tr >= textRoles.length) break;
-    if (takeUnique(textRoles[tr], i)) tr++;
+    if (tr < textRoles.length) {
+      takeUnique(textRoles[tr], i);
+      tr++;
+    } else {
+      takeUnique('text_ai_summary', i);
+    }
   }
 
   /** Подпись строки: первый осмысленный текстовый столбец без роли */
@@ -258,8 +332,10 @@ export function suggestColumnRoles(headers: string[], rows: CellPrimitive[][]): 
   for (let i = 0; i < n; i++) {
     if (out[i] !== 'ignore') continue;
     const s = stats[i];
-    if (s.numericRatio >= 0.4) out[i] = 'metric_numeric';
+    if (s.numericRatio >= 0.28) out[i] = 'metric_numeric';
   }
+
+  inclusiveFillIgnored(headers, rows, out);
 
   if (!validateRoles(out).ok) {
     let placed = false;

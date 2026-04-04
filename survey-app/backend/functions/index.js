@@ -15,7 +15,9 @@ const { handlePostAiInsights } = require('./post-ai-insights');
 const { handlePostAnalyticsChat } = require('./post-analytics-chat');
 const { handlePostPulseExcelChat } = require('./post-pulse-excel-chat');
 const { handlePostExcelFilterSections } = require('./post-excel-filter-sections');
+const { handlePostExcelFilterValueGroups } = require('./post-excel-filter-value-groups');
 const { handlePostExcelNarrativeSummary } = require('./post-excel-narrative-summary');
+const { handlePostExcelDirectorDossier } = require('./post-excel-director-dossier');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
 const { handlePostWorkbook } = require('./post-workbook');
@@ -37,7 +39,17 @@ const {
   handleGetSurveyInviteTemplate,
   handlePutSurveyInviteTemplate,
 } = require('./survey-invites');
-
+const { handlePostPublicPhotoWallUpload } = require('./post-public-photo-wall-upload');
+const { handleGetPublicPhotoWallApproved } = require('./get-public-photo-wall-approved');
+const { handleGetPhotoWallPhotos } = require('./get-photo-wall-photos');
+const { handleGetPhotoWallPhotoFull } = require('./get-photo-wall-photo-full');
+const { handlePatchPhotoWallPhoto } = require('./patch-photo-wall-photo');
+const { handlePostPhotoWallClear } = require('./post-photo-wall-clear');
+const { handlePostPhotoWallApproveAll } = require('./post-photo-wall-approve-all');
+const {
+  handleGetPublicDirectorResults,
+  handlePostPublicDirectorAiInsights,
+} = require('./get-public-director');
 function segmentsFromPath(path) {
   return path
     .split('/')
@@ -82,6 +94,50 @@ async function handlerImpl(event) {
     const pool = getPool();
     return handleSaveResponseByLink(pool, segs[3], event);
   }
+  // Доп. сегменты в пути после approved иногда даёт API Gateway / этап — хвост не проверяем
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'photo-wall' &&
+    segs[3] === 'approved'
+  ) {
+    const pool = getPool();
+    return handleGetPublicPhotoWallApproved(pool);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'photo-wall' &&
+    segs[3] === 'upload'
+  ) {
+    const pool = getPool();
+    return handlePostPublicPhotoWallUpload(pool, event);
+  }
+
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'director' &&
+    segs[3] &&
+    segs[4] === 'results'
+  ) {
+    const pool = getPool();
+    return handleGetPublicDirectorResults(pool, segs[3]);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'director' &&
+    segs[3] &&
+    segs[4] === 'ai-insights'
+  ) {
+    const pool = getPool();
+    return handlePostPublicDirectorAiInsights(pool, segs[3], event);
+  }
 
   // POST ответа по id опроса (ТЗ) — только для опубликованных, без ключа
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs[2] && segs[3] === 'responses') {
@@ -119,6 +175,65 @@ async function handlerImpl(event) {
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleGetSurveys(pool, user);
   }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'photo-wall' && segs[2] === 'photos' && segs.length === 3) {
+    return handleGetPhotoWallPhotos(pool);
+  }
+  /** POST …/photo-wall/photos/approve-all (иногда шлюз добавляет хвостовые сегменты — не требуем segs.length === 4). */
+  function isPostPhotoWallApproveAllRoute() {
+    if (method !== 'POST' || segs[0] !== 'api' || segs[1] !== 'photo-wall') return false;
+    const i = segs.lastIndexOf('approve-all');
+    if (i < 3) return false;
+    return segs[i - 1] === 'photos' && segs[i - 2] === 'photo-wall' && segs[i - 3] === 'api';
+  }
+  if (isPostPhotoWallApproveAllRoute()) {
+    if (user.role !== 'admin' && !auth.viaAdminKey) {
+      return json(403, { error: 'Forbidden', message: 'Массовое одобрение доступно только администратору.' });
+    }
+    return handlePostPhotoWallApproveAll(pool);
+  }
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'photo-wall' &&
+    segs[2] === 'photos' &&
+    segs.length === 5 &&
+    segs[4] === 'full' &&
+    segs[3]
+  ) {
+    const pid = Number(segs[3]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handleGetPhotoWallPhotoFull(pool, pid);
+  }
+  if (
+    method === 'PATCH' &&
+    segs[0] === 'api' &&
+    segs[1] === 'photo-wall' &&
+    segs[2] === 'photos' &&
+    segs[3] &&
+    !segs[4]
+  ) {
+    const id = Number(segs[3]);
+    if (!Number.isFinite(id)) return json(400, { error: 'Invalid id' });
+    return handlePatchPhotoWallPhoto(pool, event, id);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'photo-wall' && segs[2] === 'clear' && segs.length === 3) {
+    if (user.role !== 'admin' && !auth.viaAdminKey) {
+      return json(403, { error: 'Forbidden', message: 'Очистка фотостены доступна только администратору.' });
+    }
+    return handlePostPhotoWallClear(pool, event);
+  }
+  /** POST …/photo-wall/approve-all (допускаем хвостовые сегменты после approve-all). */
+  function isPostPhotoWallApproveAllLegacyRoute() {
+    if (method !== 'POST' || segs[0] !== 'api' || segs[1] !== 'photo-wall') return false;
+    const i = segs.lastIndexOf('approve-all');
+    return i === 2;
+  }
+  if (isPostPhotoWallApproveAllLegacyRoute()) {
+    if (user.role !== 'admin' && !auth.viaAdminKey) {
+      return json(403, { error: 'Forbidden', message: 'Массовое одобрение доступно только администратору.' });
+    }
+    return handlePostPhotoWallApproveAll(pool);
+  }
   // Excel → черновик: шлюз Яндекса иногда даёт лишние префиксы (этап, $default), поэтому ищем хвост …/surveys/from-workbook
   function isPostFromWorkbookRoute() {
     if (method !== 'POST') return false;
@@ -138,8 +253,14 @@ async function handlerImpl(event) {
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-filter-sections' && segs.length === 2) {
     return handlePostExcelFilterSections(pool, event);
   }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-filter-value-groups' && segs.length === 2) {
+    return handlePostExcelFilterValueGroups(pool, event);
+  }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-narrative-summary' && segs.length === 2) {
     return handlePostExcelNarrativeSummary(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-director-dossier' && segs.length === 2) {
+    return handlePostExcelDirectorDossier(pool, event);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleCreateSurvey(pool, event, user);

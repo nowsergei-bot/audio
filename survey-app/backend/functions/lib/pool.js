@@ -2,12 +2,14 @@ const { Pool } = require('pg');
 
 let pool;
 
-/** Для Neon в URI должен быть sslmode=require; иначе подключение может не установиться. */
-function ensureNeonSslMode(connectionString) {
-  if (!connectionString || !/neon\.tech/i.test(connectionString)) {
+/** Если в URI нет sslmode=, добавляем require (Neon, многие облачные Postgres). */
+function ensureSslModeRequire(connectionString) {
+  if (!connectionString || /sslmode=/i.test(connectionString)) {
     return connectionString;
   }
-  if (/sslmode=/i.test(connectionString)) {
+  const hostNeedsDefaultSsl =
+    /neon\.tech|supabase\.co|pooler\.supabase|yandexcloud\.net|amazonaws\.com/i.test(connectionString);
+  if (!hostNeedsDefaultSsl) {
     return connectionString;
   }
   return connectionString.includes('?')
@@ -31,7 +33,7 @@ function getPool() {
     if (!connectionString) {
       throw new Error('PG_CONNECTION_STRING is not set');
     }
-    connectionString = ensureNeonSslMode(connectionString.trim());
+    connectionString = ensureSslModeRequire(connectionString.trim());
     logTarget(connectionString);
 
     const useSsl =
@@ -39,9 +41,10 @@ function getPool() {
         ? false
         : { rejectUnauthorized: process.env.PG_SSL_REJECT_UNAUTHORIZED !== 'false' };
 
+    const maxConn = parseInt(String(process.env.PG_POOL_MAX || '4').trim(), 10);
     pool = new Pool({
       connectionString,
-      max: 5,
+      max: Number.isFinite(maxConn) && maxConn >= 1 && maxConn <= 20 ? maxConn : 4,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 15000,
       ssl: useSsl,

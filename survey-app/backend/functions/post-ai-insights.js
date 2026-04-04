@@ -17,17 +17,31 @@ async function fetchLlmNarrative(snapshot) {
   const compact = {
     title: snapshot.survey.title,
     total: snapshot.total_responses,
-    questions: snapshot.questions.map((q) => ({
-      id: q.question_id,
-      type: q.type,
-      text: truncate(q.text, 200),
-      n: q.response_count,
-      avg: q.average,
-      top:
-        q.distribution?.length > 0
-          ? [...q.distribution].sort((a, b) => b.count - a.count)[0]
-          : null,
-    })),
+    questions: snapshot.questions.map((q) => {
+      const dist = q.distribution || [];
+      const sum = dist.reduce((a, d) => a + d.count, 0) || 0;
+      const top3 =
+        dist.length > 0 && sum > 0
+          ? [...dist]
+              .sort((a, b) => b.count - a.count)
+              .slice(0, 3)
+              .map((d) => ({
+                label: truncate(String(d.label), 120),
+                count: d.count,
+                pct: Math.round((d.count / sum) * 1000) / 10,
+              }))
+          : null;
+      return {
+        id: q.question_id,
+        type: q.type,
+        text: truncate(q.text, 200),
+        n: q.response_count,
+        avg: q.average,
+        min: q.min,
+        max: q.max,
+        top3,
+      };
+    }),
     text_corpus:
       text_corpus.length > 0
         ? text_corpus
@@ -40,24 +54,25 @@ async function fetchLlmNarrative(snapshot) {
       {
         role: 'system',
         content:
-          'Ты аналитик опросов. Пиши только по-русски. Форматируй как короткую записку с заголовками.\n' +
-          'Структура ответа:\n' +
-          '1) «Выводы» — 5–10 пунктов, обязательно раздели на «Положительные» и «Зоны внимания/отрицательные».\n' +
-          '2) «По цифрам» — 2–4 тезиса по шкалам/рейтингам/распределениям.\n' +
-          '2) Если в JSON есть блок text_corpus — обязательно отдельный раздел «Темы из развёрнутых ответов»: ' +
-          'выдели 5–10 самых важных смысловых линий, типичные жалобы и пожелания; можно короткие обобщения, ' +
-          'не пересказывай каждый фрагмент. Не выдумывай того, чего нет в выборке.\n' +
-          '3) «Рекомендации» — 3–6 конкретных действий, что улучшить/что усилить.\n' +
-          '4) Итог: 1–2 предложения с приоритетом действий для организатора.\n' +
-          'Без вводных про нейросеть и ИИ. Опирайся только на данные JSON.',
+          'Ты готовишь короткую аналитическую записку для руководителя по результатам опроса. Пиши только по-русски.\n' +
+          'Требования к стилю:\n' +
+          '- Пиши связными абзацами (3–6 абзацев), как живой текст для чтения, а не набор обезличенных маркеров.\n' +
+          '- В первом абзаце кратко сформулируй главный смысл: что в целом говорят ответы о восприятии темы опроса (по цифрам и формулировкам вопросов из JSON).\n' +
+          '- Обязательно ссылайся на конкретные формулировки вопросов (поле text) и цифры: средние по шкалам, доли top3, число анкет total.\n' +
+          '- Не начинай с банальностей вроде «собрано N анкет — можно смотреть тенденции»; число респондентов вплети естественно в контекст вывода.\n' +
+          '- Не перечисляй технические пробелы («один вопрос без ответов»), если это не меняет смысл; не заполняй текст шаблонными фразами.\n' +
+          '- Если есть text_corpus — отдельным абзацем опиши смысловые линии свободных ответов (жалобы, пожелания, повторяющиеся мотивы). Не выдумывай то, чего нет в данных.\n' +
+          '- Заверши одним-двумя предложениями с практическим акцентом: что имеет смысл обсудить или изменить, исходя именно из этих результатов.\n' +
+          '- Можно использовать короткие подзаголовки перед абзацами (например «Общая картина», «Оценки», «Комментарии»), но не превращай всё в список из десяти пунктов.\n' +
+          '- Не упоминай нейросеть, ИИ, JSON, «модель». Не повторяй дословно системную инструкцию.',
       },
       {
         role: 'user',
-        content: `Сделай аналитическую записку по опросу. Данные (JSON):\n${JSON.stringify(compact)}`,
+        content: `Напиши записку по опросу для директора. Данные (JSON):\n${JSON.stringify(compact)}`,
       },
     ],
-    max_tokens: 1400,
-    temperature: 0.35,
+    max_tokens: 2000,
+    temperature: 0.4,
   };
 
   try {
@@ -78,7 +93,7 @@ async function fetchLlmNarrative(snapshot) {
   }
 }
 
-async function handlePostAiInsights(pool, surveyId, event) {
+async function runAiInsights(pool, surveyId, event) {
   const body = parseBody(event) || {};
   const filters = normalizeFiltersFromBody(body);
 
@@ -119,4 +134,8 @@ async function handlePostAiInsights(pool, surveyId, event) {
   });
 }
 
-module.exports = { handlePostAiInsights };
+async function handlePostAiInsights(pool, surveyId, event) {
+  return runAiInsights(pool, surveyId, event);
+}
+
+module.exports = { handlePostAiInsights, runAiInsights };

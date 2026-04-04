@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
-import { requestAiInsights } from '../api/client';
+import { requestAiInsights, requestDirectorAiInsights } from '../api/client';
 import AnimatedNumber from './AnimatedNumber';
 import { springCard, staggerContainer, staggerItem } from '../motion/resultsMotion';
 import { questionTypeLabelRu } from '../lib/labels';
@@ -9,6 +9,8 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 
 type Props = {
   surveyId: number;
+  /** Если задан — запрос идёт на публичный эндпоинт директора (без X-Api-Key). */
+  directorToken?: string;
   onDrillDown?: (questionId: number) => void;
   filters?: AnalyticsFilter[];
   autoRun?: boolean;
@@ -81,7 +83,13 @@ function trimOneLine(s: string, n: number) {
   return `${t.slice(0, n - 1)}…`;
 }
 
-export default function InsightsPanel({ surveyId, onDrillDown, filters, autoRun = false }: Props) {
+export default function InsightsPanel({
+  surveyId,
+  directorToken,
+  onDrillDown,
+  filters,
+  autoRun = false,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [payload, setPayload] = useState<AiInsightsPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -93,13 +101,15 @@ export default function InsightsPanel({ surveyId, onDrillDown, filters, autoRun 
     setPayload(null);
     setErr(null);
     setLoading(false);
-  }, [surveyId, filterKey]);
+  }, [surveyId, filterKey, directorToken]);
 
   const run = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
-      const data = await requestAiInsights(surveyId, effectiveFilters);
+      const data = directorToken
+        ? await requestDirectorAiInsights(directorToken)
+        : await requestAiInsights(surveyId, effectiveFilters);
       setPayload(data);
     } catch (e) {
       setPayload(null);
@@ -107,12 +117,12 @@ export default function InsightsPanel({ surveyId, onDrillDown, filters, autoRun 
     } finally {
       setLoading(false);
     }
-  }, [surveyId, effectiveFilters]);
+  }, [surveyId, effectiveFilters, directorToken]);
 
   useEffect(() => {
     if (!autoRun) return;
     void run();
-  }, [surveyId, filterKey, autoRun, run]);
+  }, [surveyId, filterKey, directorToken, autoRun, run]);
 
   const d = payload?.dashboard;
   const orderById = new Map<number, number>();

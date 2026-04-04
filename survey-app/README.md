@@ -47,8 +47,23 @@
 
 Ключи доступа храните только у себя; в чат и в git не отправляйте.
 
-**Бэкенд (PostgreSQL + Cloud Function + связка с сайтом) по шагам для новичков:** [BACKEND_AND_API.md](BACKEND_AND_API.md).  
-**Без платного кластера в Яндексе:** бесплатный PostgreSQL у Neon/Supabase и т.п. — тот же `PG_CONNECTION_STRING`, см. начало того же файла.
+## Пошагово для новичков (с нуля)
+
+**Что получится:** статика (админка и формы) в **Object Storage**, API в **Yandex Cloud Function**, PostgreSQL в **Neon** (или Managed PostgreSQL в Яндексе — тогда тот же `PG_CONNECTION_STRING`).
+
+1. **Код на компьютере** — [Git](https://git-scm.com/), [Node.js](https://nodejs.org/) LTS; клон репозитория; `cd survey-app/frontend && npm install`, затем `cd ../backend/functions && npm install`.
+2. **База (Neon)** — проект на [neon.tech](https://neon.tech) → скопировать строку подключения как **`PG_CONNECTION_STRING`** → в **SQL Editor** выполнить файлы из `backend/db/migrations/` по номерам (или один раз `schema.sql`, как договорились в команде). Строку с паролем не коммитить.
+3. **Проверка локально (по желанию)** — в `backend/functions`: `export PG_CONNECTION_STRING=…`, `ADMIN_API_KEY`, при необходимости `PG_SSL_REJECT_UNAUTHORIZED=false`, затем `node local-server.js`. Во фронте: `echo 'VITE_DEV_PROXY=http://127.0.0.1:8787' > .env.development.local` и `npm run dev` (см. ниже «Локальный API» / «Локальный фронтенд»).
+4. **Cloud Function** — среда **Node.js 18+**, точка входа **`index.handler`**; архив: `./scripts/deploy-functions.sh` → загрузить версию; в env минимум **`PG_CONNECTION_STRING`**, **`ADMIN_API_KEY`**, **`CORS_ORIGIN`** = точный URL сайта бакета (HTTPS, **без** `/` в конце). Подключить HTTP-триггер или **API Gateway**; сохранить базовый URL API.
+5. **Проверка API** — в браузере `https://…/api/ping` или `…/api/surveys` (без ключа на `/api/surveys` часто **401** — нормально).
+6. **Сборка и бакет** — в корне `survey-app` создать **`deploy.config.json`** с **`apiBase`** (тот URL) и **`bucket`**; с ключами доступа к бакету: `./scripts/deploy-static-site.sh quick` (подробно: [OBJECT_STORAGE.md](OBJECT_STORAGE.md)). **`CORS_ORIGIN`** на функции должен совпадать с URL сайта из браузера.
+7. **Админка** — открыть сайт из бакета, ввести **тот же** `ADMIN_API_KEY`, что в переменных функции.
+
+**Фотостена (если нужна):** миграции с `009_…` и далее; опционально **`PHOTO_WALL_STORAGE=1`** и ключи к Object Storage — [BACKEND_AND_API.md](BACKEND_AND_API.md), трафик Neon — [docs/NEON_TRAFFIC_AND_MIGRATION.md](docs/NEON_TRAFFIC_AND_MIGRATION.md).
+
+**Если не работает:** CORS / «Network error» → **`CORS_ORIGIN`**; HTML вместо JSON / 502 → **`apiBase`** / **`VITE_API_BASE`** и шлюз; БД → строка подключения и миграции. Логи — в консоли Yandex → функция → **Логи**.
+
+Подробный чеклист с командами и таблицей симптомов: [docs/BEGINNER_STEPS_RU.md](docs/BEGINNER_STEPS_RU.md). Полное описание бэкенда и переменных: [BACKEND_AND_API.md](BACKEND_AND_API.md).
 
 ## База данных
 

@@ -19,6 +19,8 @@ export interface Survey {
   created_by: number | null;
   status: SurveyStatus;
   access_link: string;
+  /** Секрет для страницы «для директора» (не путать с access_link формы). */
+  director_token?: string | null;
   media?: { photos?: { src: string; name?: string }[] };
   questions?: Question[];
 }
@@ -155,15 +157,51 @@ export interface ExcelFilterSectionsResponse {
   hint?: string;
 }
 
+/** Смысловые подгруппы значений одного фильтра (ИИ). */
+export interface ExcelFilterValueGroup {
+  id: string;
+  label: string;
+  values: string[];
+}
+
+export interface ExcelFilterValueGroupsResponse {
+  source: string;
+  filterKey: string;
+  groups: ExcelFilterValueGroup[] | null;
+  hint?: string;
+}
+
 /** Связный текст сводки Excel-дашборда (ИИ по машинной сводке). */
 export interface ExcelNarrativeSummaryResponse {
   source: string;
   narrative: string | null;
   hint?: string;
+  /** Оценка длины отчёта (слова), если ответ от LLM прошёл проверку. */
+  wordCount?: number;
+  /** Вернётся с бэкенда: standard | deep */
+  analysisMode?: string;
+}
+
+/** Записки для директора по сегментам (педагог / педагог+предмет). */
+export interface ExcelDirectorDossierItem {
+  segmentId: string;
+  narrative: string;
+}
+
+export interface ExcelDirectorDossierResponse {
+  source: string;
+  items: ExcelDirectorDossierItem[] | null;
+  hint?: string;
 }
 
 export interface ResultsPayload {
-  survey: Pick<Survey, 'id' | 'title' | 'status' | 'access_link'>;
+  survey: {
+    id: number;
+    title: string;
+    status: SurveyStatus;
+    access_link?: string;
+    director_token?: string | null;
+  };
   total_responses: number;
   questions: ResultQuestion[];
   charts?: ResultsChartsBlock;
@@ -251,4 +289,18 @@ export interface SurveyExportRowsPayload {
     created_at: string;
     answers: Record<number, unknown>;
   }[];
+}
+
+/** Автономная фотостена (не опрос) */
+export type PhotoWallModerationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PhotoWallPhotoRow {
+  id: number;
+  respondent_id: string;
+  created_at: string;
+  moderation_status: PhotoWallModerationStatus;
+  /** Превью для списка модерации (лёгкий JPEG data URL) */
+  preview_data: string;
+  /** Старые записи без thumb — подгружаем полное фото отдельным запросом */
+  needs_full_image: boolean;
 }

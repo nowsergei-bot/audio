@@ -70,9 +70,11 @@ type Props = {
   onDrillDown: (questionId: number) => void;
   /** Более плотная сетка и ниже графики. */
   compact?: boolean;
+  /** Две диаграммы в ряд даже на узком экране (страница для директора). */
+  forceTwoColumn?: boolean;
 };
 
-export default function ResultsChartsGrid({ charts, onDrillDown, compact }: Props) {
+export default function ResultsChartsGrid({ charts, onDrillDown, compact, forceTwoColumn }: Props) {
   const lineRows = useMemo(
     () => mergeLineRows(charts.daily, charts.top_questions_timeseries),
     [charts.daily, charts.top_questions_timeseries]
@@ -85,7 +87,9 @@ export default function ResultsChartsGrid({ charts, onDrillDown, compact }: Prop
 
   return (
     <motion.section
-      className={`results-dashboard${compact ? ' results-dashboard--compact' : ''}`}
+      className={`results-dashboard${compact ? ' results-dashboard--compact' : ''}${
+        forceTwoColumn ? ' results-dashboard--director-2col' : ''
+      }`}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}

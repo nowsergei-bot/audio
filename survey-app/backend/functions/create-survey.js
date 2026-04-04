@@ -7,6 +7,7 @@ async function handleCreateSurvey(pool, event, user) {
   const title = String(body.title || '').trim() || 'Без названия';
   const description = String(body.description || '').trim();
   const access_link = (body.access_link && String(body.access_link).trim()) || uuidv4().replace(/-/g, '');
+  const director_token = uuidv4().replace(/-/g, '');
   const questions = Array.isArray(body.questions) ? body.questions : [];
   const media = body.media && typeof body.media === 'object' ? body.media : {};
   const allowedStatus = new Set(['draft', 'published', 'closed']);
@@ -17,10 +18,10 @@ async function handleCreateSurvey(pool, event, user) {
   try {
     await client.query('BEGIN');
     const ins = await client.query(
-      `INSERT INTO surveys (title, description, status, access_link, media, owner_user_id)
-       VALUES ($1, $2, $3::survey_status, $4, $5::jsonb, $6)
-       RETURNING id, title, description, created_at, created_by, status, access_link, media, owner_user_id`,
-      [title, description, status, access_link, JSON.stringify(media), ownerUserId]
+      `INSERT INTO surveys (title, description, status, access_link, director_token, media, owner_user_id)
+       VALUES ($1, $2, $3::survey_status, $4, $5, $6::jsonb, $7)
+       RETURNING id, title, description, created_at, created_by, status, access_link, director_token, media, owner_user_id`,
+      [title, description, status, access_link, director_token, JSON.stringify(media), ownerUserId]
     );
     const survey = ins.rows[0];
 
@@ -51,7 +52,7 @@ async function handleCreateSurvey(pool, event, user) {
   } catch (e) {
     await client.query('ROLLBACK');
     if (e.code === '23505') {
-      return json(409, { error: 'access_link already exists' });
+      return json(409, { error: 'access_link or director_token already exists' });
     }
     throw e;
   } finally {

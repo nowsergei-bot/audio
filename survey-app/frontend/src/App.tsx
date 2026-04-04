@@ -11,6 +11,11 @@ import ExcelAnalyticsPage from './pages/ExcelAnalyticsPage';
 import ImportOldSurveyDataPage from './pages/ImportOldSurveyDataPage';
 import AuthPage from './pages/AuthPage';
 import QuickSurveyWizard from './pages/QuickSurveyWizard';
+import PhotoWallUploadPage from './pages/PhotoWallUploadPage';
+import PhotoWallDisplayPage from './pages/PhotoWallDisplayPage';
+import PhotoWallTestPage from './pages/PhotoWallTestPage';
+import PhotoWallResultsPage from './pages/PhotoWallResultsPage';
+import SurveyDirectorPage from './pages/SurveyDirectorPage';
 
 function FormAliasRedirect() {
   const { accessLink } = useParams();
@@ -31,9 +36,14 @@ export default function App() {
         <Route path="/import-workbook" element={<ImportWorkbookPage />} />
         <Route path="/analytics-excel" element={<ExcelAnalyticsPage />} />
         <Route path="/import-old-surveys" element={<ImportOldSurveyDataPage />} />
+        <Route path="/photo-wall/results" element={<PhotoWallResultsPage />} />
       </Route>
       <Route element={<PublicLayout />}>
         <Route path="/s/:accessLink" element={<PublicForm />} />
+        <Route path="/photo-wall" element={<PhotoWallUploadPage />} />
+        <Route path="/photo-wall/test" element={<PhotoWallTestPage />} />
+        <Route path="/photo-wall/display" element={<PhotoWallDisplayPage />} />
+        <Route path="/director/:directorToken" element={<SurveyDirectorPage />} />
       </Route>
       <Route path="/form/:accessLink" element={<FormAliasRedirect />} />
       <Route path="*" element={<Navigate to="/" replace />} />

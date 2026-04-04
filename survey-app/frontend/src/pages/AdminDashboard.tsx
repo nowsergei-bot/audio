@@ -64,6 +64,8 @@ export default function AdminDashboard() {
     downloadCsv('puls-spisok-oprosov.csv', lines.join('\n'));
   }
 
+  const origin = typeof window !== 'undefined' ? window.location.origin.replace(/\/$/, '') : '';
+
   return (
     <div className="page admin-dash-page">
       <motion.header
@@ -72,35 +74,84 @@ export default function AdminDashboard() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="admin-dash-hero-grid">
-          <div>
-            <p className="admin-dash-kicker">Пульс · панель</p>
-            <h1 className="admin-dash-title">Опросы</h1>
-            <p className="muted admin-dash-lead">
-              Создавайте опросы из русскоязычных шаблонов или с нуля, публикуйте ссылку и смотрите результаты с графиками.
-              Если есть готовые ответы из прошлых опросов — используйте раздел <strong>«Подгрузка данных из старых опросов»</strong> в шаблонах,
-              чтобы импортировать Excel в существующий опрос и сразу получить аналитику.
-            </p>
-          </div>
-          <motion.div
-            className="admin-dash-hero-actions"
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 24, delay: 0.1 }}
-          >
-            <Link to="/surveys/new" className="btn primary admin-dash-cta">
-              Новый опрос
-            </Link>
-            <p className="muted admin-dash-cta-hint">Сначала выберите шаблон или пустую форму</p>
-          </motion.div>
-        </div>
+        <p className="admin-dash-kicker">Пульс · админка</p>
+        <h1 className="admin-dash-title">Рабочий стол</h1>
+        <p className="muted admin-dash-lead">
+          Карточки ниже — быстрый вход в разделы. Полный список опросов — внизу; остальные пункты меню остаются в шапке.
+        </p>
       </motion.header>
+
+      <motion.section
+        className="card admin-dash-tiles glass-surface"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.05, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <h2 className="admin-dash-h2 admin-dash-h2--flush">Быстрый доступ</h2>
+        <p className="muted admin-dash-tiles-intro">Основные сценарии — одним кликом.</p>
+        <div className="admin-dash-tile-grid">
+          <Link to="/surveys/new" className="admin-dash-tile admin-dash-tile--primary">
+            <span className="admin-dash-tile-kicker">Опросы</span>
+            <h3 className="admin-dash-tile-title">Новый опрос</h3>
+            <p className="admin-dash-tile-desc">Шаблон на русском или пустая форма, затем публикация и ссылка для респондентов.</p>
+            <span className="admin-dash-tile-action">Создать →</span>
+          </Link>
+          <div className="admin-dash-tile admin-dash-tile--static">
+            <span className="admin-dash-tile-kicker">Отдельно от опросов</span>
+            <h3 className="admin-dash-tile-title">Фотостена</h3>
+            <p className="admin-dash-tile-desc">
+              Живая стена: участники отправляют один кадр, модератор одобряет, экран показывает мозаику и сам подгружает новые
+              снимки (как у цифровых стен на мероприятиях). Для проектора откройте коллаж в режиме киоска без шапки сайта.
+            </p>
+            <div className="admin-dash-tile-links admin-dash-tile-links--stack">
+              <span className="admin-dash-tile-links-row">
+                <Link to="/photo-wall/results">Модерация и превью коллажа</Link>
+              </span>
+              <span className="admin-dash-tile-links-row">
+                <a href={`${origin}/photo-wall/display`} target="_blank" rel="noreferrer">
+                  Экран коллажа
+                </a>
+                <span className="admin-dash-tile-links-sep" aria-hidden>
+                  ·
+                </span>
+                <a href={`${origin}/photo-wall/display?kiosk=1`} target="_blank" rel="noreferrer">
+                  Киоск
+                </a>
+                <span className="admin-dash-tile-links-sep" aria-hidden>
+                  ·
+                </span>
+                <a href={`${origin}/photo-wall`} target="_blank" rel="noreferrer">
+                  Загрузка
+                </a>
+                <span className="admin-dash-tile-links-sep" aria-hidden>
+                  ·
+                </span>
+                <a href={`${origin}/photo-wall/test`} target="_blank" rel="noreferrer">
+                  Тестовая загрузка
+                </a>
+              </span>
+            </div>
+          </div>
+          <Link to="/analytics-excel" className="admin-dash-tile">
+            <span className="admin-dash-tile-kicker">Данные</span>
+            <h3 className="admin-dash-tile-title">Наблюдения из Excel</h3>
+            <p className="admin-dash-tile-desc">Дашборд по выгрузке: фильтры, графики и текстовые выводы.</p>
+            <span className="admin-dash-tile-action">Открыть →</span>
+          </Link>
+          <Link to="/surveys/quick" className="admin-dash-tile">
+            <span className="admin-dash-tile-kicker">Коммуникации</span>
+            <h3 className="admin-dash-tile-title">Письмо для гостей</h3>
+            <p className="admin-dash-tile-desc">Быстрый сценарий подготовки текста приглашения или объявления.</p>
+            <span className="admin-dash-tile-action">Начать →</span>
+          </Link>
+        </div>
+      </motion.section>
 
       <motion.section
         className="card admin-dash-settings glass-surface"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.45, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
       >
         <h2 className="admin-dash-h2">Доступ к API</h2>
         <p className="muted">
@@ -134,7 +185,7 @@ export default function AdminDashboard() {
         className="card admin-dash-list-card glass-surface"
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.45, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="admin-dash-list-head">
           <h2 className="admin-dash-h2 admin-dash-h2--flush">Ваши опросы</h2>
@@ -172,9 +223,11 @@ export default function AdminDashboard() {
               <motion.li key={s.id} className="admin-dash-survey-row" variants={adminStaggerItem} layout>
                 <div className="admin-dash-survey-main">
                   <strong className="admin-dash-survey-title">{s.title || 'Без названия'}</strong>
-                  <span className="muted admin-dash-survey-id">id {s.id}</span>
+                  <div className="admin-dash-survey-subrow">
+                    <span className={`badge ${s.status}`}>{SURVEY_STATUS_LABEL_RU[s.status]}</span>
+                    <span className="muted admin-dash-survey-id">id {s.id}</span>
+                  </div>
                 </div>
-                <span className={`badge ${s.status}`}>{SURVEY_STATUS_LABEL_RU[s.status]}</span>
                 <div className="admin-dash-survey-link">
                   {s.status === 'published' ? (
                     <a href={publicFormUrl(s.access_link)} target="_blank" rel="noreferrer">

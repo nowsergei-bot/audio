@@ -90,11 +90,12 @@ async function handlePostSurveyFromWorkbook(pool, event) {
   try {
     await client.query('BEGIN');
 
+    const director_token = randomUUID().replace(/-/g, '');
     const insS = await client.query(
-      `INSERT INTO surveys (title, description, status, access_link)
-       VALUES ($1, $2, 'draft'::survey_status, $3)
-       RETURNING id, title, description, created_at, created_by, status, access_link`,
-      [title, description, access_link]
+      `INSERT INTO surveys (title, description, status, access_link, director_token)
+       VALUES ($1, $2, 'draft'::survey_status, $3, $4)
+       RETURNING id, title, description, created_at, created_by, status, access_link, director_token`,
+      [title, description, access_link, director_token]
     );
     const survey = insS.rows[0];
 

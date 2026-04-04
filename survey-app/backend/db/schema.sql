@@ -50,11 +50,13 @@ CREATE TABLE IF NOT EXISTS surveys (
     owner_user_id INTEGER NULL REFERENCES users (id) ON DELETE SET NULL,
     status survey_status NOT NULL DEFAULT 'draft',
     access_link TEXT NOT NULL UNIQUE,
+    director_token TEXT UNIQUE,
     media JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX IF NOT EXISTS idx_surveys_status ON surveys (status);
 CREATE INDEX IF NOT EXISTS idx_surveys_access_link ON surveys (access_link);
+CREATE INDEX IF NOT EXISTS idx_surveys_director_token ON surveys (director_token) WHERE director_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_surveys_owner ON surveys (owner_user_id);
 
 CREATE TABLE IF NOT EXISTS questions (
@@ -147,3 +149,16 @@ CREATE TABLE IF NOT EXISTS survey_invite_templates (
   html TEXT NOT NULL DEFAULT '',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS photo_wall_uploads (
+  id SERIAL PRIMARY KEY,
+  respondent_id TEXT NOT NULL UNIQUE,
+  image_data TEXT,
+  thumb_data TEXT,
+  thumb_public_url TEXT,
+  image_public_url TEXT,
+  moderation_status TEXT NOT NULL DEFAULT 'pending' CHECK (moderation_status IN ('pending', 'approved', 'rejected')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_photo_wall_status ON photo_wall_uploads (moderation_status);

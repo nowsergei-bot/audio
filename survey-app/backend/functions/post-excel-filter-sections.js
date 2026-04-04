@@ -1,5 +1,6 @@
 const { json, parseBody } = require('./lib/http');
 const { chatCompletion, isOpenAiUnsupportedRegion, formatGeoBlockHint } = require('./lib/llm-chat');
+const { tryParseLlmJsonObject } = require('./lib/parse-llm-json');
 
 function truncate(s, n) {
   const t = String(s ?? '');
@@ -81,10 +82,8 @@ ${colsJson}`;
             : res.detail;
       return { kind: 'openai_error', detail };
     }
-    let parsed;
-    try {
-      parsed = JSON.parse(res.text.trim());
-    } catch {
+    const parsed = tryParseLlmJsonObject(res.text);
+    if (!parsed) {
       return { kind: 'openai_error', detail: 'Ответ не JSON' };
     }
     const sections = sanitizeSections(parsed?.sections, filterKeys);
@@ -134,7 +133,7 @@ async function handlePostExcelFilterSections(_pool, event) {
     sections: null,
     hint:
       llm.kind === 'no_key'
-        ? 'Нет ключей LLM — используйте стандартную группировку на клиенте или задайте YandexGPT / OpenAI (см. BACKEND_AND_API.md).'
+        ? 'Нет ключей LLM — используйте стандартную группировку на клиенте или задайте DeepSeek / OpenAI / YandexGPT (см. BACKEND_AND_API.md).'
         : truncate(llm.detail, 1200),
   });
 }

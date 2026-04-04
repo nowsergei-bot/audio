@@ -10,7 +10,8 @@ export default function AdminLayout() {
   const layoutKey = `${location.pathname}${location.search}`;
   const resultsWideLayout = /\/results\/?$/.test(location.pathname);
   const excelWideLayout = /\/analytics-excel\/?$/.test(location.pathname);
-  const wideDashboardLayout = resultsWideLayout || excelWideLayout;
+  const photoWallWideLayout = /\/photo-wall\/results\/?$/.test(location.pathname);
+  const wideDashboardLayout = resultsWideLayout || excelWideLayout || photoWallWideLayout;
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -18,7 +19,7 @@ export default function AdminLayout() {
 
   return (
     <div
-      className={`app-admin${wideDashboardLayout ? ' app-admin--results-wide' : ''}${excelWideLayout ? ' app-admin--excel-canvas' : ''}`}
+      className={`app-admin${wideDashboardLayout ? ' app-admin--results-wide' : ''}${excelWideLayout ? ' app-admin--excel-canvas' : ''}${photoWallWideLayout ? ' app-admin--photo-wall-wide' : ''}`}
     >
       <header className="admin-header glass-header">
         <div className="admin-header-inner">
@@ -55,11 +56,17 @@ export default function AdminLayout() {
             >
               Наблюдения Excel
             </NavLink>
+            <NavLink
+              to="/photo-wall/results"
+              className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
+            >
+              Фотостена
+            </NavLink>
           </nav>
         </div>
       </header>
       <main
-        className={`admin-main${wideDashboardLayout ? ' admin-main--results-wide' : ''}${excelWideLayout ? ' admin-main--excel-canvas' : ''}`}
+        className={`admin-main${wideDashboardLayout ? ' admin-main--results-wide' : ''}${excelWideLayout ? ' admin-main--excel-canvas' : ''}${photoWallWideLayout ? ' admin-main--photo-wall-wide' : ''}`}
       >
         {/*
           Без AnimatePresence mode="wait": при переходах между маршрутами exit иногда не завершался,

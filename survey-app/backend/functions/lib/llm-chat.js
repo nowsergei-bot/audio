@@ -1,5 +1,5 @@
 /**
- * Вызов чат-модели: OpenAI и при необходимости YandexGPT (регион РФ / Yandex Cloud).
+ * Вызов чат-модели: DeepSeek (OpenAI-совместимый API), OpenAI, YandexGPT.
  * Сообщения в формате OpenAI: { role: 'system'|'user'|'assistant', content: string }
  */
 
@@ -15,11 +15,80 @@ function isOpenAiUnsupportedRegion(status, detail) {
   );
 }
 
+/** Убирает BOM/пробелы — частая причина 401 при вставке ключа из консоли. */
+function normalizeYandexSecret(raw) {
+  let s = String(raw ?? '');
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  return s.replace(/\r/g, '').trim();
+}
+
 function hasYandexLlmCreds() {
-  const folder = String(process.env.YANDEX_CLOUD_FOLDER_ID || process.env.YC_FOLDER_ID || '').trim();
-  const key = String(process.env.YANDEX_API_KEY || process.env.YC_API_KEY || '').trim();
-  const iam = String(process.env.YANDEX_IAM_TOKEN || process.env.YC_IAM_TOKEN || '').trim();
+  const folder = normalizeYandexSecret(process.env.YANDEX_CLOUD_FOLDER_ID || process.env.YC_FOLDER_ID);
+  const key = normalizeYandexSecret(process.env.YANDEX_API_KEY || process.env.YC_API_KEY);
+  const iam = normalizeYandexSecret(process.env.YANDEX_IAM_TOKEN || process.env.YC_IAM_TOKEN);
   return Boolean(folder && (key || iam));
+}
+
+function normalizeApiKey(raw) {
+  let s = String(raw ?? '');
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  return s.replace(/\r/g, '').trim();
+}
+
+function hasDeepSeekKey() {
+  return Boolean(normalizeApiKey(process.env.DEEPSEEK_API_KEY));
+}
+
+/**
+ * DeepSeek — тот же контракт, что OpenAI /chat/completions.
+ * @see https://api-docs.deepseek.com/
+ */
+async function fetchDeepSeekChat(messages, { maxTokens, temperature, jsonObject, model }) {
+  const key = normalizeApiKey(process.env.DEEPSEEK_API_KEY);
+  if (!key) {
+    return { ok: false, kind: 'no_deepseek_key', status: 0, detail: 'Нет DEEPSEEK_API_KEY' };
+  }
+
+  let m = String(model || process.env.DEEPSEEK_MODEL || 'deepseek-chat').trim();
+  if (!m || m === 'gpt-4o-mini' || m.startsWith('gpt-')) {
+    m = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  }
+
+  const url = 'https://api.deepseek.com/v1/chat/completions';
+  const body = {
+    model: m,
+    messages,
+    max_tokens: Math.min(maxTokens ?? 8192, 8192),
+    temperature: temperature ?? 0.25,
+  };
+  if (jsonObject) body.response_format = { type: 'json_object' };
+
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!r.ok) {
+    let detail = `HTTP ${r.status}`;
+    try {
+      const errBody = await r.json();
+      if (errBody?.error?.message) detail = `${detail}: ${errBody.error.message}`;
+    } catch {
+      /* keep */
+    }
+    return { ok: false, kind: 'deepseek_error', status: r.status, detail };
+  }
+
+  const data = await r.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (typeof text !== 'string' || !text.trim()) {
+    return { ok: false, kind: 'deepseek_error', status: 200, detail: 'Пустой ответ DeepSeek' };
+  }
+  return { ok: true, text: text.trim() };
 }
 
 function openAiBaseUrl() {
@@ -35,9 +104,9 @@ function formatGeoBlockHint(status, detail) {
     'OpenAI не обслуживает запросы из региона, где выполняется ваша Cloud Function (часто так бывает в РФ и в облаке Yandex).',
     '',
     'Что сделать:',
-    '1) Подключить YandexGPT: YANDEX_CLOUD_FOLDER_ID и YANDEX_API_KEY (Api-Key СА) или YANDEX_IAM_TOKEN (Bearer). Опционально YANDEX_MODEL_URI=gpt://<folder_id>/yandexgpt/latest',
-    '2) Или задать LLM_PROVIDER=yandex — тогда OpenAI не вызывается.',
-    '3) Или направить OpenAI через прокси/Azure в поддерживаемом регионе: OPENAI_BASE_URL=https://....../v1',
+    '1) Подключить DeepSeek (из РФ): DEEPSEEK_API_KEY с platform.deepseek.com и LLM_PROVIDER=deepseek.',
+    '2) Подключить YandexGPT: YANDEX_CLOUD_FOLDER_ID и YANDEX_API_KEY (Api-Key СА) или YANDEX_IAM_TOKEN (Bearer).',
+    '3) Или направить OpenAI через прокси/Azure: OPENAI_BASE_URL=https://....../v1',
     '',
     `Технически: HTTP ${status} — ${detail}`,
   ].join('\n');
@@ -105,9 +174,9 @@ function yandexErrorDetail(status, errBody) {
 }
 
 async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject }) {
-  const folderId = String(process.env.YANDEX_CLOUD_FOLDER_ID || process.env.YC_FOLDER_ID || '').trim();
-  const apiKey = String(process.env.YANDEX_API_KEY || process.env.YC_API_KEY || '').trim();
-  const iamToken = String(process.env.YANDEX_IAM_TOKEN || process.env.YC_IAM_TOKEN || '').trim();
+  const folderId = normalizeYandexSecret(process.env.YANDEX_CLOUD_FOLDER_ID || process.env.YC_FOLDER_ID);
+  const apiKey = normalizeYandexSecret(process.env.YANDEX_API_KEY || process.env.YC_API_KEY);
+  const iamToken = normalizeYandexSecret(process.env.YANDEX_IAM_TOKEN || process.env.YC_IAM_TOKEN);
   if (!folderId || (!apiKey && !iamToken)) {
     return {
       ok: false,
@@ -118,7 +187,7 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
   }
 
   const modelUri =
-    String(process.env.YANDEX_MODEL_URI || '').trim() || `gpt://${folderId}/yandexgpt/latest`;
+    normalizeYandexSecret(process.env.YANDEX_MODEL_URI) || `gpt://${folderId}/yandexgpt/latest`;
 
   const sysJsonHint = jsonObject
     ? '\n\nОтветь строго одним JSON-объектом в тексте сообщения, без markdown.'
@@ -164,9 +233,10 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
     if (r.status === 401) {
       detail = [
         detail,
-        'Проверьте: ключ — именно API Key сервисного аккаунта (не JSON-файл и не статический ключ доступа),',
-        'роль/scope на Foundation Models, совпадение каталога с YANDEX_CLOUD_FOLDER_ID,',
-        'или задайте YANDEX_IAM_TOKEN (Bearer) вместо Api-Key.',
+        'Ключ: секрет Api-Key сервисного аккаунта (не JSON ключа и не static access key).',
+        'На каталог у СА должна быть роль ai.languageModels.user.',
+        'При создании ключа scope: yc.ai.languageModels.execute (как в примерах Yandex Cloud) или yc.ai.foundationModels.execute — смотрите список scope в консоли.',
+        'YANDEX_CLOUD_FOLDER_ID = ID того же каталога. Либо YANDEX_IAM_TOKEN (Bearer) вместо Api-Key.',
       ].join(' ');
     }
     return { ok: false, kind: 'yandex_error', status: r.status, detail };
@@ -188,6 +258,19 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
 async function chatCompletion(messages, opts = {}) {
   const provider = String(process.env.LLM_PROVIDER || 'auto').trim().toLowerCase();
   const tryYandexFirst = provider === 'yandex' || provider === 'yc' || provider === 'yandexgpt';
+  const tryDeepSeekFirst = provider === 'deepseek' || provider === 'deepseek-ai';
+
+  if (tryDeepSeekFirst) {
+    if (!hasDeepSeekKey()) {
+      return {
+        ok: false,
+        kind: 'no_key',
+        detail: 'Задано LLM_PROVIDER=deepseek, но нет DEEPSEEK_API_KEY (ключ с platform.deepseek.com).',
+      };
+    }
+    const d = await fetchDeepSeekChat(messages, opts);
+    return d.ok ? { ...d, provider: 'deepseek' } : d;
+  }
 
   if (tryYandexFirst && hasYandexLlmCreds()) {
     const y = await fetchYandexGptChat(messages, opts);
@@ -205,6 +288,10 @@ async function chatCompletion(messages, opts = {}) {
     ) {
       const y = await fetchYandexGptChat(messages, opts);
       if (y.ok) return { ...y, provider: 'yandex' };
+      if (hasDeepSeekKey()) {
+        const d = await fetchDeepSeekChat(messages, opts);
+        if (d.ok) return { ...d, provider: 'deepseek' };
+      }
       return {
         ok: false,
         kind: 'both_failed',
@@ -212,7 +299,17 @@ async function chatCompletion(messages, opts = {}) {
         status: oa.status,
       };
     }
+    if (provider === 'auto' && hasDeepSeekKey()) {
+      const d = await fetchDeepSeekChat(messages, opts);
+      if (d.ok) return { ...d, provider: 'deepseek' };
+    }
     return { ...oa, provider: 'openai' };
+  }
+
+  if (hasDeepSeekKey()) {
+    const d = await fetchDeepSeekChat(messages, opts);
+    if (d.ok) return { ...d, provider: 'deepseek' };
+    return d;
   }
 
   if (hasYandexLlmCreds()) {
@@ -220,7 +317,12 @@ async function chatCompletion(messages, opts = {}) {
     return y.ok ? { ...y, provider: 'yandex' } : y;
   }
 
-  return { ok: false, kind: 'no_key', detail: 'Нет OPENAI_API_KEY и нет YANDEX_* для YandexGPT' };
+  return {
+    ok: false,
+    kind: 'no_key',
+    detail:
+      'Нет ключа LLM: задайте DEEPSEEK_API_KEY (DeepSeek), или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. Для дашборда Excel: LLM_PROVIDER=deepseek и DEEPSEEK_API_KEY — см. BACKEND_AND_API.md.',
+  };
 }
 
 module.exports = {
@@ -228,4 +330,5 @@ module.exports = {
   isOpenAiUnsupportedRegion,
   formatGeoBlockHint,
   hasYandexLlmCreds,
+  hasDeepSeekKey,
 };
