@@ -5027,6 +5027,7 @@ body {
 .photo-wall-display-page--live .photo-wall-display-stage {
   min-height: auto;
   background: #ffffff;
+  overflow-x: clip;
 }
 
 .photo-wall-display-page--kiosk .photo-wall-display-stage {
@@ -5053,8 +5054,16 @@ body {
   flex-direction: column;
 }
 
+.photo-wall-marquee-root--romance {
+  overflow: visible;
+}
+
 .photo-wall-display-page--live .photo-wall-marquee-root {
   min-height: auto;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-root--romance {
+  min-height: min(72vh, 720px);
 }
 
 .photo-wall-display-page--kiosk .photo-wall-marquee-root {
@@ -5108,13 +5117,24 @@ body {
   width: 100%;
   min-height: min(72vh, 720px);
   box-sizing: border-box;
-  padding: clamp(1rem, 4.5vw, 2.75rem);
+  padding: clamp(1.75rem, 7vmin, 3.5rem);
   background: linear-gradient(168deg, #fdfaf6 0%, #f4ece4 40%, #ebe3d8 100%);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .photo-wall-display-page--kiosk .photo-wall-collage--immersive.photo-wall-collage--romance {
+  min-height: min(88dvh, 900px);
+}
+
+.photo-wall-romance-sizer {
+  width: 100%;
+  min-height: min(72vh, 720px);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.photo-wall-display-page--kiosk .photo-wall-romance-sizer {
   min-height: min(88dvh, 900px);
 }
 
@@ -5124,18 +5144,14 @@ body {
   box-sizing: border-box;
   background: #fff;
   padding: 9px 9px 28px 9px;
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.05),
-    0 12px 28px rgba(45, 32, 22, 0.14);
   border-radius: 2px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .photo-wall-romance-card--hero {
   width: clamp(168px, 30vmin, 300px);
   padding: 11px 11px 38px 11px;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.07),
-    0 20px 44px rgba(45, 32, 22, 0.2);
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08), 0 12px 32px rgba(15, 23, 42, 0.07);
 }
 
 .photo-wall-romance-card-frame {
@@ -5172,8 +5188,7 @@ body {
 
 .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--mosaic,
 .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-fluid,
-.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform,
-.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--romance {
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform {
   flex: 1 1 auto;
   width: 100%;
   min-height: 100%;
@@ -5181,7 +5196,15 @@ body {
   /* не min-height:0 — иначе grid-auto-rows 1fr схлопывается */
 }
 
-.photo-wall-display-page--live .photo-wall-marquee-panel {
+/* Романтика: только abs-позиционированные карточки — без height/min-height 100% от панели (иначе сцена схлопывается) */
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--romance {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: min(72vh, 720px);
+  height: auto;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-panel:not(.photo-wall-marquee-panel--romance) {
   min-height: auto;
   align-self: auto;
 }

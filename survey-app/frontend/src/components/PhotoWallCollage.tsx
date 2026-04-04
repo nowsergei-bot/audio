@@ -264,9 +264,20 @@ export default function PhotoWallCollage({
       .slice(0, cap);
   }, [immersive, immersiveLayout, sources, sourceIds]);
 
+  /** Один снимок — несколько «отпечатков» со сдвигом, иначе коллаж пустой; при 2+ — как есть. */
+  const romanceLayers = useMemo(() => {
+    if (romanceDeck.length === 0) return [];
+    if (romanceDeck.length >= 2) {
+      return romanceDeck.map((item, layer) => ({ ...item, layer }));
+    }
+    const only = romanceDeck[0]!;
+    const stackN = 6;
+    return Array.from({ length: stackN }, (_, layer) => ({ ...only, layer }));
+  }, [romanceDeck]);
+
   const romanceHeroIdx = useMemo(
-    () => (romanceDeck.length === 0 ? 0 : Math.floor(romanceDeck.length / 2)),
-    [romanceDeck.length],
+    () => (romanceLayers.length === 0 ? 0 : Math.floor(romanceLayers.length / 2)),
+    [romanceLayers.length],
   );
 
   if (sources.length === 0) {
@@ -351,16 +362,18 @@ export default function PhotoWallCollage({
         <div className="photo-wall-marquee-track photo-wall-marquee-track--romance">
           <div className="photo-wall-marquee-panel photo-wall-marquee-panel--romance">
             <div className="photo-wall-collage photo-wall-collage--immersive photo-wall-collage--romance">
-              {romanceDeck.map((item, i) => {
+              <div className="photo-wall-romance-sizer" aria-hidden />
+              {romanceLayers.map((item, i) => {
                 const isHero = i === romanceHeroIdx;
-                const id = item.id;
-                const u1 = romanceUnit(id, 1);
-                const u2 = romanceUnit(id, 2);
-                const u3 = romanceUnit(id, 3);
-                const u4 = romanceUnit(id, 4);
-                const rot = isHero ? 0 : (u1 - 0.5) * 32;
-                const dx = isHero ? 0 : (u2 - 0.5) * 56;
-                const dy = isHero ? 0 : (u3 - 0.5) * 50;
+                const salt = 1 + item.layer * 11;
+                const id = item.id + item.layer * 9973;
+                const u1 = romanceUnit(id, salt);
+                const u2 = romanceUnit(id, salt + 1);
+                const u3 = romanceUnit(id, salt + 2);
+                const u4 = romanceUnit(id, salt + 3);
+                const rot = isHero ? 0 : (u1 - 0.5) * 28;
+                const dx = isHero ? 0 : (u2 - 0.5) * 48;
+                const dy = isHero ? 0 : (u3 - 0.5) * 44;
                 const z = isHero ? 50 : 6 + Math.floor(u4 * 20);
                 const cardStyle: CSSProperties = {
                   zIndex: z,
@@ -370,11 +383,11 @@ export default function PhotoWallCollage({
                 };
                 return (
                   <motion.div
-                    key={`rom-${item.id}`}
+                    key={`rom-${item.id}-L${item.layer}`}
                     className={`photo-wall-romance-card${isHero ? ' photo-wall-romance-card--hero' : ''}`}
                     style={cardStyle}
-                    initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     transition={{
                       duration: reduceMotion ? 0.15 : 0.5,
                       delay: reduceMotion ? 0 : i * 0.035,
