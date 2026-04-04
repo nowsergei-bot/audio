@@ -403,6 +403,125 @@ body {
   line-height: 1.35;
 }
 
+.app-admin .admin-dash-tiles {
+  padding: 1.25rem 1.35rem 1.35rem;
+}
+
+.app-admin .admin-dash-tiles-intro {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+}
+
+.app-admin .admin-dash-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.app-admin .admin-dash-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 1.05rem 1.1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92) 0%, rgba(249, 250, 251, 0.88) 100%);
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+  min-height: 168px;
+  box-sizing: border-box;
+}
+
+.app-admin a.admin-dash-tile:hover {
+  border-color: rgba(227, 6, 19, 0.32);
+  box-shadow: 0 10px 32px rgba(17, 24, 39, 0.09);
+  transform: translateY(-2px);
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-admin .admin-dash-tile--primary {
+  border-color: rgba(227, 6, 19, 0.28);
+  background: linear-gradient(155deg, rgba(227, 6, 19, 0.09) 0%, rgba(255, 255, 255, 0.95) 55%);
+}
+
+.app-admin .admin-dash-tile--static {
+  cursor: default;
+}
+
+.app-admin .admin-dash-tile-kicker {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-red);
+}
+
+.app-admin .admin-dash-tile-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.app-admin .admin-dash-tile-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--page-muted);
+  flex: 1;
+}
+
+.app-admin .admin-dash-tile-action {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--brand-red);
+}
+
+.app-admin .admin-dash-tile-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.app-admin .admin-dash-tile-links a {
+  color: var(--brand-red);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.app-admin .admin-dash-tile-links a:hover {
+  border-bottom-color: rgba(227, 6, 19, 0.35);
+}
+
+.app-admin .admin-dash-tile-links-sep {
+  color: var(--page-muted);
+  user-select: none;
+}
+
+.app-admin .admin-dash-tile-links--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.app-admin .admin-dash-tile-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
 .app-admin .admin-dash-h2 {
   margin: 0 0 0.65rem;
   font-size: 1.05rem;
@@ -472,9 +591,9 @@ body {
 
 .app-admin .admin-dash-survey-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto minmax(120px, 0.9fr) auto;
-  gap: 0.65rem 1rem;
-  align-items: center;
+  grid-template-columns: minmax(0, 1.5fr) minmax(112px, 1fr) auto;
+  gap: 0.75rem 1.1rem;
+  align-items: start;
   padding: 0.9rem 1rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--card-border);
@@ -483,17 +602,39 @@ body {
 
 .app-admin .admin-dash-survey-main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
 }
 
 .app-admin .admin-dash-survey-title {
   display: block;
+  margin: 0;
   font-size: 1rem;
   font-weight: 800;
+  line-height: 1.35;
   color: var(--page-fg);
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+
+.app-admin .admin-dash-survey-subrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.75rem;
 }
 
 .app-admin .admin-dash-survey-id {
   font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.app-admin .admin-dash-survey-link {
+  padding-top: 0.2rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .app-admin .admin-dash-survey-actions {
@@ -501,6 +642,8 @@ body {
   flex-wrap: wrap;
   gap: 0.45rem;
   justify-content: flex-end;
+  align-self: start;
+  padding-top: 0.12rem;
 }
 
 @media (max-width: 900px) {
@@ -2884,6 +3027,49 @@ body {
   flex-wrap: wrap;
 }
 
+.public-header-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+}
+
+.public-header-nav-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-decoration: none;
+  color: #fff;
+  background: var(--brand-red);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 10px rgba(227, 6, 19, 0.25);
+  transition: opacity 0.15s, transform 0.12s;
+}
+
+.public-header-nav-primary:hover {
+  opacity: 0.94;
+  text-decoration: none;
+  color: #fff;
+}
+
+.public-header-nav-secondary {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.public-header-nav-secondary:hover {
+  color: var(--brand-red);
+  border-bottom-color: rgba(227, 6, 19, 0.35);
+}
+
 .public-header-ekg {
   display: flex;
   flex-direction: column;
@@ -3726,6 +3912,123 @@ body {
   line-height: 1.45;
 }
 
+.excel-dashboard-filter-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.5rem;
+}
+
+.excel-dashboard-filter-ai-hint-msg {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #b45309;
+}
+
+.excel-filter-value-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.excel-filter-value-group {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 10px;
+  padding: 0.25rem 0.45rem 0.5rem;
+  background: rgba(248, 250, 252, 0.65);
+}
+
+.excel-filter-value-group-summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.2rem 0;
+  list-style: none;
+}
+
+.excel-filter-value-group-summary::-webkit-details-marker {
+  display: none;
+}
+
+.excel-analytics-filter-chips--nested {
+  margin-top: 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.excel-director-dossier-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.excel-director-dossier-meta {
+  font-size: 0.82rem;
+}
+
+.excel-director-dossier-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #b45309;
+}
+
+.excel-director-dossier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
+.excel-director-dossier-block {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 12px;
+  padding: 0.35rem 0.65rem 0.65rem;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.excel-director-dossier-summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.95rem;
+  list-style: none;
+  padding: 0.25rem 0;
+}
+
+.excel-director-dossier-summary::-webkit-details-marker {
+  display: none;
+}
+
+.excel-director-dossier-summary-name {
+  color: #0f172a;
+}
+
+.excel-director-dossier-summary-subj {
+  font-weight: 600;
+}
+
+.excel-director-dossier-body {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #1e293b;
+}
+
+.excel-director-dossier-body p {
+  margin: 0 0 0.65rem;
+}
+
+.excel-director-dossier-body p:last-child {
+  margin-bottom: 0;
+}
+
+.excel-director-dossier-missing {
+  margin: 0.35rem 0 0;
+  font-size: 0.86rem;
+}
+
 .excel-dashboard-filter-section {
   margin-bottom: 1.35rem;
 }
@@ -3766,6 +4069,223 @@ body {
   .excel-dashboard-sidebar-filters {
     max-height: calc(100vh - 16rem);
   }
+}
+
+.excel-dash-board-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.excel-dash-panel-row {
+  display: grid;
+  gap: 1rem;
+}
+
+.excel-dash-panel-row--two {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .excel-dash-panel-row--two {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.excel-dash-card--data-panel .excel-dash-card-title,
+.excel-dash-card--metrics-table .excel-dash-card-title,
+.excel-dash-card--ai-report .excel-dash-card-title {
+  margin-bottom: 0.35rem;
+}
+
+.excel-dash-table-scroll {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.excel-dash-table-scroll--tall {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.excel-dash-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.excel-dash-data-table th,
+.excel-dash-data-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+  vertical-align: top;
+}
+
+.excel-dash-data-table thead th {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.excel-dash-data-table tbody th[scope='row'] {
+  width: 42%;
+  font-weight: 700;
+  color: #475569;
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.excel-dash-data-table--dense th,
+.excel-dash-data-table--dense td {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+.excel-dash-data-table-key {
+  font-weight: 600;
+  max-width: 12rem;
+}
+
+.excel-dash-data-table-metric-name {
+  font-weight: 600;
+  max-width: min(28rem, 55vw);
+}
+
+.excel-dash-data-table-total td {
+  font-weight: 700;
+  background: rgba(227, 6, 19, 0.06);
+  border-top: 1px solid rgba(227, 6, 19, 0.15);
+}
+
+.excel-dash-mentor-table-wrap {
+  margin-top: 0.85rem;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.excel-dash-card--ai-report {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(227, 6, 19, 0.12);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98) 0%, rgba(254, 248, 248, 0.92) 40%, rgba(248, 250, 252, 0.96) 100%);
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.06);
+}
+
+.excel-dash-card--deep-report {
+  margin-top: 1rem;
+  border-color: rgba(15, 23, 42, 0.1);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.99) 0%, rgba(241, 245, 249, 0.9) 55%, rgba(248, 250, 252, 0.98) 100%);
+}
+
+.excel-deep-focus-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+}
+
+.excel-deep-focus-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  font-size: 0.9rem;
+}
+
+.excel-deep-report-actions {
+  margin-top: 0.75rem;
+}
+
+.excel-inline-code {
+  font-size: 0.85em;
+  padding: 0.08rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.excel-dash-ai-report-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.excel-dash-ai-report-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-red);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(227, 6, 19, 0.1);
+  border: 1px solid rgba(227, 6, 19, 0.18);
+}
+
+.excel-ai-report-prose {
+  margin: 0.85rem 0 0;
+  padding: 1rem 1.15rem 1.1rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  font-size: 0.95rem;
+  line-height: 1.68;
+  color: #1e293b;
+  max-width: 52rem;
+}
+
+.excel-ai-report-prose p {
+  margin: 0 0 1rem;
+}
+
+.excel-ai-report-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.excel-ai-report-placeholder {
+  margin: 0.75rem 0 0;
+  font-style: italic;
+}
+
+.excel-ai-report-facts {
+  margin-top: 1rem;
+  border-radius: 10px;
+  border: 1px dashed rgba(15, 23, 42, 0.15);
+  padding: 0.35rem 0.65rem 0.65rem;
+  background: rgba(248, 250, 252, 0.65);
+}
+
+.excel-ai-report-facts-summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #475569;
+  padding: 0.35rem 0;
+  list-style: none;
+}
+
+.excel-ai-report-facts-summary::-webkit-details-marker {
+  display: none;
+}
+
+.excel-ai-report-facts-pre {
+  margin: 0.5rem 0 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 0.78rem;
+}
+
+.excel-dashboard-table-lead {
+  margin: -0.25rem 0 0.85rem;
+  font-size: 0.88rem;
+  max-width: 48rem;
 }
 
 .excel-dashboard-main {
@@ -3959,4 +4479,1575 @@ body {
   padding-left: 1.2rem;
   font-size: 0.92rem;
   line-height: 1.5;
+}
+
+/* —— Photo wall (standalone, not survey) —— */
+.app-admin.app-admin--results-wide .admin-main--photo-wall-wide {
+  max-width: min(1600px, calc(100vw - 2rem));
+}
+
+.photo-wall-upload-page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem 3rem;
+}
+
+.photo-wall-upload-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1.75rem 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.photo-wall-upload-card--compact {
+  max-width: 320px;
+  padding: 1.15rem 1.2rem;
+}
+
+.photo-wall-upload-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.photo-wall-file-pick {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.photo-wall-file-input-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.photo-wall-file-pick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  width: 100%;
+  max-width: 280px;
+  padding: 0.85rem 1.25rem;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  font: inherit;
+  color: #fff;
+  background: linear-gradient(145deg, #e85a4f 0%, #c41e16 48%, #a01812 100%);
+  box-shadow: 0 4px 14px rgba(196, 30, 22, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.photo-wall-file-pick-btn:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 6px 20px rgba(196, 30, 22, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.photo-wall-file-pick-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #2563eb);
+  outline-offset: 3px;
+}
+
+.photo-wall-file-pick-btn:active {
+  transform: scale(0.98);
+}
+
+.photo-wall-file-pick-btn-main {
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.photo-wall-file-pick-btn-sub {
+  font-size: 0.72rem;
+  font-weight: 500;
+  opacity: 0.88;
+}
+
+.photo-wall-file-pick-name {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--text);
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.photo-wall-file-pick-name--empty {
+  color: var(--page-muted);
+  font-style: italic;
+}
+
+.photo-wall-upload-err {
+  margin: 0;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.photo-wall-file-label--compact .photo-wall-file-btn {
+  font-size: 0.85rem;
+  padding: 0.45rem 0.95rem;
+}
+
+.photo-wall-preview-wrap--compact {
+  margin-top: 0.25rem;
+}
+
+.photo-wall-preview--compact {
+  display: block;
+  max-width: 128px;
+  max-height: 128px;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.photo-wall-bulk-preview-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.photo-wall-test-page .photo-wall-upload-lead {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  max-width: 22rem;
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 0.85rem;
+}
+
+.photo-wall-test-page .photo-wall-test-links {
+  margin-top: 1.1rem;
+  text-align: center;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  max-width: 380px;
+}
+
+.photo-wall-test-page .photo-wall-test-links a {
+  color: var(--brand-red);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.photo-wall-test-page .photo-wall-test-links a:hover {
+  text-decoration: underline;
+}
+
+.photo-wall-upload-footnote {
+  margin: 1rem auto 0;
+  max-width: 22rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--page-muted);
+}
+
+.photo-wall-manage-section {
+  padding: 1.25rem 1.35rem;
+  margin-bottom: 0.25rem;
+  /* Выше шапки с z-index — иначе клики по кнопкам «Удалить…» / «Очистить» уходят в hero */
+  position: relative;
+  z-index: 2;
+}
+
+.photo-wall-manage-stats {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+}
+
+.photo-wall-manage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.photo-wall-collage-warn {
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: var(--radius-sm);
+}
+
+.photo-wall-upload-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.photo-wall-upload-card--compact .photo-wall-upload-title {
+  font-size: 1.08rem;
+  text-align: center;
+  margin-bottom: 0.15rem;
+}
+
+.photo-wall-upload-card--compact .photo-wall-upload-lead {
+  font-size: 0.8rem;
+  margin-bottom: 0.65rem;
+  text-align: center;
+}
+
+.photo-wall-upload-lead {
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+  color: var(--page-muted);
+  line-height: 1.45;
+}
+
+.photo-wall-upload-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.photo-wall-upload-drop:hover {
+  border-color: var(--brand-red);
+  background: rgba(227, 6, 19, 0.03);
+}
+
+.photo-wall-upload-drop-inner {
+  text-align: center;
+  padding: 1rem;
+}
+
+.photo-wall-upload-hint {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.photo-wall-upload-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--page-muted);
+}
+
+.photo-wall-upload-preview-wrap {
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.photo-wall-upload-preview {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.photo-wall-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 0.85rem;
+}
+
+.photo-wall-upload-msg {
+  margin: 1rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.photo-wall-upload-msg--ok {
+  color: var(--success, #15803d);
+}
+
+.photo-wall-upload-msg--err {
+  color: var(--brand-red);
+}
+
+/* Экран коллажа — на всю ширину окна (не 720px как у остальных публичных страниц) */
+.app-public--wide-collage .public-header-inner {
+  max-width: min(1920px, 100%);
+  padding-left: clamp(1rem, 3vw, 2rem);
+  padding-right: clamp(1rem, 3vw, 2rem);
+}
+
+.public-main--wide-collage {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Live-экран фотостены: не растягивать main на всю высоту viewport — иначе под сеткой серое пустое поле */
+.app-public--wide-collage:not(.app-public--photo-wall-kiosk) .public-main--wide-collage {
+  flex: 0 1 auto;
+  align-self: stretch;
+}
+
+.app-public--photo-wall-kiosk .public-main--wide-collage {
+  min-height: 100dvh;
+}
+
+.app-public--photo-wall-kiosk.app-public {
+  min-height: 100dvh;
+  background: #ffffff;
+}
+
+.app-public--wide-collage .page.photo-wall-display-page {
+  max-width: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Live: высота по коллажу — иначе min-height 100dvh + сетка по контенту дают пустое белое поле снизу */
+.app-public--wide-collage .page.photo-wall-display-page--live {
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-height: auto;
+}
+
+.app-public--wide-collage .page.photo-wall-display-page--kiosk {
+  flex: 1 1 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.photo-wall-display-page {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+}
+
+.photo-wall-display-page--live {
+  min-height: auto;
+}
+
+.photo-wall-display-page--kiosk {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.photo-wall-display-page .muted {
+  color: rgba(0, 0, 0, 0.52);
+}
+
+.photo-wall-display-page .err {
+  color: #b91c1c;
+}
+
+.photo-wall-display-trunc-hint {
+  margin: 0 1rem 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #92400e;
+  text-align: center;
+  max-width: 44rem;
+  align-self: center;
+}
+
+.photo-wall-display-muted {
+  margin: 0;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 1rem;
+  text-align: center;
+  padding: 0 1rem;
+}
+
+.photo-wall-empty-immersive-inner {
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+.photo-wall-empty-hint {
+  margin-top: 1rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.photo-wall-empty-code {
+  font-size: 0.72rem;
+  word-break: break-all;
+  color: rgba(0, 0, 0, 0.75);
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+}
+
+.photo-wall-display-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem clamp(0.75rem, 2.5vw, 2rem);
+  background: #f3f4f6;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  color: #1f2937;
+  font-size: 0.85rem;
+}
+
+.photo-wall-display-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.photo-wall-display-bar-meta {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.photo-wall-display-poll {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.photo-wall-display-poll-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.55);
+  animation: photo-wall-poll-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes photo-wall-poll-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.photo-wall-display-upload-link {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+}
+
+.photo-wall-display-bar-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+
+.photo-wall-display-layout {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.35rem;
+  font-size: 0.7rem;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.photo-wall-display-layout-link {
+  color: #374151;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 0.15rem 0.25rem;
+  border-radius: 4px;
+}
+
+.photo-wall-display-layout-link:hover {
+  color: var(--brand-red, #e30613);
+  text-decoration: underline;
+}
+
+.photo-wall-display-layout-link--on {
+  color: var(--brand-red, #e30613);
+  text-decoration: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+.photo-wall-display-layout-sep {
+  user-select: none;
+  color: rgba(0, 0, 0, 0.28);
+}
+
+.photo-wall-display-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.photo-wall-display-page--live .photo-wall-display-stage {
+  min-height: auto;
+  background: #ffffff;
+}
+
+.photo-wall-display-page--kiosk .photo-wall-display-stage {
+  min-height: 100dvh;
+  background: #ffffff;
+}
+
+.photo-wall-display-stage > .photo-wall-marquee-root {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.photo-wall-display-page--live .photo-wall-display-stage > .photo-wall-marquee-root {
+  flex: 0 0 auto;
+}
+
+.photo-wall-marquee-root {
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-root {
+  min-height: auto;
+}
+
+.photo-wall-display-page--kiosk .photo-wall-marquee-root {
+  min-height: 100dvh;
+}
+
+.photo-wall-marquee-track {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 200%;
+  align-items: stretch;
+  animation: photo-wall-marquee-pan 140s linear infinite;
+  will-change: transform;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-track {
+  flex: 0 0 auto;
+}
+
+.photo-wall-marquee-root--static .photo-wall-marquee-track {
+  animation: none;
+}
+
+.photo-wall-marquee-panel {
+  flex: 0 0 50%;
+  width: 50%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  min-height: 100%;
+}
+
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--mosaic,
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-fluid,
+.photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+  /* не min-height:0 — иначе grid-auto-rows 1fr схлопывается */
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-panel {
+  min-height: auto;
+  align-self: auto;
+}
+
+.photo-wall-display-page--live .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--mosaic,
+.photo-wall-display-page--live .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-fluid,
+.photo-wall-display-page--live .photo-wall-marquee-panel > .photo-wall-collage--immersive.photo-wall-collage--immersive-uniform {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+}
+
+@keyframes photo-wall-marquee-pan {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-wall-marquee-track {
+    animation: none;
+  }
+}
+
+.photo-wall-display-collage-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.photo-wall-collage:not(.photo-wall-collage--immersive) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.35rem;
+  align-content: start;
+}
+
+.photo-wall-collage--immersive:not(.photo-wall-collage--mosaic):not(.photo-wall-collage--immersive-fluid):not(
+    .photo-wall-collage--immersive-uniform
+  ) {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: min(65vh, 920px);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-auto-rows: minmax(88px, auto);
+  gap: 0.45rem;
+  padding: 0.35rem clamp(0.35rem, 1.2vw, 0.75rem);
+  box-sizing: border-box;
+  align-content: start;
+}
+
+/* Полноэкранная мозаика: плитки по контенту + исходные пропорции (без 1fr — иначе «мелкое фото в огромной белой ячейке»). */
+.photo-wall-collage--immersive.photo-wall-collage--mosaic {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: minmax(36px, auto);
+  grid-auto-flow: dense;
+  gap: 3px;
+  padding: 4px clamp(4px, 1vw, 10px);
+  box-sizing: border-box;
+  align-content: start;
+  align-items: start;
+  background: #ffffff;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--mos2 {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--mos-w {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--mos-h {
+  grid-column: span 1;
+  grid-row: span 2;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--mos-xl {
+  grid-column: span 3;
+  grid-row: span 2;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--mosaic {
+  min-height: 0;
+  min-width: 0;
+  align-self: start;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot-inner {
+  position: static;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-img {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+  object-position: center center;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic .photo-wall-slot--empty {
+  min-height: 72px;
+  aspect-ratio: 1;
+}
+
+/* Экран / киоск: одна колонка = одна фотография, ширина ячейки ≈ ширина кадра — без «мозаичных» span 2–3 и белых полей */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-fluid {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 108px), 1fr));
+  grid-auto-rows: auto;
+  gap: 3px;
+  padding: 4px clamp(4px, 1vw, 10px);
+  box-sizing: border-box;
+  align-content: start;
+  align-items: start;
+  background: #ffffff;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-fluid .photo-wall-slot--fluid {
+  min-width: 0;
+  align-self: start;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-fluid .photo-wall-slot-inner {
+  position: static;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-fluid .photo-wall-img {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
+  object-position: center center;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-fluid .photo-wall-slot--empty {
+  min-height: 72px;
+  aspect-ratio: 1;
+}
+
+
+/* Ровные рамки: ячейки 4:5; кадр заполняется в режиме cover на экране (см. --immersive-cover) */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 108px), 1fr));
+  grid-auto-rows: auto;
+  gap: 3px;
+  padding: 4px clamp(4px, 1vw, 10px);
+  box-sizing: border-box;
+  align-content: start;
+  align-items: start;
+  background: #ffffff;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform .photo-wall-slot--uniform {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform .photo-wall-slot-inner {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform .photo-wall-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center center;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform .photo-wall-slot--empty {
+  aspect-ratio: 4 / 5;
+  min-height: 0;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform.photo-wall-collage--mat .photo-wall-slot {
+  border-color: #e2e2e2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform.photo-wall-collage--mat .photo-wall-slot--featured {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(0, 0, 0, 0.12);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-uniform.photo-wall-collage--mat .photo-wall-slot--empty.photo-wall-slot--mat {
+  background: #f0f0f0;
+}
+
+/* Плотный коллаж: cover + якорь к верху. 12 колонок + низкий ряд дают «линзу» — cover оставляет одну горизонтальную полоску; ряд ≈ доля ширины колонки. */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic {
+  --photo-wall-mosaic-row: clamp(64px, 8.2vw, 112px);
+  grid-auto-rows: var(--photo-wall-mosaic-row);
+}
+
+/* Подстраховка высоты плиток (WebKit / сложные span) */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--mosaic:not(.photo-wall-slot--empty):not(.photo-wall-slot--mos2):not(.photo-wall-slot--mos-h):not(.photo-wall-slot--mos-xl) {
+  min-height: var(--photo-wall-mosaic-row);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--mos2:not(.photo-wall-slot--empty),
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--mos-h:not(.photo-wall-slot--empty),
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic
+  .photo-wall-slot--mos-xl:not(.photo-wall-slot--empty) {
+  min-height: calc(2 * var(--photo-wall-mosaic-row));
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic .photo-wall-slot-inner {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mosaic .photo-wall-img {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  object-position: center 28%;
+  z-index: 1;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-fluid
+  .photo-wall-slot--fluid:not(.photo-wall-slot--empty) {
+  display: flex;
+  flex-direction: column;
+  aspect-ratio: 4 / 5;
+  position: relative;
+  min-width: 0;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-fluid .photo-wall-slot-inner {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-fluid .photo-wall-img {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  max-height: none;
+  max-width: none;
+  object-fit: cover;
+  object-position: center 28%;
+  z-index: 1;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-uniform
+  .photo-wall-slot--uniform:not(.photo-wall-slot--empty) {
+  display: flex;
+  flex-direction: column;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-uniform .photo-wall-slot-inner {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: hidden;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-uniform .photo-wall-img {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+  object-position: center 28%;
+  z-index: 1;
+  display: block;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-uniform .photo-wall-slot--empty,
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--immersive-fluid .photo-wall-slot--empty {
+  min-height: 100px;
+}
+
+.photo-wall-collage--immersive-cover .photo-wall-slot--ori-portrait .photo-wall-img {
+  object-position: center 18%;
+}
+
+.photo-wall-collage--immersive-cover .photo-wall-slot--ori-landscape .photo-wall-img {
+  object-position: center center;
+}
+
+.photo-wall-collage--immersive-cover .photo-wall-slot--ori-square .photo-wall-img {
+  object-position: center 30%;
+}
+
+@keyframes photo-wall-collage-drift {
+  0% {
+    transform: translateX(6px);
+  }
+  100% {
+    transform: translateX(-18px);
+  }
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--with-drift {
+  animation: photo-wall-collage-drift 80s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--no-drift {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--with-drift {
+    animation: none;
+  }
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--mat .photo-wall-slot {
+  border-color: #e2e2e2;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--mat .photo-wall-slot--featured {
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3px rgba(0, 0, 0, 0.12);
+}
+
+.photo-wall-collage--immersive.photo-wall-collage--mosaic.photo-wall-collage--mat .photo-wall-slot--empty.photo-wall-slot--mat {
+  background: #f0f0f0;
+}
+
+.photo-wall-display-loading {
+  margin: 0.35rem 1rem;
+  font-size: 0.82rem;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.photo-wall-slot {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  align-self: stretch;
+  border: 2px solid #fff;
+  box-sizing: border-box;
+}
+
+/* Белое «паспарту» вокруг кадра */
+.photo-wall-collage--mat .photo-wall-slot-inner {
+  padding: 5px;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+/* Экран / киоск коллажа: паспарту шире, чем в превью в админке (не сжимать) */
+.photo-wall-collage--immersive.photo-wall-collage--mat .photo-wall-slot-inner {
+  padding: 10px;
+}
+
+/* Cover на экране: паспарту только отступами у img (padding на inner + absolute даёт артефакты) */
+.photo-wall-collage--immersive.photo-wall-collage--immersive-cover.photo-wall-collage--mat .photo-wall-slot-inner {
+  padding: 0;
+  background: transparent;
+}
+
+.photo-wall-collage--mat .photo-wall-slot--mosaic,
+.photo-wall-collage--mat .photo-wall-slot--mat:not(.photo-wall-slot--mosaic) {
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.photo-wall-slot--featured {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 4px rgba(0, 0, 0, 0.08);
+  z-index: 2;
+}
+
+.photo-wall-slot--empty.photo-wall-slot--mat {
+  background: #fff;
+}
+
+.photo-wall-slot-inner {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.photo-wall-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center center;
+  display: block;
+}
+
+.photo-wall-collage--mat:not(.photo-wall-collage--immersive) {
+  background: #bdbdbd;
+  padding: 10px;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.photo-wall-collage-empty--immersive {
+  position: relative;
+  inset: auto;
+  min-height: min(50vh, 480px);
+  width: 100%;
+}
+
+.photo-wall-results-page {
+  padding-bottom: 2rem;
+}
+
+.photo-wall-results-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.photo-wall-results-lead {
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+  color: var(--page-muted);
+}
+
+.photo-wall-moderation {
+  margin-bottom: 2rem;
+}
+
+.photo-wall-moderation-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.photo-wall-moderation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.photo-wall-moderation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.photo-wall-moderation-thumb-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.5rem;
+  min-height: 4.5rem;
+  max-width: 8rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  text-align: center;
+  padding: 0.35rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.photo-wall-moderation-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  object-position: center center;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.photo-wall-moderation-thumb--lg {
+  width: 216px;
+  height: 216px;
+  border-radius: 8px;
+}
+
+.photo-wall-moderation-thumb-fallback--lg {
+  min-width: 216px;
+  min-height: 216px;
+  max-width: 216px;
+  font-size: 0.88rem;
+}
+
+.photo-wall-moderation-table-section {
+  margin-bottom: 2rem;
+}
+
+.photo-wall-mod-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.photo-wall-mod-tile {
+  min-width: 0;
+}
+
+.photo-wall-mod-tile-visual {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: #e8e8ea;
+  aspect-ratio: 1;
+  max-height: min(72vw, 280px);
+  margin: 0 auto;
+}
+
+.photo-wall-mod-tile-visual .photo-wall-moderation-thumb--lg,
+.photo-wall-mod-tile-visual .photo-wall-moderation-thumb-fallback--lg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  object-fit: contain;
+  object-position: center center;
+  border-radius: 0;
+  border: none;
+  /* Иначе часть браузеров оставляет img «поверх» нижней полосы — кнопки не кликаются */
+  pointer-events: none;
+}
+
+.photo-wall-mod-tile-actions {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.45rem 0.55rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+  pointer-events: auto;
+}
+
+.photo-wall-mod-tile-actions .photo-wall-mod-btn {
+  font-size: 0.78rem;
+  padding: 0.38rem 0.45rem;
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.photo-wall-mod-tile-actions .photo-wall-mod-btn--approve.photo-wall-mod-btn--lit-green {
+  background: rgba(22, 163, 74, 0.92);
+  border-color: #15803d;
+  color: #fff;
+}
+
+.photo-wall-mod-tile-actions .photo-wall-mod-btn--reject.photo-wall-mod-btn--lit-red {
+  background: rgba(220, 38, 38, 0.9);
+  border-color: #b91c1c;
+  color: #fff;
+}
+
+.photo-wall-results-collage-marquee {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  padding: 0.65rem 0;
+  margin-bottom: 1.25rem;
+  scrollbar-width: thin;
+}
+
+.photo-wall-results-collage-marquee--static {
+  overflow-x: auto;
+}
+
+.photo-wall-results-collage-strip {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  width: max-content;
+  padding: 0 0.75rem;
+  box-sizing: border-box;
+}
+
+.photo-wall-results-collage-marquee-img {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  object-position: center center;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.photo-wall-mod-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.photo-wall-mod-btn {
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.photo-wall-mod-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.photo-wall-mod-btn--approve.photo-wall-mod-btn--lit-green {
+  background: rgba(22, 163, 74, 0.22);
+  border-color: #15803d;
+  color: #14532d;
+}
+
+.photo-wall-mod-btn--reject.photo-wall-mod-btn--lit-red {
+  background: rgba(220, 38, 38, 0.16);
+  border-color: var(--brand-red, #dc2626);
+  color: #991b1b;
+}
+
+.photo-wall-moderation-meta {
+  flex: 1;
+  min-width: 140px;
+  font-size: 0.85rem;
+}
+
+.photo-wall-moderation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.photo-wall-moderation-actions .btn {
+  font-size: 0.82rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.photo-wall-moderation-actions .btn.ghost {
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+
+.photo-wall-status {
+  display: block;
+  font-weight: 700;
+  font-size: 0.84rem;
+  margin-bottom: 0.15rem;
+}
+
+.photo-wall-status--pending {
+  color: #b45309;
+}
+
+.photo-wall-status--approved {
+  color: #15803d;
+}
+
+.photo-wall-status--rejected {
+  color: var(--brand-red);
+}
+
+.photo-wall-moderation-date {
+  display: block;
+  font-size: 0.78rem;
+}
+
+.photo-wall-results-hero {
+  position: relative;
+  z-index: 0;
+}
+
+.photo-wall-auth-hint {
+  max-width: 40rem;
+  line-height: 1.45;
+}
+
+.photo-wall-collage-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  background: #0f0f0f;
+}
+
+.photo-wall-collage-columns {
+  display: flex;
+  gap: 0.35rem;
+  height: 100%;
+  padding: 0.35rem;
+  box-sizing: border-box;
+}
+
+.photo-wall-collage-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.photo-wall-collage-cell {
+  position: relative;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #1a1a1a;
+}
+
+.photo-wall-collage-cell--featured {
+  box-shadow: 0 0 0 4px #fff, 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 2;
+}
+
+.photo-wall-collage-inner {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.photo-wall-collage-img {
+  position: absolute;
+  inset: -8%;
+  width: 120%;
+  height: 120%;
+  object-fit: cover;
+  will-change: transform;
+}
+
+.photo-wall-collage-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.95rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+/* —— Страница «для директора» (публичная ссылка по director_token) —— */
+.app-public.app-public--director .public-main {
+  max-width: min(960px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(0.75rem, 3vw, 1.25rem);
+  padding-right: clamp(0.75rem, 3vw, 1.25rem);
+}
+
+.director-survey-inner {
+  padding-bottom: 2.5rem;
+}
+
+.director-survey-hero {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 0 0.25rem;
+}
+
+.director-survey-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--page-muted);
+}
+
+.director-survey-title {
+  margin: 0 0 1rem;
+  font-size: clamp(1.35rem, 4.5vw, 1.85rem);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--page-fg, #111827);
+}
+
+.director-survey-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.75rem;
+  margin-top: 0.25rem;
+}
+
+.director-survey-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.director-survey-meta-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-red, #e30613);
+  line-height: 1;
+}
+
+.director-survey-meta-label {
+  font-size: 0.82rem;
+  color: var(--page-muted);
+  max-width: 12rem;
+  line-height: 1.35;
+}
+
+.director-survey-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--page-fg, #111827);
+}
+
+.director-survey-charts {
+  margin: 1.5rem 0 1.25rem;
+}
+
+.director-survey-cloud {
+  margin: 1.25rem 0 1.5rem;
+}
+
+.director-survey-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.director-survey-insights-tail {
+  margin-top: 2rem;
+  padding-top: 0.5rem;
+}
+
+.app-public .app-admin.director-survey-page .results-dashboard--director-2col .results-dashboard-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.app-public .app-admin.director-survey-page .results-dashboard--director-2col .results-dash-card {
+  min-height: 0;
+  min-width: 0;
+}
+
+.app-public .app-admin.director-survey-page .results-dashboard--director-2col .results-dash-chart-tall {
+  min-height: 140px;
+}
+
+@media (min-width: 600px) {
+  .app-public .app-admin.director-survey-page .results-dashboard--director-2col .results-dash-chart-tall {
+    min-height: 200px;
+  }
+}
+
+.app-public .app-admin.director-survey-page .results-dash-card-title {
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.app-public .ai-insights-narrative--director {
+  border-radius: var(--radius-md, 12px);
+  border: 1px solid rgba(227, 6, 19, 0.2);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 248, 0.95));
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow: 0 12px 40px rgba(17, 24, 39, 0.08);
+}
+
+.app-public .ai-insights-narrative--director .ai-insights-narrative-p {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: #1f2937;
+}
+
+/* Записка внизу блока «Сводка» на странице директора */
+.app-public .ai-insights-narrative--director-bottom {
+  margin-top: 1.35rem;
 }
