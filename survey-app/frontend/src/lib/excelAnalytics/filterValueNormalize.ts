@@ -1,5 +1,11 @@
 import type { AnalyticRow } from './engine';
-import { filterKeyForRole, isFilterRole, PULSE_PARALLEL_AUTO_KEY } from './engine';
+import {
+  filterKeyForRole,
+  isFilterRole,
+  PULSE_PARALLEL_AUTO_KEY,
+  pulseSurveyColKey,
+  shouldExposePulseSurveyFilterCandidate,
+} from './engine';
 import type { ColumnRole, CustomFilterLabels } from './types';
 
 const NOT_SPECIFIED = '(не указано)';
@@ -98,6 +104,10 @@ export function filterKeysForValueCollapse(
   if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
     keys.push(PULSE_PARALLEL_AUTO_KEY);
   }
+  roles.forEach((r, i) => {
+    if (!shouldExposePulseSurveyFilterCandidate(r)) return;
+    keys.push(pulseSurveyColKey(i));
+  });
   return [...new Set(keys)];
 }
 

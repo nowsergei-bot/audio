@@ -165,6 +165,8 @@ export interface ExcelFilterSectionPlan {
 export interface ExcelFilterSectionsResponse {
   source: string;
   sections: ExcelFilterSectionPlan[] | null;
+  /** Подмножество опросных ключей, отобранное ИИ (пустой массив = без опросных фильтров). */
+  surveyFilterKeys?: string[] | null;
   hint?: string;
 }
 
@@ -180,6 +182,31 @@ export interface ExcelFilterValueGroupsResponse {
   filterKey: string;
   groups: ExcelFilterValueGroup[] | null;
   hint?: string;
+}
+
+/** Унифицированный ответ `POST /api/excel-dashboard-ai` (поля зависят от action). */
+export type ExcelDashboardAiAction =
+  | 'normalize_values'
+  | 'value_hierarchy'
+  | 'nl_slice'
+  | 'explain_slice'
+  | 'chart_interpret'
+  | 'chart_anomalies'
+  | 'chart_spec';
+
+export interface ExcelDashboardAiResponse {
+  source: string;
+  hint?: string;
+  canonicalMap?: Record<string, string> | null;
+  groups?: { id: string; label: string; parentId: string | null; values: string[] }[] | null;
+  reply?: string | null;
+  apply_filters?: Record<string, string[]> | null;
+  explanation?: string | null;
+  insight?: string | null;
+  bullets?: string[] | null;
+  recommendation?: string | null;
+  focusFilterKey?: string | null;
+  focusMetricLabel?: string | null;
 }
 
 /** ИИ: 1–3 производных измерения (каждое — маппинг значения базовой колонки → группа). */

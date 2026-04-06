@@ -4646,6 +4646,82 @@ body {
   line-height: 1.45;
 }
 
+.excel-dashboard-slice-ai--assist {
+  margin-top: 0.5rem;
+}
+
+.excel-dashboard-ai-assist-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 960px) {
+  .excel-dashboard-ai-assist-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.excel-dashboard-ai-assist-block {
+  padding: 0.65rem 0.75rem;
+  min-width: 0;
+}
+
+.excel-dashboard-ai-assist-block--wide {
+  grid-column: 1 / -1;
+}
+
+.excel-dashboard-ai-assist-block-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.excel-dashboard-ai-assist-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.excel-dashboard-ai-assist-row--wrap {
+  align-items: center;
+}
+
+.excel-dashboard-ai-assist-textarea {
+  width: 100%;
+  margin: 0.35rem 0;
+  box-sizing: border-box;
+}
+
+.excel-dashboard-ai-assist-output {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.excel-dashboard-ai-assist-pre {
+  margin: 0.35rem 0 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+}
+
+.excel-code-inline {
+  font-size: 0.78em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.excel-filter-hierarchy-nested {
+  margin: 0.25rem 0 0 0.35rem;
+  padding-left: 0.25rem;
+  border-left: 1px dashed rgba(17, 24, 39, 0.12);
+}
+
 .excel-dashboard-slice-hint {
   margin: 0.65rem 0 0.85rem;
   font-size: 0.82rem;
@@ -4655,7 +4731,7 @@ body {
 .excel-dashboard-slice-sections {
   display: flex;
   flex-direction: column;
-  gap: 1.35rem;
+  gap: 0.65rem;
   width: 100%;
   align-items: stretch;
 }
@@ -4666,8 +4742,8 @@ body {
 }
 
 .excel-slice-section-title {
-  margin: 0 0 0.55rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
   font-weight: 900;
   letter-spacing: -0.01em;
   color: var(--page-fg);
@@ -4675,14 +4751,20 @@ body {
 
 .excel-dashboard-slice-filters-grid {
   display: grid;
-  /* auto-fit схлопывает пустые дорожки — при auto-fill оставались «фантомные» колонки, карточки съезжали влево */
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
-  gap: 0.75rem 1rem;
+  /* Одна колонка: каждое измерение — полная ширина, подряд (не «разъезжается» на несколько карточек в ряд) */
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
   width: 100%;
+  align-items: stretch;
 }
 
-.excel-slice-dimension {
-  padding: 0.65rem 0.75rem 0.75rem;
+/* Строка измерения: слева подпись (+ скрыть), справа чипы плотной сеткой */
+.excel-dashboard-slice-filters-grid .excel-slice-dimension {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.65rem 1rem;
+  padding: 0.4rem 0.55rem 0.45rem;
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
@@ -4690,8 +4772,242 @@ body {
   border: 1px solid rgba(17, 24, 39, 0.08);
 }
 
+.excel-dashboard-slice-filters-grid .excel-slice-dimension-head {
+  flex: 0 0 auto;
+  width: min(100%, 11.5rem);
+  margin-bottom: 0;
+}
+
+.excel-dashboard-slice-filters-grid .excel-slice-dimension-head--row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.excel-dashboard-slice-filters-grid .excel-slice-dimension-body {
+  flex: 1 1 min(0, 100%);
+  min-width: 0;
+}
+
+.excel-dashboard-slice-filters-grid .excel-analytics-filter-actions {
+  margin-top: 0.3rem;
+}
+
+/* Плотнее чипы только в срезе Excel */
+.excel-dashboard-slice-filters-grid .excel-analytics-filter-chips {
+  gap: 0.26rem 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.excel-dashboard-slice-filters-grid .excel-analytics-chip {
+  padding: 0.12rem 0.38rem;
+  font-size: 0.74rem;
+  gap: 0.28rem;
+  line-height: 1.25;
+}
+
+.excel-dashboard-slice-filters-grid .excel-slice-dimension-label {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.excel-dashboard-slice-filters-grid .excel-slice-dimension-hide {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.32rem;
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .excel-dashboard-slice-filters-grid .excel-slice-dimension {
+    flex-direction: column;
+  }
+
+  .excel-dashboard-slice-filters-grid .excel-slice-dimension-head {
+    width: 100%;
+  }
+}
+
 .excel-slice-dimension-head {
   margin-bottom: 0.35rem;
+}
+
+.excel-slice-dimension-head--row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.excel-slice-dimension-hide {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+}
+
+.excel-hidden-filters-details {
+  margin-top: 0.75rem;
+}
+
+.excel-hidden-filters-summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.excel-hidden-filters-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+
+.excel-session-restore-banner {
+  margin: 0 0 0.75rem;
+}
+
+.excel-session-hint {
+  margin: 0.35rem 0 0;
+  max-width: 52rem;
+}
+
+.excel-recent-projects-folder {
+  margin-bottom: 0.75rem;
+}
+
+.excel-recent-projects-lead {
+  margin: 0.35rem 0 0;
+  max-width: 52rem;
+}
+
+.excel-open-project-callout {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  background: rgba(60, 120, 200, 0.12);
+  color: var(--page-fg);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+
+.excel-recent-projects-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.excel-recent-projects-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.excel-recent-projects-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: min(100%, 14rem);
+}
+
+.excel-recent-projects-name {
+  font-weight: 700;
+  color: var(--page-fg);
+}
+
+.excel-recent-projects-meta {
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.excel-recent-projects-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.excel-save-project-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.excel-save-project-field {
+  flex: 1 1 12rem;
+  min-width: min(100%, 12rem);
+}
+
+.excel-save-project-btn {
+  flex: 0 0 auto;
+}
+
+.excel-save-linked {
+  font-size: 0.85rem;
+  width: 100%;
+  flex-basis: 100%;
+}
+
+.excel-save-project-wait {
+  margin: 0.5rem 0 0;
+  max-width: 48rem;
+  font-size: 0.9rem;
+}
+
+.excel-dashboard-slice-toolbar .excel-dashboard-save-project {
+  flex-shrink: 0;
+}
+
+.excel-dashboard-mid-save-bar {
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(227, 6, 19, 0.28);
+  background: linear-gradient(135deg, rgba(227, 6, 19, 0.07), rgba(227, 6, 19, 0.02));
+}
+
+.excel-dashboard-mid-save-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.excel-dashboard-mid-save-text {
+  margin: 0;
+  flex: 1 1 16rem;
+  min-width: min(100%, 12rem);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--page-fg);
+}
+
+.excel-dashboard-mid-save-text strong {
+  font-weight: 800;
+}
+
+.excel-dashboard-mid-save-btn {
+  flex-shrink: 0;
+}
+
+.excel-dashboard-mid-save-anchor {
+  color: var(--brand-red);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .excel-slice-dimension-label {
@@ -4701,10 +5017,14 @@ body {
   color: var(--page-fg);
 }
 
+.excel-slice-dimension-body .excel-analytics-filter-chips,
+.excel-slice-dimension-body .excel-filter-value-groups {
+  overflow: visible;
+  max-height: none;
+}
+
 .excel-slice-dimension-body .excel-analytics-filter-chips {
-  max-height: 200px;
-  overflow-y: auto;
-  padding-right: 0.15rem;
+  padding-right: 0;
 }
 
 .excel-dash-chart-catalog .excel-dash-card-sub {
@@ -5202,13 +5522,7 @@ body {
   margin-top: 0.85rem;
   padding-top: 0.95rem;
   border-top: 1px solid rgba(17, 24, 39, 0.08);
-  overflow-y: auto;
-}
-
-@media (min-width: 1024px) {
-  .excel-dashboard-sidebar-filters {
-    max-height: calc(100vh - 16rem);
-  }
+  overflow: visible;
 }
 
 .excel-dash-board-panels {
@@ -5533,10 +5847,6 @@ body {
 
 .excel-dashboard-chart-row--list-features-wide {
   grid-template-columns: 1fr;
-}
-
-.excel-dashboard-slice-filters-grid--wide {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr));
 }
 
 .excel-dash-board-panels--compact {

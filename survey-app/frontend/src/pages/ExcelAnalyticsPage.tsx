@@ -1,5 +1,5 @@
 import { motion, MotionConfig } from 'framer-motion';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Bar,
   BarChart,
@@ -12,17 +12,24 @@ import {
   YAxis,
 } from 'recharts';
 import {
+  deleteExcelAnalyticsProject,
+  getExcelAnalyticsProject,
+  listExcelAnalyticsProjects,
+  postExcelDashboardAi,
   postExcelDerivedFilters,
   postExcelDirectorDossier,
   postExcelFilterSections,
   postExcelFilterValueGroups,
   postExcelNarrativeSummary,
+  saveExcelAnalyticsProject,
+  type ExcelAnalyticsProjectListItem,
 } from '../api/client';
 import AiWaitIndicator from '../components/AiWaitIndicator';
 import PulseExcelChat from '../components/PulseExcelChat';
 import { formatBilingualCellLabel } from '../lib/excelAnalytics/excelDisplayLabel';
 import { fadeIn } from '../motion/resultsMotion';
 import {
+  applyCanonicalMapsToRows,
   applyDerivedDimensionsToRows,
   applyFilters,
   applyFiltersExceptKey,
@@ -35,6 +42,7 @@ import {
   countUniqueLessonSemantics,
   dedupeRowsByLessonIdx,
   expandRowsForMultiValueFilterColumns,
+  expandRowsForPulseSurveyMultiSelect,
   filterKeyForRole,
   filterSelectionsEqual,
   histogramNumericBins,
@@ -57,9 +65,12 @@ import {
   listFeatureTagCounts,
   listFeatureTagFrequencyByTeacher,
   listFeatureTagUniverse,
+  listStructuralFilterKeys,
+  listSurveyCandidateFilterKeys,
   teacherListFeatureCoverage,
   teachersAtOrdinalRank,
   teachersInMetricBin,
+  shouldExposePulseSurveyFilterCandidate,
   type AnalyticRow,
   type FilterSelection,
   type HistogramBinDetail,
@@ -86,6 +97,7 @@ import {
   type CustomFilterLabels,
   type SavedMappingTemplate,
 } from '../lib/excelAnalytics/types';
+import { fileFingerprintFromFile, matchSessionForSheet, type SavedExcelSession } from '../lib/excelAnalytics/excelSessionStorage';
 
 const MAX_ROWS = 8000;
 /** Сколько строк среза показывать в таблице «как в Excel» (остальные — в подписи). */
@@ -119,6 +131,15 @@ function excelDetailCellTitle(c: CellPrimitive | undefined): string | undefined 
   const s = String(c).replace(/\s+/g, ' ').trim();
   if (s.length <= 40) return undefined;
   return s.length > 4000 ? `${s.slice(0, 3997)}…` : s;
+}
+
+/** Уникальный ключ строки детализации: idx+split совпадают у разных «точек» среза — без filterValues React дублирует key и не обновляет DOM. */
+function detailTableRowKey(r: AnalyticRow, rowIndex: number): string {
+  const fv = Object.keys(r.filterValues)
+    .sort()
+    .map((k) => `${k}:${r.filterValues[k]}`)
+    .join('\u0001');
+  return `dtr:${rowIndex}:${r.idx}:${r.splitPart ?? 0}:${fv}`;
 }
 
 function ExcelDrillMiniSummary({
@@ -165,9 +186,7 @@ function buildFilterKeyLabels(
     m[PULSE_ORDINAL_LEVEL_KEY] = headers[oci]?.trim() || 'Текстовая шкала';
   }
   roles.forEach((r, i) => {
-    if (r === 'ignore' || r === 'date') return;
-    if (isFilterRole(r)) return;
-    if (r === 'metric_ordinal_text') return;
+    if (!shouldExposePulseSurveyFilterCandidate(r)) return;
     m[pulseSurveyColKey(i)] = headers[i]?.trim() || `Колонка ${i + 1}`;
   });
   return m;
@@ -211,10 +230,19 @@ function collectOrdinalValues(rows: CellPrimitive[][], colIndex: number): string
   for (const line of rows) {
     const c = line[colIndex];
     if (c == null || c === '') continue;
-    const t = c instanceof Date ? c.toISOString().slice(0, 10) : String(c).trim();
+    const raw = c instanceof Date ? c.toISOString().slice(0, 10) : String(c).trim();
+    const t = formatBilingualCellLabel(raw, 'ru').trim();
     if (t) s.add(t);
   }
   return [...s].sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+/** Укорачиваем типичный текст ошибки списка проектов. */
+function formatExcelProjectsListError(raw: string): string {
+  if (/Unauthorized|Нужна авторизация/i.test(raw)) {
+    return 'Укажите X-Api-Key на главной или войдите по логину.';
+  }
+  return raw;
 }
 
 export default function ExcelAnalyticsPage() {
@@ -231,6 +259,32 @@ export default function ExcelAnalyticsPage() {
   const [templates, setTemplates] = useState<SavedMappingTemplate[]>(() => loadTemplates());
   const [templateName, setTemplateName] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [fileFingerprint, setFileFingerprint] = useState<string | null>(null);
+  /** Скрытые измерения среза: не показываются в панели; отбор по ним сброшен. */
+  const [filterPanelHiddenKeys, setFilterPanelHiddenKeys] = useState<string[]>([]);
+  const [sessionRestoreNote, setSessionRestoreNote] = useState<string | null>(null);
+  /** Снимок с сервера: применяется после загрузки того же файла и «Загрузить лист». */
+  const [pendingServerSession, setPendingServerSession] = useState<SavedExcelSession | null>(null);
+  const [pendingOpenProjectId, setPendingOpenProjectId] = useState<number | null>(null);
+  const [openProjectHint, setOpenProjectHint] = useState<string | null>(null);
+  /** После сохранения или открытия с сервера — обновление того же проекта кнопкой «Сохранить». */
+  const [linkedProjectId, setLinkedProjectId] = useState<number | null>(null);
+  const [excelProjects, setExcelProjects] = useState<ExcelAnalyticsProjectListItem[]>([]);
+  const [excelProjectsLoading, setExcelProjectsLoading] = useState(false);
+  const [excelProjectsError, setExcelProjectsError] = useState<string | null>(null);
+  const [saveProjectTitle, setSaveProjectTitle] = useState('');
+  const [saveProjectBusy, setSaveProjectBusy] = useState(false);
+  const pendingServerSessionRef = useRef<SavedExcelSession | null>(null);
+  const pendingOpenProjectIdRef = useRef<number | null>(null);
+  /** Секция «1. Файл»: прокрутка после «Открыть», чтобы подсказка была видна. */
+  const excelFileSectionRef = useRef<HTMLElement | null>(null);
+  const [openProjectBusyId, setOpenProjectBusyId] = useState<number | null>(null);
+  useEffect(() => {
+    pendingServerSessionRef.current = pendingServerSession;
+  }, [pendingServerSession]);
+  useEffect(() => {
+    pendingOpenProjectIdRef.current = pendingOpenProjectId;
+  }, [pendingOpenProjectId]);
 
   const [analyticRows, setAnalyticRows] = useState<AnalyticRow[]>([]);
   const [filterSelection, setFilterSelection] = useState<FilterSelection>({});
@@ -261,6 +315,24 @@ export default function ExcelAnalyticsPage() {
   const [aiSectionLayout, setAiSectionLayout] = useState<ExcelFilterSectionPlan[] | null>(null);
   const [aiSectionsBusy, setAiSectionsBusy] = useState(false);
   const [aiSectionsHint, setAiSectionsHint] = useState<string | null>(null);
+  /** null = ждём ответ ИИ по опросным столбцам; иначе подмножество кандидатов. */
+  const [aiSurveyFilterKeys, setAiSurveyFilterKeys] = useState<string[] | null>(null);
+  /** ИИ: сырое значение → каноническая метка по ключу фильтра. */
+  const [aiCanonicalMapsByKey, setAiCanonicalMapsByKey] = useState<Record<string, Record<string, string>>>({});
+  /** ИИ: иерархия групп значений по ключу фильтра. */
+  const [aiHierarchyByKey, setAiHierarchyByKey] = useState<
+    Record<string, { id: string; label: string; parentId: string | null; values: string[] }[]>
+  >({});
+  const [aiAssistNlQuery, setAiAssistNlQuery] = useState('');
+  const [aiAssistExplain, setAiAssistExplain] = useState<string | null>(null);
+  const [aiAssistChartInterpret, setAiAssistChartInterpret] = useState<string | null>(null);
+  const [aiAssistChartAnomalies, setAiAssistChartAnomalies] = useState<string | null>(null);
+  const [aiAssistChartSpec, setAiAssistChartSpec] = useState<string | null>(null);
+  const [aiAssistChartQuery, setAiAssistChartQuery] = useState('');
+  const [aiAssistBusy, setAiAssistBusy] = useState(false);
+  const [aiAssistHint, setAiAssistHint] = useState<string | null>(null);
+  const [aiNormalizeTargetKey, setAiNormalizeTargetKey] = useState<string | null>(null);
+  const [aiHierarchyTargetKey, setAiHierarchyTargetKey] = useState<string | null>(null);
   /** ИИ: смысловые подгруппы внутри длинных списков значений по ключу фильтра. */
   const [facetGroupsByKey, setFacetGroupsByKey] = useState<Record<string, ExcelFilterValueGroup[]>>({});
   const [facetGroupsBusy, setFacetGroupsBusy] = useState(false);
@@ -285,37 +357,80 @@ export default function ExcelAnalyticsPage() {
   /** Педагог для блоков «список через запятую»: покрытие X из Y и топ отметок. */
   const [listFeatureMentorPick, setListFeatureMentorPick] = useState('');
 
-  const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f) return;
-    if (!f.name.toLowerCase().endsWith('.xlsx')) {
-      setErr('Нужен файл .xlsx');
-      return;
-    }
-    setErr(null);
+  const refreshExcelProjects = useCallback(async () => {
+    setExcelProjectsLoading(true);
+    setExcelProjectsError(null);
     try {
-      const buf = await f.arrayBuffer();
-      const meta = readWorkbookMeta(buf);
-      setBuffer(buf);
-      setFileName(f.name);
-      setSheetNames(meta.sheetNames);
-      setSheet(meta.sheetNames[0] ?? '');
-      setHeaders([]);
-      setRawRows([]);
-      setRoles([]);
-      setAnalyticRows([]);
-      setAiDerivedDimensions([]);
-      setAiDerivedHint(null);
-      setDerivedSourceKey(null);
-      setFilterSelection({});
-      setServiceStripNote(null);
-      setSummaryNarrative(null);
-      setSummaryNarrativeLoading(false);
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Не удалось прочитать файл');
+      const list = await listExcelAnalyticsProjects();
+      setExcelProjects(list);
+    } catch (e) {
+      setExcelProjectsError(e instanceof Error ? e.message : 'Не удалось загрузить список проектов');
+      setExcelProjects([]);
+    } finally {
+      setExcelProjectsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    void refreshExcelProjects();
+  }, [refreshExcelProjects]);
+
+  const onFile = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      e.target.value = '';
+      if (!f) return;
+      if (!f.name.toLowerCase().endsWith('.xlsx')) {
+        setErr('Нужен файл .xlsx');
+        return;
+      }
+      setErr(null);
+      try {
+        const buf = await f.arrayBuffer();
+        const meta = readWorkbookMeta(buf);
+        const fp = fileFingerprintFromFile(f);
+        const pending = pendingServerSessionRef.current;
+        if (pending && fp !== pending.fingerprint) {
+          pendingServerSessionRef.current = null;
+          pendingOpenProjectIdRef.current = null;
+          setPendingServerSession(null);
+          setPendingOpenProjectId(null);
+          setOpenProjectHint(null);
+        }
+        let nextSheet = meta.sheetNames[0] ?? '';
+        let nextHeaderRow = headerRow1Based;
+        if (pending && fp === pending.fingerprint) {
+          if (meta.sheetNames.includes(pending.sheet)) nextSheet = pending.sheet;
+          nextHeaderRow = pending.headerRow1Based;
+        }
+        setBuffer(buf);
+        setFileFingerprint(fp);
+        setLinkedProjectId(null);
+        setSessionRestoreNote(null);
+        setFilterPanelHiddenKeys([]);
+        setFileName(f.name);
+        setSheetNames(meta.sheetNames);
+        setSheet(nextSheet);
+        setHeaderRow1Based(nextHeaderRow);
+        setHeaders([]);
+        setRawRows([]);
+        setRoles([]);
+        setAnalyticRows([]);
+        setAiSurveyFilterKeys(null);
+        setAiSectionLayout(null);
+        setAiDerivedDimensions([]);
+        setAiDerivedHint(null);
+        setDerivedSourceKey(null);
+        setFilterSelection({});
+        setServiceStripNote(null);
+        setSummaryNarrative(null);
+        setSummaryNarrativeLoading(false);
+      } catch (ex) {
+        setErr(ex instanceof Error ? ex.message : 'Не удалось прочитать файл');
+      }
+    },
+    [headerRow1Based],
+  );
 
   const setRoleAt = (colIndex: number, role: ColumnRole) => {
     setRoles((prev) => {
@@ -358,14 +473,52 @@ export default function ExcelAnalyticsPage() {
     return lines;
   }, [headers, roles]);
 
-  const analyticRowsComposed = useMemo(
+  const rowsAfterDerived = useMemo(
     () => applyDerivedDimensionsToRows(analyticRows, aiDerivedDimensions),
     [analyticRows, aiDerivedDimensions],
   );
 
+  const dashboardRows = useMemo(
+    () => applyCanonicalMapsToRows(rowsAfterDerived, aiCanonicalMapsByKey),
+    [rowsAfterDerived, aiCanonicalMapsByKey],
+  );
+
+  const filterPanelHiddenSet = useMemo(() => new Set(filterPanelHiddenKeys), [filterPanelHiddenKeys]);
+
+  /** Скрытые измерения не участвуют в отборе строк (как «все значения»). */
+  const effectiveFilterSelection = useMemo(() => {
+    const out: FilterSelection = { ...filterSelection };
+    for (const k of filterPanelHiddenSet) {
+      out[k] = null;
+    }
+    return out;
+  }, [filterSelection, filterPanelHiddenSet]);
+
+  const structuralFilterKeys = useMemo(
+    () => listStructuralFilterKeys(roles, customLabels, aiDerivedDimensions),
+    [roles, customLabels, aiDerivedDimensions],
+  );
+
+  const surveyCandidateFilterKeys = useMemo(() => listSurveyCandidateFilterKeys(roles), [roles]);
+
+  const filterKeys = useMemo(() => {
+    const survey =
+      aiSurveyFilterKeys !== null ? aiSurveyFilterKeys : ([] as string[]);
+    return [...structuralFilterKeys, ...survey];
+  }, [structuralFilterKeys, aiSurveyFilterKeys]);
+
+  /** Только актуальные измерения среза; устаревшие ключи в объекте selection игнорируются. */
+  const sliceFilterSelection = useMemo((): FilterSelection => {
+    const out: FilterSelection = {};
+    for (const k of filterKeys) {
+      out[k] = effectiveFilterSelection[k] ?? null;
+    }
+    return out;
+  }, [filterKeys, effectiveFilterSelection]);
+
   const filteredRows = useMemo(() => {
-    return applyFilters(analyticRowsComposed, filterSelection);
-  }, [analyticRowsComposed, filterSelection]);
+    return applyFilters(dashboardRows, sliceFilterSelection);
+  }, [dashboardRows, sliceFilterSelection]);
 
   /** Одна строка на урок: средние, гистограммы и шкала без лишнего веса после развёртки тегов/наставников. */
   const filteredRowsOnePerLesson = useMemo(
@@ -391,56 +544,30 @@ export default function ExcelAnalyticsPage() {
     return meanByTeacherGrouped(filteredRows, teacherFilterKey, metricNumericCols);
   }, [filteredRows, teacherFilterKey, metricNumericCols]);
 
-  /** Уроки по смыслу (дата + подпись + срезы без наставника); дубликаты строк Excel схлопываются. */
-  const kpiLessons = useMemo(
+  /** Уникальные строки импорта (idx) в срезе — совпадает с ожидаемым числом записей в таблице Excel. */
+  const kpiLessons = useMemo(() => countUniqueImportRows(filteredRows), [filteredRows]);
+  const kpiImportRowsTotal = useMemo(() => countUniqueImportRows(dashboardRows), [dashboardRows]);
+  /** События по смыслу (дата + подпись + срезы без наставника/опроса); больше строк импорта, если в фильтрах мультизначения. */
+  const kpiLessonSemanticsFiltered = useMemo(
     () => countUniqueLessonSemantics(filteredRows, teacherFilterKey),
     [filteredRows, teacherFilterKey],
   );
-  const uniqueLessonCount = useMemo(
-    () => countUniqueLessonSemantics(analyticRowsComposed, teacherFilterKey),
-    [analyticRowsComposed, teacherFilterKey],
+  const kpiLessonSemanticsTotal = useMemo(
+    () => countUniqueLessonSemantics(dashboardRows, teacherFilterKey),
+    [dashboardRows, teacherFilterKey],
   );
-  const kpiImportRowsFiltered = useMemo(() => countUniqueImportRows(filteredRows), [filteredRows]);
-  const kpiImportRowsTotal = useMemo(() => countUniqueImportRows(analyticRowsComposed), [analyticRowsComposed]);
 
   const kpiMentors = useMemo(() => {
     if (!teacherFilterKey) return 0;
     return uniqueFilterValues(filteredRows, teacherFilterKey).filter((x) => x !== '(не указано)').length;
   }, [filteredRows, teacherFilterKey]);
 
-  const filterKeys = useMemo(() => {
-    const out: string[] = [];
-    const seen = new Set<string>();
-    const push = (k: string) => {
-      if (seen.has(k)) return;
-      seen.add(k);
-      out.push(k);
-    };
-    for (let i = 0; i < roles.length; i++) {
-      const r = roles[i];
-      if (r === 'ignore' || r === 'date') continue;
-      if (isFilterRole(r)) {
-        push(filterKeyForRole(r, customLabels));
-        if (r === 'filter_class' && !roles.includes('filter_parallel')) {
-          push(PULSE_PARALLEL_AUTO_KEY);
-        }
-      } else if (r !== 'metric_ordinal_text') {
-        push(pulseSurveyColKey(i));
-      }
-    }
-    if (roles.includes('metric_ordinal_text')) {
-      push(PULSE_ORDINAL_LEVEL_KEY);
-    }
-    for (const d of aiDerivedDimensions) {
-      push(d.id);
-    }
-    return out;
-  }, [roles, customLabels, aiDerivedDimensions]);
-
-  const eligibleDerivedSourceKeys = useMemo(
-    () => filterKeys.filter((k) => k !== PULSE_ORDINAL_LEVEL_KEY && !k.startsWith(PULSE_AI_DIM_PREFIX)),
-    [filterKeys],
-  );
+  const eligibleDerivedSourceKeys = useMemo(() => {
+    const cand = new Set([...structuralFilterKeys, ...surveyCandidateFilterKeys]);
+    return [...cand].filter(
+      (k) => k !== PULSE_ORDINAL_LEVEL_KEY && !k.startsWith(PULSE_AI_DIM_PREFIX),
+    );
+  }, [structuralFilterKeys, surveyCandidateFilterKeys]);
 
   useEffect(() => {
     if (!eligibleDerivedSourceKeys.length) {
@@ -452,7 +579,7 @@ export default function ExcelAnalyticsPage() {
     );
   }, [eligibleDerivedSourceKeys]);
 
-  const filterSectionColumns = useMemo((): FilterColumnForSections[] => {
+  const filterColumnDescriptorsAll = useMemo((): FilterColumnForSections[] => {
     const base: FilterColumnForSections[] = [];
     for (let i = 0; i < roles.length; i++) {
       const r = roles[i];
@@ -472,7 +599,7 @@ export default function ExcelAnalyticsPage() {
             colIndex: -1,
           });
         }
-      } else if (r !== 'metric_ordinal_text') {
+      } else if (shouldExposePulseSurveyFilterCandidate(r)) {
         base.push({
           filterKey: pulseSurveyColKey(i),
           role: 'filter_custom_1',
@@ -501,8 +628,39 @@ export default function ExcelAnalyticsPage() {
     return base;
   }, [roles, headers, customLabels, aiDerivedDimensions]);
 
+  const filterSectionColumns = useMemo((): FilterColumnForSections[] => {
+    const active = new Set(filterKeys);
+    return filterColumnDescriptorsAll.filter((c) => active.has(c.filterKey));
+  }, [filterColumnDescriptorsAll, filterKeys]);
+
   const autoFilterSections = useMemo(() => buildAutoFilterSections(filterSectionColumns), [filterSectionColumns]);
   const filterSections = aiSectionLayout ?? autoFilterSections;
+
+  const filterKeysForPanel = useMemo(
+    () => filterKeys.filter((k) => !filterPanelHiddenSet.has(k)),
+    [filterKeys, filterPanelHiddenSet],
+  );
+
+  /** Сколько измерений в панели сужены (выбран не весь список значений). */
+  const narrowingFilterDimensionsCount = useMemo(() => {
+    let n = 0;
+    for (const k of filterKeysForPanel) {
+      const s = sliceFilterSelection[k];
+      if (s != null && Array.isArray(s) && s.length > 0) n += 1;
+    }
+    return n;
+  }, [filterKeysForPanel, sliceFilterSelection]);
+
+  const filterSectionsForDisplay = useMemo(
+    () =>
+      filterSections
+        .map((section) => ({
+          ...section,
+          keys: section.keys.filter((k) => !filterPanelHiddenSet.has(k)),
+        }))
+        .filter((section) => section.keys.length > 0),
+    [filterSections, filterPanelHiddenSet],
+  );
 
   const filterKeysSig = useMemo(() => [...filterKeys].sort().join('\u0001'), [filterKeys]);
 
@@ -525,9 +683,7 @@ export default function ExcelAnalyticsPage() {
       m[d.id] = d.title;
     }
     roles.forEach((r, i) => {
-      if (r === 'ignore' || r === 'date') return;
-      if (isFilterRole(r)) return;
-      if (r === 'metric_ordinal_text') return;
+      if (!shouldExposePulseSurveyFilterCandidate(r)) return;
       m[pulseSurveyColKey(i)] = headers[i]?.trim() || `Колонка ${i + 1}`;
     });
     return m;
@@ -552,8 +708,8 @@ export default function ExcelAnalyticsPage() {
   const filterSnapshotRows = useMemo(() => {
     const mode = showEnglishExcelLabels ? 'en' : 'ru';
     const rows: { label: string; value: string }[] = [];
-    for (const k of filterKeys) {
-      const sel = filterSelection[k];
+    for (const k of filterKeysForPanel) {
+      const sel = sliceFilterSelection[k];
       const label = filterKeyDisplayLabelUi[k] ?? k;
       if (sel === null) {
         rows.push({ label, value: 'Все значения' });
@@ -563,7 +719,7 @@ export default function ExcelAnalyticsPage() {
       }
     }
     return rows;
-  }, [filterKeys, filterSelection, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
+  }, [filterKeysForPanel, sliceFilterSelection, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
 
   const filterSnapshotAllOpen = useMemo(
     () => filterSnapshotRows.length > 0 && filterSnapshotRows.every((r) => r.value === 'Все значения'),
@@ -572,18 +728,18 @@ export default function ExcelAnalyticsPage() {
 
   const singleTeacherFilterName = useMemo(() => {
     if (!teacherFilterKey) return null;
-    const s = filterSelection[teacherFilterKey];
+    const s = sliceFilterSelection[teacherFilterKey];
     if (Array.isArray(s) && s.length === 1) return s[0];
     return null;
-  }, [teacherFilterKey, filterSelection]);
+  }, [teacherFilterKey, sliceFilterSelection]);
 
   /** Текст для ИИ: фильтры = параметры среза. */
   const filterParameterSummaryRu = useMemo(() => {
-    if (!analyticRowsComposed.length) return '';
+    if (!dashboardRows.length) return '';
     const lines: string[] = [];
     lines.push(`Файл: ${fileName || '—'}, лист: ${sheet || '—'}`);
     lines.push(
-      `Объём среза: ${kpiLessons} уроков по смыслу (${kpiImportRowsFiltered} строк импорта Excel); ${filteredRows.length} аналитических строк после возможной развёртки мультизначений в ячейках.`,
+      `Объём среза: ${kpiLessons} строк импорта Excel (уникальные записи); ${filteredRows.length} аналитических строк («точки») после развёртки мультизначений в ячейках; по смыслу (дата+подпись+срезы): ${kpiLessonSemanticsFiltered}.`,
     );
     if (teacherFilterKey && kpiMentors > 0) {
       lines.push(`Уникальных кодов/значений наставника в срезе: ${kpiMentors}.`);
@@ -594,11 +750,11 @@ export default function ExcelAnalyticsPage() {
     }
     return lines.join('\n');
   }, [
-    analyticRowsComposed.length,
+    dashboardRows.length,
     fileName,
     sheet,
     kpiLessons,
-    kpiImportRowsFiltered,
+    kpiLessonSemanticsFiltered,
     filteredRows.length,
     filterSnapshotRows,
     teacherFilterKey,
@@ -739,7 +895,7 @@ export default function ExcelAnalyticsPage() {
 
   const allFilterDistributionCharts = useMemo(() => {
     const mode = showEnglishExcelLabels ? 'en' : 'ru';
-    return filterKeys.map((key) => {
+    return filterKeysForPanel.map((key) => {
       const label = filterKeyDisplayLabelUi[key] ?? key;
       const rawBars = topFilterBucketsByUniqueLesson(filteredRows, key, 10, teacherFilterKey);
       const bars = rawBars.map((b) => {
@@ -752,7 +908,7 @@ export default function ExcelAnalyticsPage() {
       });
       return { key, label, bars };
     });
-  }, [filterKeys, filteredRows, teacherFilterKey, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
+  }, [filterKeysForPanel, filteredRows, teacherFilterKey, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
 
   const listFeatureHeaders = useMemo(() => {
     const out: string[] = [];
@@ -863,51 +1019,59 @@ export default function ExcelAnalyticsPage() {
   }, [mentorChartData, metricNumericCols]);
 
   const quickText = useMemo(() => {
-    if (!analyticRowsComposed.length) return '';
+    if (!dashboardRows.length) return '';
     const di = roles.indexOf('date');
-    return buildQuickSummaryRu(analyticRowsComposed, filteredRows, {
+    return buildQuickSummaryRu(dashboardRows, filteredRows, {
       hasTeacherFilter: roles.includes('filter_teacher_code'),
       mentorFilterKey: teacherFilterKey,
       dateLabel: di >= 0 ? headers[di] : '',
       numericMetrics: numericMetricsForSummary,
       hasOrdinal: roles.includes('metric_ordinal_text'),
     });
-  }, [analyticRowsComposed, filteredRows, roles, headers, numericMetricsForSummary, teacherFilterKey]);
+  }, [dashboardRows, filteredRows, roles, headers, numericMetricsForSummary, teacherFilterKey]);
 
   /** Развёрнутая фактическая база для ИИ (срезы, шкала, шифры, больше цитат) — как вход для «комплексного отчёта». */
   const richLlmContext = useMemo(() => {
-    if (!analyticRowsComposed.length) return '';
+    if (!dashboardRows.length) return '';
     const di = roles.indexOf('date');
-    return buildRichLlmContextRu(analyticRowsComposed, filteredRows, {
+    return buildRichLlmContextRu(dashboardRows, filteredRows, {
       dateLabel: di >= 0 ? headers[di] : '',
       numericMetrics: numericMetricsForSummary,
       hasOrdinal: roles.includes('metric_ordinal_text'),
       ordinalLevels,
       teacherFilterKey,
-      filterKeys,
+      filterKeys: filterKeysForPanel,
       filterLabels: filterKeyDisplayLabel,
     });
   }, [
-    analyticRowsComposed,
+    dashboardRows,
     filteredRows,
     roles,
     headers,
     numericMetricsForSummary,
     ordinalLevels,
     teacherFilterKey,
-    filterKeys,
+    filterKeysForPanel,
     filterKeyDisplayLabel,
   ]);
 
   /** Варианты по каждому фильтру с учётом уже выбранных остальных (каскад / логическая цепочка). */
   const pulseFacetOptions = useMemo(() => {
     const m: Record<string, string[]> = {};
-    for (const k of filterKeys) {
-      const base = applyFiltersExceptKey(analyticRowsComposed, filterSelection, k);
+    for (const k of filterKeysForPanel) {
+      const base = applyFiltersExceptKey(dashboardRows, sliceFilterSelection, k);
       m[k] = uniqueFilterValues(base, k).slice(0, 72);
     }
     return m;
-  }, [filterKeys, analyticRowsComposed, filterSelection]);
+  }, [filterKeysForPanel, dashboardRows, sliceFilterSelection]);
+
+  const pulseFiltersForChat = useMemo(() => {
+    const out: FilterSelection = {};
+    for (const k of filterKeysForPanel) {
+      out[k] = sliceFilterSelection[k] ?? null;
+    }
+    return out;
+  }, [filterKeysForPanel, sliceFilterSelection]);
 
   const pulseFacetLabels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -927,9 +1091,7 @@ export default function ExcelAnalyticsPage() {
       m[d.id] = d.title;
     }
     roles.forEach((r, i) => {
-      if (r === 'ignore' || r === 'date') return;
-      if (isFilterRole(r)) return;
-      if (r === 'metric_ordinal_text') return;
+      if (!shouldExposePulseSurveyFilterCandidate(r)) return;
       m[pulseSurveyColKey(i)] = headers[i] || `Колонка ${i + 1}`;
     });
     return m;
@@ -973,10 +1135,10 @@ export default function ExcelAnalyticsPage() {
     (update: (prev: FilterSelection) => FilterSelection) => {
       setFilterSelection((prev) => {
         const draft = update(prev);
-        return pruneFilterSelection(analyticRowsComposed, draft, filterKeys);
+        return pruneFilterSelection(dashboardRows, draft, filterKeys);
       });
     },
-    [analyticRowsComposed, filterKeys],
+    [dashboardRows, filterKeys],
   );
 
   const openExcelFactsAndScroll = useCallback(() => {
@@ -1018,18 +1180,29 @@ export default function ExcelAnalyticsPage() {
    * Локальные обновления чипов и ПУЛЬС дополнительно прогоняют prune сами.
    */
   useEffect(() => {
-    if (!analyticRowsComposed.length || !filterKeys.length) return;
+    if (!dashboardRows.length || !filterKeys.length) return;
     setFilterSelection((prev) => {
-      const next = pruneFilterSelection(analyticRowsComposed, prev, filterKeys);
+      const next = pruneFilterSelection(dashboardRows, prev, filterKeys);
       return filterSelectionsEqual(prev, next, filterKeys) ? prev : next;
     });
-  }, [analyticRowsComposed, filterKeysSig]);
+  }, [dashboardRows, filterKeysSig]);
+
+  useEffect(() => {
+    if (!filterKeys.length) return;
+    setFilterPanelHiddenKeys((prev) => {
+      const next = prev.filter((k) => filterKeys.includes(k));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [filterKeysSig]);
 
   /** Пустой срез — убираем ИИ-разметку (при новом «Построить» сброс делается в runAnalysis). */
   useEffect(() => {
     if (analyticRows.length) return;
+    setAiSurveyFilterKeys(null);
     setAiSectionLayout(null);
     setAiSectionsHint(null);
+    setAiCanonicalMapsByKey({});
+    setAiHierarchyByKey({});
     setFacetGroupsByKey({});
     setFacetGroupsHint(null);
     setAiDerivedDimensions([]);
@@ -1042,13 +1215,7 @@ export default function ExcelAnalyticsPage() {
     setOrdinalDrill(null);
   }, [metricPickIndex]);
 
-  useEffect(() => {
-    if (!teacherFilterKey || (!metricDrill && !ordinalDrill)) return;
-    const id = requestAnimationFrame(() => {
-      document.getElementById('excel-chart-drill-dock')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [metricDrill, ordinalDrill, teacherFilterKey]);
+  /** Не прокручиваем к панели дрилла автоматически — мешает при работе с фильтрами выше по странице. */
 
   /** Смена среза — сбрасываем записи для директора (нужно сформировать заново). */
   useEffect(() => {
@@ -1061,31 +1228,50 @@ export default function ExcelAnalyticsPage() {
     async (
       rows: AnalyticRow[],
       rolesArg: ColumnRole[],
-      sel: FilterSelection,
-      keys: string[],
+      prevSelection: FilterSelection,
+      structuralKeysArg: string[],
+      surveyCandidateKeysArg: string[],
       derivedDims: ExcelDerivedFilterDimension[],
-    ) => {
-      if (!rows.length || !keys.length) return;
+    ): Promise<{ fullKeys: string[]; mergedSelection: FilterSelection } | null> => {
+      if (!rows.length) return null;
       setAiSectionsBusy(true);
       setAiSectionsHint(null);
+      const unionKeys = [...new Set([...structuralKeysArg, ...surveyCandidateKeysArg])];
       try {
-        const columns = rolesArg
-          .map((r, i) => ({ r, i }))
-          .filter(({ r }) => isFilterRole(r))
-          .map(({ r, i }) => {
-            const fk = filterKeyForRole(r, customLabels);
-            const base = applyFiltersExceptKey(rows, sel, fk);
-            return {
-              filterKey: fk,
-              role: r,
-              roleLabel: COLUMN_ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r,
-              header: headers[i] || fk,
-              samples: uniqueFilterValues(base, fk).slice(0, 14),
-            };
+        const columns: {
+          filterKey: string;
+          role: string;
+          roleLabel: string;
+          header: string;
+          samples: string[];
+        }[] = [];
+        for (let i = 0; i < rolesArg.length; i++) {
+          const r = rolesArg[i];
+          if (!isFilterRole(r)) continue;
+          const fk = filterKeyForRole(r, customLabels);
+          if (!unionKeys.includes(fk)) continue;
+          const base = applyFiltersExceptKey(rows, prevSelection, fk);
+          columns.push({
+            filterKey: fk,
+            role: r,
+            roleLabel: COLUMN_ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r,
+            header: headers[i] || fk,
+            samples: uniqueFilterValues(base, fk).slice(0, 14),
           });
-        if (keys.includes(PULSE_ORDINAL_LEVEL_KEY)) {
+        }
+        if (unionKeys.includes(PULSE_PARALLEL_AUTO_KEY) && !columns.some((c) => c.filterKey === PULSE_PARALLEL_AUTO_KEY)) {
+          const baseP = applyFiltersExceptKey(rows, prevSelection, PULSE_PARALLEL_AUTO_KEY);
+          columns.push({
+            filterKey: PULSE_PARALLEL_AUTO_KEY,
+            role: 'filter_parallel',
+            roleLabel: 'Параллель (из класса)',
+            header: 'Параллель (из класса)',
+            samples: uniqueFilterValues(baseP, PULSE_PARALLEL_AUTO_KEY).slice(0, 14),
+          });
+        }
+        if (unionKeys.includes(PULSE_ORDINAL_LEVEL_KEY)) {
           const oci = rolesArg.indexOf('metric_ordinal_text');
-          const baseOrd = applyFiltersExceptKey(rows, sel, PULSE_ORDINAL_LEVEL_KEY);
+          const baseOrd = applyFiltersExceptKey(rows, prevSelection, PULSE_ORDINAL_LEVEL_KEY);
           columns.push({
             filterKey: PULSE_ORDINAL_LEVEL_KEY,
             role: 'metric_ordinal_text',
@@ -1095,8 +1281,8 @@ export default function ExcelAnalyticsPage() {
           });
         }
         for (const d of derivedDims) {
-          if (!keys.includes(d.id)) continue;
-          const baseD = applyFiltersExceptKey(rows, sel, d.id);
+          if (!unionKeys.includes(d.id)) continue;
+          const baseD = applyFiltersExceptKey(rows, prevSelection, d.id);
           columns.push({
             filterKey: d.id,
             role: 'filter_custom_1',
@@ -1105,30 +1291,70 @@ export default function ExcelAnalyticsPage() {
             samples: uniqueFilterValues(baseD, d.id).slice(0, 14),
           });
         }
-        for (const k of keys) {
+        for (const k of surveyCandidateKeysArg) {
           const sm = /^__pulse_survey_col_(\d+)$/.exec(k);
           if (!sm) continue;
           const ci = Number(sm[1]);
-          const baseS = applyFiltersExceptKey(rows, sel, k);
+          const baseS = applyFiltersExceptKey(rows, prevSelection, k);
           columns.push({
             filterKey: k,
-            role: 'filter_custom_1',
-            roleLabel: 'Поле опроса',
+            role: rolesArg[ci] ?? 'filter_custom_1',
+            roleLabel: 'Поле опроса (кандидат)',
             header: headers[ci] || k,
             samples: uniqueFilterValues(baseS, k).slice(0, 14),
           });
         }
-        const res = await postExcelFilterSections({ filterKeys: keys, columns });
-        if (res.source === 'llm' && res.sections?.length) {
+
+        const res = await postExcelFilterSections({
+          structuralKeys: structuralKeysArg,
+          surveyCandidateKeys: surveyCandidateKeysArg,
+          columns,
+        });
+
+        const surveyPick = Array.isArray(res.surveyFilterKeys) ? res.surveyFilterKeys : surveyCandidateKeysArg;
+        setAiSurveyFilterKeys(surveyPick);
+
+        const fullKeys = [...structuralKeysArg, ...surveyPick];
+        const mergedSelection: FilterSelection = {};
+        for (const k of fullKeys) {
+          const prev = prevSelection[k];
+          mergedSelection[k] = prev !== undefined ? prev : null;
+        }
+        for (const k of Object.keys(mergedSelection)) {
+          if (!fullKeys.includes(k)) delete mergedSelection[k];
+        }
+        setFilterSelection(mergedSelection);
+
+        if (res.sections?.length) {
           setAiSectionLayout(res.sections);
-          setAiSectionsHint(null);
+          if (res.source === 'llm') {
+            setAiSectionsHint(null);
+          } else {
+            setAiSectionsHint(
+              res.hint?.trim() ||
+                'Показаны все кандидаты опроса: ИИ недоступен или вернул запасной вариант.',
+            );
+          }
         } else {
+          setAiSectionLayout(null);
           setAiSectionsHint(
             res.hint?.trim() || 'Модель не вернула разделы. Повторите запрос позже или обратитесь к администратору.',
           );
         }
+
+        return { fullKeys, mergedSelection };
       } catch (e) {
+        setAiSurveyFilterKeys(surveyCandidateKeysArg);
+        const fullKeys = [...structuralKeysArg, ...surveyCandidateKeysArg];
+        const mergedSelection: FilterSelection = {};
+        for (const k of fullKeys) {
+          const prev = prevSelection[k];
+          mergedSelection[k] = prev !== undefined ? prev : null;
+        }
+        setFilterSelection(mergedSelection);
         setAiSectionsHint(e instanceof Error ? e.message : 'Не удалось запросить ИИ');
+        setAiSectionLayout(null);
+        return { fullKeys, mergedSelection };
       } finally {
         setAiSectionsBusy(false);
       }
@@ -1183,19 +1409,49 @@ export default function ExcelAnalyticsPage() {
   );
 
   const fetchAiFilterSections = useCallback(() => {
-    void runAiFilterSectionsFor(analyticRowsComposed, roles, filterSelection, filterKeys, aiDerivedDimensions);
-  }, [runAiFilterSectionsFor, analyticRowsComposed, roles, filterSelection, filterKeys, aiDerivedDimensions]);
+    if (!dashboardRows.length) return;
+    const structural = listStructuralFilterKeys(roles, customLabels, aiDerivedDimensions);
+    const surveyCand = listSurveyCandidateFilterKeys(roles);
+    void (async () => {
+      const out = await runAiFilterSectionsFor(
+        dashboardRows,
+        roles,
+        sliceFilterSelection,
+        structural,
+        surveyCand,
+        aiDerivedDimensions,
+      );
+      if (out) {
+        const labelsM = buildFilterKeyLabels(roles, headers, customLabels);
+        await runAiValueGroupsFor(
+          dashboardRows,
+          out.mergedSelection,
+          out.fullKeys,
+          labelsM,
+        );
+      }
+    })();
+  }, [
+    runAiFilterSectionsFor,
+    runAiValueGroupsFor,
+    dashboardRows,
+    roles,
+    sliceFilterSelection,
+    customLabels,
+    aiDerivedDimensions,
+    headers,
+  ]);
 
   const fetchAiValueGroups = useCallback(() => {
-    void runAiValueGroupsFor(analyticRowsComposed, filterSelection, filterKeys, filterKeyDisplayLabel);
-  }, [runAiValueGroupsFor, analyticRowsComposed, filterSelection, filterKeys, filterKeyDisplayLabel]);
+    void runAiValueGroupsFor(dashboardRows, sliceFilterSelection, filterKeys, filterKeyDisplayLabel);
+  }, [runAiValueGroupsFor, dashboardRows, sliceFilterSelection, filterKeys, filterKeyDisplayLabel]);
 
   const fetchAiDerivedFilters = useCallback(async () => {
-    if (!derivedSourceKey || !analyticRowsComposed.length) {
+    if (!derivedSourceKey || !dashboardRows.length) {
       setAiDerivedHint('Выберите колонку-источник для группировки.');
       return;
     }
-    const vals = uniqueFilterValues(analyticRowsComposed, derivedSourceKey).filter((x) => x !== '(не указано)');
+    const vals = uniqueFilterValues(dashboardRows, derivedSourceKey).filter((x) => x !== '(не указано)');
     if (vals.length < 4) {
       setAiDerivedHint('Нужно минимум 4 различных значения в колонке (кроме «не указано»).');
       return;
@@ -1229,7 +1485,250 @@ export default function ExcelAnalyticsPage() {
     } finally {
       setAiDerivedBusy(false);
     }
-  }, [derivedSourceKey, analyticRowsComposed, filterKeyDisplayLabel]);
+  }, [derivedSourceKey, dashboardRows, filterKeyDisplayLabel]);
+
+  useEffect(() => {
+    if (!filterKeys.length) {
+      setAiNormalizeTargetKey(null);
+      setAiHierarchyTargetKey(null);
+      return;
+    }
+    setAiNormalizeTargetKey((prev) => (prev && filterKeys.includes(prev) ? prev : filterKeys[0]));
+    setAiHierarchyTargetKey((prev) => (prev && filterKeys.includes(prev) ? prev : filterKeys[0]));
+  }, [filterKeys]);
+
+  const runAiNlSlice = useCallback(async () => {
+    const q = aiAssistNlQuery.trim();
+    if (!q || !dashboardRows.length) {
+      setAiAssistHint('Введите запрос на естественном языке.');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const currentFilters = Object.fromEntries(
+        filterKeysForPanel.map((k) => [k, sliceFilterSelection[k] ?? null]),
+      ) as Record<string, string[] | null>;
+      const res = await postExcelDashboardAi({
+        action: 'nl_slice',
+        query: q,
+        facetOptions: pulseFacetOptions,
+        facetLabels: pulseFacetLabels,
+        currentFilters,
+      });
+      if (res.apply_filters && Object.keys(res.apply_filters).length) {
+        setFilterSelection((prev) => {
+          const next = { ...prev };
+          for (const [k, arr] of Object.entries(res.apply_filters!)) {
+            if (filterKeys.includes(k) && filterKeysForPanel.includes(k)) next[k] = [...arr];
+          }
+          return pruneFilterSelection(dashboardRows, next, filterKeys);
+        });
+      }
+      setAiAssistHint(res.reply?.trim() || res.hint?.trim() || null);
+    } catch (e) {
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [
+    aiAssistNlQuery,
+    dashboardRows,
+    pulseFacetOptions,
+    pulseFacetLabels,
+    sliceFilterSelection,
+    filterKeysForPanel,
+    filterKeys,
+  ]);
+
+  const runAiExplainSlice = useCallback(async () => {
+    if (!dashboardRows.length) return;
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const res = await postExcelDashboardAi({
+        action: 'explain_slice',
+        filterSnapshot: filterSnapshotRows,
+        kpi: {
+          lessons: kpiLessons,
+          semanticLessons: kpiLessonSemanticsFiltered,
+          rows: filteredRows.length,
+          mentors: kpiMentors,
+        },
+        numericSummary: `${filterParameterSummaryRu}\n\n${quickText}`.slice(0, 24000),
+      });
+      setAiAssistExplain(res.explanation?.trim() || res.hint?.trim() || null);
+    } catch (e) {
+      setAiAssistExplain(null);
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [
+    dashboardRows,
+    filterSnapshotRows,
+    kpiLessons,
+    kpiLessonSemanticsFiltered,
+    filteredRows.length,
+    kpiMentors,
+    filterParameterSummaryRu,
+    quickText,
+  ]);
+
+  const runAiNormalizeColumn = useCallback(async () => {
+    const key = aiNormalizeTargetKey;
+    if (!key || !dashboardRows.length) return;
+    const vals = uniqueFilterValues(dashboardRows, key).filter((x) => x !== '(не указано)');
+    if (vals.length < 2) {
+      setAiAssistHint('Нужно минимум 2 различных значения в этом измерении.');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const res = await postExcelDashboardAi({
+        action: 'normalize_values',
+        filterKey: key,
+        header: filterKeyDisplayLabel[key] ?? key,
+        values: vals.slice(0, 400),
+      });
+      if (res.canonicalMap && Object.keys(res.canonicalMap).length) {
+        setAiCanonicalMapsByKey((prev) => ({ ...prev, [key]: res.canonicalMap! }));
+        setAiAssistHint('Карта нормализации применена (значения в срезе объединены по смыслу).');
+      } else {
+        setAiAssistHint(res.hint?.trim() || 'Модель не вернула карту.');
+      }
+    } catch (e) {
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [aiNormalizeTargetKey, dashboardRows, filterKeyDisplayLabel]);
+
+  const runAiHierarchyColumn = useCallback(async () => {
+    const key = aiHierarchyTargetKey;
+    if (!key || !dashboardRows.length) return;
+    const vals = uniqueFilterValues(dashboardRows, key).filter((x) => x !== '(не указано)');
+    if (vals.length < 4) {
+      setAiAssistHint('Для иерархии нужно минимум 4 различных значения.');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const res = await postExcelDashboardAi({
+        action: 'value_hierarchy',
+        filterKey: key,
+        header: filterKeyDisplayLabel[key] ?? key,
+        values: vals.slice(0, 220),
+      });
+      if (res.groups?.length) {
+        setAiHierarchyByKey((prev) => ({ ...prev, [key]: res.groups! }));
+        setAiAssistHint('Иерархия групп для этого измерения обновлена.');
+      } else {
+        setAiAssistHint(res.hint?.trim() || 'Модель не вернула группы.');
+      }
+    } catch (e) {
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [aiHierarchyTargetKey, dashboardRows, filterKeyDisplayLabel]);
+
+  const runAiChartInterpret = useCallback(async () => {
+    const ch = allFilterDistributionCharts.find((c) => c.bars.length);
+    if (!ch) {
+      setAiAssistHint('Нет мини-графиков распределения по фильтрам.');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const series = ch.bars.map((b) => ({ name: b.fullName, value: b.uniqueLessons }));
+      const res = await postExcelDashboardAi({
+        action: 'chart_interpret',
+        chartTitle: ch.label,
+        series,
+      });
+      setAiAssistChartInterpret(res.insight?.trim() || res.hint?.trim() || null);
+    } catch (e) {
+      setAiAssistChartInterpret(null);
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [allFilterDistributionCharts]);
+
+  const runAiChartAnomalies = useCallback(async () => {
+    if (!allFilterDistributionCharts.length) {
+      setAiAssistHint('Нет данных для анализа.');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const aggregates = allFilterDistributionCharts.flatMap((ch) =>
+        ch.bars.map((b) => ({
+          chart: ch.label,
+          label: b.fullName,
+          uniqueLessons: b.uniqueLessons,
+        })),
+      );
+      const res = await postExcelDashboardAi({
+        action: 'chart_anomalies',
+        aggregates,
+      });
+      const bullets = res.bullets?.filter(Boolean) ?? [];
+      setAiAssistChartAnomalies(
+        bullets.length ? `• ${bullets.join('\n• ')}` : res.hint?.trim() || null,
+      );
+    } catch (e) {
+      setAiAssistChartAnomalies(null);
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [allFilterDistributionCharts]);
+
+  const runAiChartSpec = useCallback(async () => {
+    const q = aiAssistChartQuery.trim();
+    if (!q) {
+      setAiAssistHint('Введите вопрос (например: где сравнить средние по предметам).');
+      return;
+    }
+    setAiAssistBusy(true);
+    setAiAssistHint(null);
+    try {
+      const metricLabels = metricNumericCols.map((i) => headers[i] || `Колонка ${i + 1}`);
+      const res = await postExcelDashboardAi({
+        action: 'chart_spec',
+        query: q,
+        filterKeys,
+        metricLabels,
+      });
+      const parts: string[] = [];
+      if (res.recommendation?.trim()) parts.push(res.recommendation.trim());
+      if (res.focusFilterKey) {
+        parts.push(
+          `Фокус: фильтр «${filterKeyDisplayLabel[res.focusFilterKey] ?? res.focusFilterKey}» (прокрутка к мини-графику).`,
+        );
+      }
+      if (res.focusMetricLabel) parts.push(`Метрика: ${res.focusMetricLabel}`);
+      setAiAssistChartSpec(parts.join('\n\n') || res.hint?.trim() || null);
+      if (res.focusFilterKey) {
+        requestAnimationFrame(() =>
+          document
+            .getElementById(`excel-chart-focus-${res.focusFilterKey}`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }),
+        );
+      }
+    } catch (e) {
+      setAiAssistChartSpec(null);
+      setAiAssistHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiAssistBusy(false);
+    }
+  }, [aiAssistChartQuery, filterKeys, metricNumericCols, headers, filterKeyDisplayLabel]);
 
   const executeAnalysis = useCallback(
     (
@@ -1237,6 +1736,7 @@ export default function ExcelAnalyticsPage() {
       matrixRows: CellPrimitive[][],
       rolesInput: ColumnRole[],
       ordinalInput: string[],
+      opts?: { restoreFilterSelection?: FilterSelection },
     ) => {
       const v = validateRoles(rolesInput);
       if (!v.ok) {
@@ -1261,10 +1761,20 @@ export default function ExcelAnalyticsPage() {
       }
 
       setErr(null);
+      setAiSurveyFilterKeys(null);
       setAiSectionLayout(null);
       setAiSectionsHint(null);
       setFacetGroupsByKey({});
       setFacetGroupsHint(null);
+      setAiCanonicalMapsByKey({});
+      setAiHierarchyByKey({});
+      setAiAssistNlQuery('');
+      setAiAssistExplain(null);
+      setAiAssistChartInterpret(null);
+      setAiAssistChartAnomalies(null);
+      setAiAssistChartSpec(null);
+      setAiAssistChartQuery('');
+      setAiAssistHint(null);
       setAiDerivedDimensions([]);
       setAiDerivedHint(null);
       setMetricDrill(null);
@@ -1286,29 +1796,20 @@ export default function ExcelAnalyticsPage() {
       let built = buildAnalyticRows(h, matrixRows, rolesForRun, customLabels, ordinalInput);
       built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
       built = augmentRowsWithDerivedParallel(built, rolesForRun, customLabels);
+      built = expandRowsForPulseSurveyMultiSelect(built, rolesForRun);
       built = collapseSimilarFilterDimensionValues(built, rolesForRun, customLabels);
       setAnalyticRows(built);
 
+      const structural = listStructuralFilterKeys(rolesForRun, customLabels, []);
+      const surveyCand = listSurveyCandidateFilterKeys(rolesForRun);
+      const restore = opts?.restoreFilterSelection;
       const sel: FilterSelection = {};
-      const keys = new Set<string>();
-      const ordRun = rolesForRun.indexOf('metric_ordinal_text');
-      for (let i = 0; i < rolesForRun.length; i++) {
-        const r = rolesForRun[i];
-        if (r === 'ignore' || r === 'date') continue;
-        if (isFilterRole(r)) {
-          keys.add(filterKeyForRole(r, customLabels));
-          if (r === 'filter_class' && !rolesForRun.includes('filter_parallel')) {
-            keys.add(PULSE_PARALLEL_AUTO_KEY);
-          }
-        } else if (r !== 'metric_ordinal_text') {
-          keys.add(pulseSurveyColKey(i));
-        }
-      }
-      if (ordRun >= 0) {
-        keys.add(PULSE_ORDINAL_LEVEL_KEY);
-      }
-      keys.forEach((k) => {
-        sel[k] = null;
+      structural.forEach((k) => {
+        sel[k] = restore?.[k] ?? null;
+      });
+      const prevForAi: FilterSelection = { ...(restore || {}), ...sel };
+      structural.forEach((k) => {
+        prevForAi[k] = restore?.[k] ?? null;
       });
       setFilterSelection(sel);
 
@@ -1316,11 +1817,19 @@ export default function ExcelAnalyticsPage() {
         rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
       setMetricPickIndex(firstMetric);
 
-      const keysArr = [...keys];
       const labelsM = buildFilterKeyLabels(rolesForRun, h, customLabels);
       void (async () => {
-        await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr, []);
-        await runAiValueGroupsFor(built, sel, keysArr, labelsM);
+        const out = await runAiFilterSectionsFor(
+          built,
+          rolesForRun,
+          prevForAi,
+          structural,
+          surveyCand,
+          [],
+        );
+        if (out) {
+          await runAiValueGroupsFor(built, out.mergedSelection, out.fullKeys, labelsM);
+        }
       })();
     },
     [customLabels, runAiFilterSectionsFor, runAiValueGroupsFor],
@@ -1349,6 +1858,7 @@ export default function ExcelAnalyticsPage() {
       setHeaders(h);
       setRawRows(rows);
       setAnalyticRows([]);
+      setAiSurveyFilterKeys(null);
       setAiDerivedDimensions([]);
       setAiDerivedHint(null);
       setDerivedSourceKey(null);
@@ -1364,6 +1874,61 @@ export default function ExcelAnalyticsPage() {
       setMetricDrill(null);
       setOrdinalDrill(null);
       setExcelFactsOpen(false);
+
+      const snap = pendingServerSession;
+      const saved: SavedExcelSession | null =
+        fileFingerprint && snap && matchSessionForSheet(snap, fileFingerprint, sheet, headerRow1Based, h)
+          ? snap
+          : null;
+
+      if (pendingServerSession && !saved) {
+        pendingServerSessionRef.current = null;
+        pendingOpenProjectIdRef.current = null;
+        setPendingServerSession(null);
+        setPendingOpenProjectId(null);
+        setOpenProjectHint(null);
+        setErr(
+          'Лист или строка заголовков не совпадают с сохранённым проектом — строим схему заново. Проверьте лист и номер строки заголовков.',
+        );
+      }
+
+      if (saved && saved.roles.length === h.length) {
+        const vr = validateRoles(saved.roles);
+        if (vr.ok) {
+          const ordCol = saved.roles.indexOf('metric_ordinal_text');
+          const ordFromSaved =
+            ordCol >= 0 && saved.ordinalLevels.length > 0
+              ? saved.ordinalLevels
+              : ordCol >= 0
+                ? collectOrdinalValues(rows, ordCol)
+                : [];
+          setCustomLabels(saved.customLabels ?? {});
+          setRoles(saved.roles);
+          setOrdinalLevels(ordFromSaved);
+          setFilterPanelHiddenKeys(saved.filterPanelHiddenKeys ?? []);
+          const openedId = pendingOpenProjectId;
+          if (openedId != null) {
+            setLinkedProjectId(openedId);
+            setSessionRestoreNote(
+              'Восстановлены маппинг, фильтры и скрытые измерения из сохранённого проекта на сервере.',
+            );
+          } else {
+            setSessionRestoreNote(null);
+          }
+          pendingServerSessionRef.current = null;
+          pendingOpenProjectIdRef.current = null;
+          setPendingServerSession(null);
+          setPendingOpenProjectId(null);
+          setOpenProjectHint(null);
+          executeAnalysis(h, rows, saved.roles, ordFromSaved, {
+            restoreFilterSelection: saved.filterSelection ?? {},
+          });
+          return;
+        }
+      }
+
+      setSessionRestoreNote(null);
+      setFilterPanelHiddenKeys([]);
       const suggested = suggestColumnRoles(h, rows);
       const oc = suggested.indexOf('metric_ordinal_text');
       const ord = oc >= 0 ? collectOrdinalValues(rows, oc) : [];
@@ -1473,6 +2038,7 @@ export default function ExcelAnalyticsPage() {
     (key: string, all: string[]) => {
       const sel = filterSelection[key];
       const groups = facetGroupsByKey[key];
+      const hierarchy = aiHierarchyByKey[key];
       if (all.length === 0) {
         return (
           <p className="muted excel-analytics-filter-empty">Нет вариантов при текущем срезе по другим фильтрам.</p>
@@ -1501,7 +2067,7 @@ export default function ExcelAnalyticsPage() {
                     else nextVal = arr;
                   }
                   const updated = { ...prev, [key]: nextVal };
-                  return pruneFilterSelection(analyticRowsComposed, updated, filterKeys);
+                  return pruneFilterSelection(dashboardRows, updated, filterKeys);
                 });
               }}
             />
@@ -1509,6 +2075,31 @@ export default function ExcelAnalyticsPage() {
           </label>
         );
       };
+      if (hierarchy?.length) {
+        const childrenOf = (pid: string | null) =>
+          hierarchy.filter((g) => (g.parentId ?? null) === pid);
+        const renderH = (pid: string | null): ReactNode => {
+          const nodes = childrenOf(pid);
+          if (!nodes.length) return null;
+          return nodes.map((g) => (
+            <details key={g.id} className="excel-filter-value-group" open>
+              <summary className="excel-filter-value-group-summary">
+                {g.label}
+                {g.values.length > 0 ? (
+                  <span className="muted"> ({g.values.length})</span>
+                ) : null}
+              </summary>
+              {g.values.length > 0 ? (
+                <div className="excel-analytics-filter-chips excel-analytics-filter-chips--nested">
+                  {g.values.map(chip)}
+                </div>
+              ) : null}
+              <div className="excel-filter-hierarchy-nested">{renderH(g.id)}</div>
+            </details>
+          ));
+        };
+        return <div className="excel-filter-value-groups">{renderH(null)}</div>;
+      }
       if (groups?.length) {
         return (
           <div className="excel-filter-value-groups">
@@ -1525,7 +2116,7 @@ export default function ExcelAnalyticsPage() {
       }
       return <div className="excel-analytics-filter-chips">{all.map(chip)}</div>;
     },
-    [filterSelection, facetGroupsByKey, analyticRowsComposed, filterKeys],
+    [filterSelection, facetGroupsByKey, aiHierarchyByKey, dashboardRows, filterKeys],
   );
 
   useEffect(() => {
@@ -1547,7 +2138,11 @@ export default function ExcelAnalyticsPage() {
         extraContext: pulseLlmExtraBundle.trim() || undefined,
         facetLabels: pulseFacetLabels,
         filterSummary: filterParameterSummaryRu.trim() || undefined,
-        meta: { filteredRowCount: filteredRows.length, uniqueLessonCount: kpiLessons },
+        meta: {
+          filteredRowCount: filteredRows.length,
+          uniqueImportRows: kpiLessons,
+          semanticLessonCount: kpiLessonSemanticsFiltered,
+        },
       },
     })
       .then((res) => {
@@ -1577,7 +2172,111 @@ export default function ExcelAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [richLlmContext, pulseLlmExtraBundle, pulseFacetLabels, filteredRows.length, filterParameterSummaryRu, kpiLessons]);
+  }, [
+    richLlmContext,
+    pulseLlmExtraBundle,
+    pulseFacetLabels,
+    filteredRows.length,
+    filterParameterSummaryRu,
+    kpiLessons,
+    kpiLessonSemanticsFiltered,
+  ]);
+
+  const openProjectFromList = useCallback(async (id: number) => {
+    setErr(null);
+    setOpenProjectBusyId(id);
+    try {
+      const p = await getExcelAnalyticsProject(id);
+      // Refs синхронно: иначе при быстром выборе файла после «Открыть» onFile видит ещё пустой ref (useEffect позже).
+      pendingServerSessionRef.current = p.session;
+      pendingOpenProjectIdRef.current = p.id;
+      setPendingServerSession(p.session);
+      setPendingOpenProjectId(p.id);
+      setOpenProjectHint(
+        `Выберите файл «${p.file_name}» (или тот же по содержимому) и нажмите «Загрузить лист» — подтянем маппинг и срез с сервера.`,
+      );
+      requestAnimationFrame(() => {
+        excelFileSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Не удалось открыть проект');
+    } finally {
+      setOpenProjectBusyId(null);
+    }
+  }, []);
+
+  const removeProject = useCallback(
+    async (id: number) => {
+      try {
+        await deleteExcelAnalyticsProject(id);
+        setLinkedProjectId((cur) => (cur === id ? null : cur));
+        if (pendingOpenProjectIdRef.current === id) {
+          pendingServerSessionRef.current = null;
+          pendingOpenProjectIdRef.current = null;
+          setPendingServerSession(null);
+          setPendingOpenProjectId(null);
+          setOpenProjectHint(null);
+        }
+        await refreshExcelProjects();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Не удалось удалить проект');
+      }
+    },
+    [refreshExcelProjects],
+  );
+
+  const saveCurrentProject = useCallback(async () => {
+    if (!fileFingerprint || !fileName || !analyticRows.length) return;
+    const title = saveProjectTitle.trim() || fileName;
+    const session: SavedExcelSession = {
+      v: 1,
+      fingerprint: fileFingerprint,
+      fileName,
+      sheet,
+      headerRow1Based,
+      headers,
+      roles,
+      customLabels,
+      ordinalLevels,
+      filterSelection,
+      filterPanelHiddenKeys,
+    };
+    setSaveProjectBusy(true);
+    setErr(null);
+    try {
+      const proj = await saveExcelAnalyticsProject({
+        title,
+        session,
+        id: linkedProjectId ?? undefined,
+      });
+      setLinkedProjectId(proj.id);
+      setSaveProjectTitle(proj.title);
+      await refreshExcelProjects();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Не удалось сохранить проект');
+    } finally {
+      setSaveProjectBusy(false);
+    }
+  }, [
+    fileFingerprint,
+    fileName,
+    analyticRows.length,
+    saveProjectTitle,
+    sheet,
+    headerRow1Based,
+    headers,
+    roles,
+    customLabels,
+    ordinalLevels,
+    filterSelection,
+    filterPanelHiddenKeys,
+    linkedProjectId,
+    refreshExcelProjects,
+  ]);
+
+  useEffect(() => {
+    if (fileName) setSaveProjectTitle(fileName);
+  }, [fileName]);
 
   const saveTemplate = () => {
     const name = templateName.trim();
@@ -1628,11 +2327,92 @@ export default function ExcelAnalyticsPage() {
             Загрузите таблицу, укажите лист и строку заголовков и нажмите «Загрузить лист» — роли колонок подбираются
             автоматически, дашборд строится сам. Ручная правка и шаблоны — в блоке «Настройка столбцов» ниже. Если в той же
             книге на другом листе есть расшифровка шифра в ФИО (столбцы вроде «ШИФР» и «ФИО»), она подмешивается в контекст
-            для ИИ. Данные обрабатываются в браузере; шаблоны хранятся локально на этом устройстве.
+            для ИИ. Данные в браузере; шаблоны маппинга — локально в настройках столбцов. Проекты на сервере: тот же X-Api-Key,
+            что на главной, или вход по логину; после «Загрузить лист» — «Сохранить» в блоке ниже или над сводкой.
           </p>
         </motion.header>
 
-        <section className="card import-workbook-drop glass-surface excel-analytics-section">
+        <section className="card glass-surface excel-analytics-section excel-recent-projects" aria-labelledby="excel-recent-projects-heading">
+          <div className="excel-recent-projects-folder">
+            <h2 id="excel-recent-projects-heading" className="admin-dash-h2">
+              Последние проекты
+            </h2>
+            <p className="muted excel-recent-projects-lead">
+              Список и сохранение на сервере (ключ API или логин). «Открыть» — снова выберите тот же файл с диска.
+            </p>
+          </div>
+          {excelProjectsLoading && <p className="muted">Загрузка списка…</p>}
+          {excelProjectsError && (
+            <p className="err excel-projects-err-short">{formatExcelProjectsListError(excelProjectsError)}</p>
+          )}
+          {!excelProjectsLoading && !excelProjectsError && excelProjects.length === 0 && (
+            <p className="muted">Пока нет сохранённых проектов — они появятся после первого сохранения.</p>
+          )}
+          {openProjectHint ? (
+            <p className="excel-open-project-callout" role="status">
+              {openProjectHint}
+            </p>
+          ) : null}
+          {excelProjects.length > 0 ? (
+            <ul className="excel-recent-projects-list">
+              {excelProjects.map((p) => (
+                <li key={p.id} className="excel-recent-projects-item">
+                  <div className="excel-recent-projects-item-main">
+                    <span className="excel-recent-projects-name">{p.title}</span>
+                    <span className="muted excel-recent-projects-meta">
+                      {p.file_name}
+                      {p.sheet ? ` · лист «${p.sheet}»` : ''} · {new Date(p.updated_at).toLocaleString('ru-RU')}
+                    </span>
+                  </div>
+                  <div className="excel-recent-projects-actions">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={openProjectBusyId === p.id}
+                      onClick={() => void openProjectFromList(p.id)}
+                    >
+                      {openProjectBusyId === p.id ? 'Загрузка…' : 'Открыть'}
+                    </button>
+                    <button type="button" className="btn" onClick={() => void removeProject(p.id)}>
+                      Удалить
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {buffer && analyticRows.length > 0 ? (
+            <div className="excel-save-project-row">
+              <label className="excel-analytics-field excel-save-project-field">
+                Название проекта
+                <input
+                  className="excel-analytics-input"
+                  value={saveProjectTitle}
+                  onChange={(e) => setSaveProjectTitle(e.target.value)}
+                  placeholder={fileName || 'Название'}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn primary excel-save-project-btn"
+                disabled={saveProjectBusy}
+                onClick={() => void saveCurrentProject()}
+              >
+                {saveProjectBusy ? 'Сохранение…' : linkedProjectId ? 'Сохранить изменения' : 'Сохранить проект'}
+              </button>
+              {linkedProjectId ? (
+                <span className="muted excel-save-linked">На сервере: проект №{linkedProjectId}</span>
+              ) : null}
+            </div>
+          ) : (
+            <p className="muted excel-save-project-wait">Сохранение — после «Загрузить лист» и появления дашборда ниже.</p>
+          )}
+        </section>
+
+        <section
+          ref={excelFileSectionRef}
+          className="card import-workbook-drop glass-surface excel-analytics-section"
+        >
           <h2 className="admin-dash-h2">1. Файл</h2>
           <label className="btn primary import-workbook-file-btn">
             Выбрать .xlsx
@@ -1644,6 +2424,11 @@ export default function ExcelAnalyticsPage() {
             />
           </label>
           {fileName && <p className="muted excel-analytics-filename">{fileName}</p>}
+          {openProjectHint ? (
+            <p className="muted excel-session-hint" role="status">
+              {openProjectHint}
+            </p>
+          ) : null}
           {fileName && (
             <label className="excel-analytics-check excel-analytics-file-lang-check">
               <input
@@ -1853,14 +2638,25 @@ export default function ExcelAnalyticsPage() {
                     измерение). Явные роли «фильтр» и текстовая шкала — вместе с остальными графами; каскад оставляет
                     совместимые значения. Сузьте чипами — графики и ПУЛЬС ниже пересчитаются.
                   </p>
+                  {sessionRestoreNote && (
+                    <p className="muted excel-session-restore-banner" role="status">
+                      {sessionRestoreNote}
+                    </p>
+                  )}
                 </div>
                 <div className="excel-dashboard-slice-toolbar">
                   <div className="excel-dashboard-kpis excel-dashboard-kpis--slice">
-                    <div className="excel-dashboard-kpi">
+                    <div
+                      className="excel-dashboard-kpi"
+                      title="Точки — число аналитических строк после развёртки: несколько наставников в одной ячейке, несколько классов через запятую, варианты опроса и т.д. Одна строка Excel может дать несколько точек."
+                    >
                       <span className="excel-dashboard-kpi-value">{filteredRows.length}</span>
                       <span className="excel-dashboard-kpi-label">точек</span>
                     </div>
-                    <div className="excel-dashboard-kpi">
+                    <div
+                      className="excel-dashboard-kpi"
+                      title="Уроки — уникальные строки импорта (записи таблицы) в текущем срезе фильтров, без учёта развёртки мультизначений. Совпадает с ожидаемым числом строк в файле при полном срезе."
+                    >
                       <span className="excel-dashboard-kpi-value">{kpiLessons}</span>
                       <span className="excel-dashboard-kpi-label">уроков</span>
                     </div>
@@ -1873,6 +2669,15 @@ export default function ExcelAnalyticsPage() {
                   </div>
                   <button type="button" className="btn primary excel-dashboard-reset" onClick={resetAllFilters}>
                     Сбросить все фильтры
+                  </button>
+                  <button
+                    type="button"
+                    className="btn primary excel-dashboard-save-project"
+                    disabled={saveProjectBusy}
+                    onClick={() => void saveCurrentProject()}
+                    title="Сохранить маппинг и срез на сервер (нужен вход по логину)"
+                  >
+                    {saveProjectBusy ? 'Сохранение…' : linkedProjectId ? 'Сохранить изменения' : 'Сохранить проект'}
                   </button>
                   <label className="excel-analytics-check excel-dashboard-lang-toggle">
                     <input
@@ -1924,6 +2729,13 @@ export default function ExcelAnalyticsPage() {
                             setFacetGroupsByKey({});
                             setAiSectionsHint(null);
                             setFacetGroupsHint(null);
+                            setAiCanonicalMapsByKey({});
+                            setAiHierarchyByKey({});
+                            setAiAssistExplain(null);
+                            setAiAssistChartInterpret(null);
+                            setAiAssistChartAnomalies(null);
+                            setAiAssistChartSpec(null);
+                            setAiAssistHint(null);
                             setAiDerivedDimensions([]);
                             setAiDerivedHint(null);
                           }}
@@ -2020,6 +2832,169 @@ export default function ExcelAnalyticsPage() {
                 </details>
               </div>
 
+              <div className="excel-dashboard-slice-ai excel-dashboard-slice-ai--assist">
+                <details className="excel-dashboard-slice-ai-details">
+                  <summary className="excel-dashboard-slice-ai-summary">
+                    ИИ: срез на языке запросов, нормализация, иерархии и подсказки по графикам
+                  </summary>
+                  <div className="excel-dashboard-slice-ai-inner">
+                    <p className="muted excel-dashboard-slice-ai-lead">
+                      Запросы идут в <code className="excel-code-inline">POST /api/excel-dashboard-ai</code>. Значения
+                      среза подставляются только из текущих списков фильтров. Нормализация объединяет синонимы в данных;
+                      иерархия меняет только отображение групп в выбранном измерении.
+                    </p>
+                    <div className="excel-dashboard-ai-assist-grid">
+                      <div className="excel-dashboard-ai-assist-block card glass-surface">
+                        <h4 className="excel-dashboard-ai-assist-block-title">Срез текстом</h4>
+                        <textarea
+                          className="excel-analytics-textarea excel-dashboard-ai-assist-textarea"
+                          rows={2}
+                          placeholder="Например: только математика и 7 параллель"
+                          value={aiAssistNlQuery}
+                          onChange={(e) => setAiAssistNlQuery(e.target.value)}
+                          disabled={!analyticRows.length || aiAssistBusy}
+                        />
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={!analyticRows.length || aiAssistBusy}
+                          onClick={() => void runAiNlSlice()}
+                        >
+                          Применить срез (ИИ)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={!analyticRows.length || aiAssistBusy}
+                          onClick={() => void runAiExplainSlice()}
+                        >
+                          Объяснить текущий срез
+                        </button>
+                        {aiAssistExplain && (
+                          <div className="excel-dashboard-ai-assist-output">{aiAssistExplain}</div>
+                        )}
+                      </div>
+                      <div className="excel-dashboard-ai-assist-block card glass-surface">
+                        <h4 className="excel-dashboard-ai-assist-block-title">Нормализация и иерархия по измерению</h4>
+                        <div className="excel-dashboard-ai-assist-row">
+                          <label className="excel-analytics-field">
+                            <span className="muted">Нормализация значений</span>
+                            <select
+                              className="excel-analytics-select"
+                              value={aiNormalizeTargetKey ?? ''}
+                              onChange={(e) => setAiNormalizeTargetKey(e.target.value || null)}
+                            >
+                              {filterKeys.map((k) => (
+                                <option key={k} value={k}>
+                                  {filterKeyDisplayLabelUi[k] ?? k}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!analyticRows.length || aiAssistBusy || !aiNormalizeTargetKey}
+                            onClick={() => void runAiNormalizeColumn()}
+                          >
+                            Нормализовать (ИИ)
+                          </button>
+                        </div>
+                        <div className="excel-dashboard-ai-assist-row">
+                          <label className="excel-analytics-field">
+                            <span className="muted">Иерархия групп</span>
+                            <select
+                              className="excel-analytics-select"
+                              value={aiHierarchyTargetKey ?? ''}
+                              onChange={(e) => setAiHierarchyTargetKey(e.target.value || null)}
+                            >
+                              {filterKeys.map((k) => (
+                                <option key={k} value={k}>
+                                  {filterKeyDisplayLabelUi[k] ?? k}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!analyticRows.length || aiAssistBusy || !aiHierarchyTargetKey}
+                            onClick={() => void runAiHierarchyColumn()}
+                          >
+                            Построить иерархию (ИИ)
+                          </button>
+                        </div>
+                      </div>
+                      <div className="excel-dashboard-ai-assist-block card glass-surface excel-dashboard-ai-assist-block--wide">
+                        <h4 className="excel-dashboard-ai-assist-block-title">Графики (интерпретация и навигация)</h4>
+                        <div className="excel-dashboard-ai-assist-row excel-dashboard-ai-assist-row--wrap">
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!analyticRows.length || aiAssistBusy}
+                            onClick={() => void runAiChartInterpret()}
+                          >
+                            Интерпретировать первый мини-график
+                          </button>
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={!analyticRows.length || aiAssistBusy}
+                            onClick={() => void runAiChartAnomalies()}
+                          >
+                            Аномалии по мини-графикам
+                          </button>
+                        </div>
+                        <textarea
+                          className="excel-analytics-textarea excel-dashboard-ai-assist-textarea"
+                          rows={2}
+                          placeholder="Вопрос: куда смотреть на панели (сравнить предметы, найти перекос по фильтру…)"
+                          value={aiAssistChartQuery}
+                          onChange={(e) => setAiAssistChartQuery(e.target.value)}
+                          disabled={!analyticRows.length || aiAssistBusy}
+                        />
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={!analyticRows.length || aiAssistBusy}
+                          onClick={() => void runAiChartSpec()}
+                        >
+                          Подсказка по графикам (ИИ)
+                        </button>
+                        {aiAssistChartInterpret && (
+                          <div className="excel-dashboard-ai-assist-output">
+                            <strong>Интерпретация:</strong> {aiAssistChartInterpret}
+                          </div>
+                        )}
+                        {aiAssistChartAnomalies && (
+                          <div className="excel-dashboard-ai-assist-output">
+                            <strong>Аномалии:</strong>
+                            <pre className="excel-dashboard-ai-assist-pre">{aiAssistChartAnomalies}</pre>
+                          </div>
+                        )}
+                        {aiAssistChartSpec && (
+                          <div className="excel-dashboard-ai-assist-output">
+                            <strong>Рекомендация:</strong> {aiAssistChartSpec}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {aiAssistBusy && (
+                      <AiWaitIndicator
+                        active
+                        compact
+                        className="excel-dashboard-slice-ai-wait"
+                        label="ИИ: запрос excel-dashboard-ai"
+                        typicalMinSec={8}
+                        typicalMaxSec={35}
+                        slowAfterSec={55}
+                      />
+                    )}
+                    {aiAssistHint && <p className="muted excel-dashboard-filter-ai-hint-msg">{aiAssistHint}</p>}
+                  </div>
+                </details>
+              </div>
+
               <p className="muted excel-dashboard-filter-hint excel-dashboard-slice-hint">
                 Снятые галочки по измерению значат «не сужать по этому полю». Отметьте нужные значения — срез сузится.
                 Несколько значений в ячейке фильтра через запятую дают отдельные варианты. Колонка «Список через запятую»
@@ -2034,20 +3009,48 @@ export default function ExcelAnalyticsPage() {
                     Нет колонок для среза: все столбцы помечены как «Не использовать» или только одна колонка «Дата» без
                     прочих граф. Снимите «игнор» хотя бы с одной графы опроса (кроме даты) или добавьте текстовую шкалу.
                   </p>
+                ) : filterSectionsForDisplay.length === 0 ? (
+                  <p className="muted excel-dashboard-slice-empty">
+                    Все измерения скрыты из панели.{' '}
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setFilterPanelHiddenKeys([]);
+                      }}
+                    >
+                      Показать все измерения
+                    </button>
+                  </p>
                 ) : (
-                  filterSections.map((section) => (
+                  filterSectionsForDisplay.map((section) => (
                     <section key={section.id} className="excel-slice-section">
                       <h3 className="excel-slice-section-title">{section.title}</h3>
                       <div className="excel-dashboard-slice-filters-grid excel-dashboard-slice-filters-grid--wide">
                         {section.keys.map((key) => {
                           const all = uniqueFilterValues(
-                            applyFiltersExceptKey(analyticRowsComposed, filterSelection, key),
+                            applyFiltersExceptKey(dashboardRows, sliceFilterSelection, key),
                             key,
                           );
                           return (
                             <div key={key} className="excel-slice-dimension card glass-surface">
-                              <div className="excel-slice-dimension-head">
+                              <div className="excel-slice-dimension-head excel-slice-dimension-head--row">
                                 <span className="excel-slice-dimension-label">{filterKeyDisplayLabelUi[key] ?? key}</span>
+                                <button
+                                  type="button"
+                                  className="btn excel-slice-dimension-hide"
+                                  title="Убрать измерение из панели (отбор по нему сбрасывается; можно вернуть ниже)"
+                                  onClick={() => {
+                                    setFilterPanelHiddenKeys((prev) =>
+                                      prev.includes(key) ? prev : [...prev, key],
+                                    );
+                                    setFilterSelection((p) =>
+                                      pruneFilterSelection(dashboardRows, { ...p, [key]: null }, filterKeys),
+                                    );
+                                  }}
+                                >
+                                  Скрыть
+                                </button>
                               </div>
                               <div className="excel-slice-dimension-body">
                                 {renderFilterChipsForKey(key, all)}
@@ -2057,7 +3060,7 @@ export default function ExcelAnalyticsPage() {
                                     className="btn"
                                     onClick={() =>
                                       setFilterSelection((p) =>
-                                        pruneFilterSelection(analyticRowsComposed, { ...p, [key]: null }, filterKeys),
+                                        pruneFilterSelection(dashboardRows, { ...p, [key]: null }, filterKeys),
                                       )
                                     }
                                   >
@@ -2073,17 +3076,117 @@ export default function ExcelAnalyticsPage() {
                   ))
                 )}
               </div>
+              {filterPanelHiddenKeys.length > 0 && (
+                <details className="excel-hidden-filters-details">
+                  <summary className="excel-hidden-filters-summary">
+                    Скрытые измерения ({filterPanelHiddenKeys.length}) — вернуть в панель
+                  </summary>
+                  <div className="excel-hidden-filters-list">
+                    {filterPanelHiddenKeys.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        className="btn"
+                        onClick={() =>
+                          setFilterPanelHiddenKeys((prev) => prev.filter((k) => k !== key))
+                        }
+                      >
+                        {filterKeyDisplayLabelUi[key] ?? key}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
+
+            <section className="card glass-surface excel-analytics-section excel-dashboard-table-section">
+              <h2 className="admin-dash-h2">Детализация: строки среза (все колонки листа)</h2>
+              <p className="muted excel-dashboard-table-lead">
+                Содержимое таблицы — только те строки среза, которые соответствуют{' '}
+                <strong>текущим фильтрам</strong> в блоке выше (чипы). Если по измерению не выбрано ни одного
+                значения или выбраны все — это измерение не сужает выборку.
+                {narrowingFilterDimensionsCount > 0 ? (
+                  <>
+                    {' '}
+                    Сужение по {narrowingFilterDimensionsCount}{' '}
+                    {narrowingFilterDimensionsCount === 1 ? 'измерению' : 'измерениям'}; строк в таблице:{' '}
+                    <strong>{filteredRows.length}</strong>.
+                  </>
+                ) : (
+                  <>
+                    {' '}
+                    Фильтры не сужают выборку — показаны все строки среза после развёртки мультизначений в ячейках:{' '}
+                    <strong>{filteredRows.length}</strong>.
+                  </>
+                )}{' '}
+                Если в ячейке было несколько значений (наставники, списки), одна строка файла может отображаться
+                несколько раз — колонка «Разв.» показывает номер фрагмента.
+                {filteredRows.length > DETAIL_TABLE_MAX_ROWS && (
+                  <>
+                    {' '}
+                    Показаны первые {DETAIL_TABLE_MAX_ROWS} из {filteredRows.length} строк — сузьте срез или экспортируйте
+                    исходный файл для полного списка.
+                  </>
+                )}
+              </p>
+              <div className="excel-analytics-table-wrap excel-analytics-table-wrap--full-sheet">
+                <table className="excel-analytics-table excel-analytics-table--full-sheet">
+                  <thead>
+                    <tr>
+                      <th className="excel-analytics-th-fixed">№ строки</th>
+                      {detailShowSplitColumn && (
+                        <th className="excel-analytics-th-fixed excel-analytics-th-fixed--after-num">Разв.</th>
+                      )}
+                      {Array.from({ length: detailColumnCount }, (_, ci) => (
+                        <th key={ci} className="excel-analytics-th-sheet">
+                          {formatBilingualCellLabel(
+                            headers[ci] ?? `Колонка ${ci + 1}`,
+                            showEnglishExcelLabels ? 'en' : 'ru',
+                          )}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailTableSlice.map((r, i) => {
+                      const line = rawRows[r.idx];
+                      return (
+                        <tr key={detailTableRowKey(r, i)}>
+                          <td className="excel-analytics-td-fixed">{r.idx + 1}</td>
+                          {detailShowSplitColumn && (
+                            <td className="excel-analytics-td-fixed excel-analytics-td-fixed--after-num">
+                              {r.splitPart != null && r.splitPart > 0 ? r.splitPart : '—'}
+                            </td>
+                          )}
+                          {Array.from({ length: detailColumnCount }, (_, ci) => {
+                            const raw = line?.[ci] as CellPrimitive | undefined;
+                            return (
+                              <td
+                                key={ci}
+                                className="excel-analytics-cell-sheet"
+                                title={excelDetailCellTitle(raw ?? null)}
+                              >
+                                {line ? formatExcelDetailCell(raw ?? null) : '—'}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
             <div className="excel-dashboard-below-slice">
             <div className="excel-dashboard-main">
                 <header className="excel-dashboard-main-head card glass-surface">
                   <div className="excel-dashboard-main-head-text">
                     <p className="excel-dashboard-main-kicker">Панель анализа</p>
-                    <h2 className="excel-dashboard-main-title">Графики, выводы и детализация</h2>
+                    <h2 className="excel-dashboard-main-title">Графики и выводы</h2>
                     <p className="muted excel-dashboard-main-lead">
-                      Шаги: срез сверху на всю ширину → графики → клик по столбцу открывает панель педагогов → ПУЛЬС внизу:
-                      чат и отчёты ИИ.
+                      Шаги: срез и таблица детализации выше → графики → клик по столбцу открывает панель педагогов → ПУЛЬС
+                      внизу: чат и отчёты ИИ.
                     </p>
                   </div>
                 </header>
@@ -2167,7 +3270,7 @@ export default function ExcelAnalyticsPage() {
                     </section>
                   )}
 
-                  {filterKeys.length > 0 &&
+                  {filterKeysForPanel.length > 0 &&
                     allFilterDistributionCharts.some((c) => c.bars.length > 0) && (
                       <section className="card glass-surface excel-dash-card excel-dash-card--wide">
                         <h3 className="excel-dash-card-title">Распределение по измерениям среза</h3>
@@ -2178,7 +3281,11 @@ export default function ExcelAnalyticsPage() {
                         <div className="excel-filter-distributions-grid">
                           {allFilterDistributionCharts.map(({ key, label, bars }) =>
                             bars.length === 0 ? null : (
-                              <div key={key} className="excel-filter-distribution-mini card glass-surface">
+                              <div
+                                key={key}
+                                id={`excel-chart-focus-${key}`}
+                                className="excel-filter-distribution-mini card glass-surface"
+                              >
                                 <h4 className="excel-filter-distribution-mini-title">{label}</h4>
                                 <div className="excel-analytics-chart excel-filter-distribution-mini-chart">
                                   <ResponsiveContainer
@@ -2706,16 +3813,41 @@ export default function ExcelAnalyticsPage() {
                   </aside>
                 )}
                 </div>
+                <div className="excel-dashboard-mid-save-bar card glass-surface" role="region" aria-label="Сохранение проекта">
+                  <div className="excel-dashboard-mid-save-inner">
+                    <p className="excel-dashboard-mid-save-text">
+                      <strong>Сохранить на сервер</strong> — маппинг и срез. Название — в{' '}
+                      <a href="#excel-recent-projects-heading" className="excel-dashboard-mid-save-anchor">
+                        «Последние проекты»
+                      </a>
+                      ; здесь подставляется имя файла.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn primary excel-dashboard-mid-save-btn"
+                      disabled={saveProjectBusy}
+                      onClick={() => void saveCurrentProject()}
+                    >
+                      {saveProjectBusy ? 'Сохранение…' : linkedProjectId ? 'Сохранить изменения' : 'Сохранить проект'}
+                    </button>
+                  </div>
+                </div>
                 <div className="excel-dash-board-panels excel-dash-board-panels--compact">
                   <div className="excel-dash-panel-row excel-dash-panel-row--two excel-dash-panel-row--compact-kpi">
                     <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
                       <h3 className="excel-dash-card-title">Сводка выборки</h3>
                       <div className="excel-dash-kpi-compact-row" aria-label="Ключевые показатели">
-                        <div className="excel-dash-kpi-compact-item">
+                        <div
+                          className="excel-dash-kpi-compact-item"
+                          title="Уникальные строки импорта в срезе (записи таблицы), без развёртки мультизначений в ячейках."
+                        >
                           <span className="excel-dash-kpi-compact-value">{kpiLessons}</span>
                           <span className="excel-dash-kpi-compact-label">уроков в срезе</span>
                         </div>
-                        <div className="excel-dash-kpi-compact-item">
+                        <div
+                          className="excel-dash-kpi-compact-item"
+                          title="Аналитические строки после развёртки мультизначений (см. подсказку «Все параметры из маппинга»)."
+                        >
                           <span className="excel-dash-kpi-compact-value">{filteredRows.length}</span>
                           <span className="excel-dash-kpi-compact-label">точек</span>
                         </div>
@@ -2755,13 +3887,13 @@ export default function ExcelAnalyticsPage() {
                               </tr>
                               <tr>
                                 <th scope="row">Строк импорта в срезе</th>
-                                <td>{kpiImportRowsFiltered}</td>
+                                <td>{kpiLessons}</td>
                               </tr>
                               <tr>
-                                <th scope="row">Уроков (весь файл)</th>
+                                <th scope="row">Событий по смыслу (весь файл)</th>
                                 <td>
-                                  {uniqueLessonCount}{' '}
-                                  <span className="muted">({kpiImportRowsTotal} имп.)</span>
+                                  {kpiLessonSemanticsTotal}{' '}
+                                  <span className="muted">({kpiImportRowsTotal} строк имп.)</span>
                                 </td>
                               </tr>
                             </tbody>
@@ -2844,7 +3976,7 @@ export default function ExcelAnalyticsPage() {
                 <PulseExcelChat
                   facetOptions={pulseFacetOptions}
                   facetLabels={pulseFacetLabels}
-                  currentFilters={filterSelection}
+                  currentFilters={pulseFiltersForChat}
                   numericSummary={richLlmContext || quickText || '(постройте анализ для сводки)'}
                   extraContext={pulseLlmExtraBundle.trim() || undefined}
                   onApplyFilters={applyPulseFilters}
@@ -2976,69 +4108,6 @@ export default function ExcelAnalyticsPage() {
 
                 
               </div>
-
-            <section className="card glass-surface excel-analytics-section excel-dashboard-table-section">
-              <h2 className="admin-dash-h2">Детализация: строки среза (все колонки листа)</h2>
-              <p className="muted excel-dashboard-table-lead">
-                Таблица повторяет столбцы загруженного Excel; остаются только строки, прошедшие фильтры среза. Если в
-                ячейке было несколько значений (наставники, списки), одна строка файла может отображаться несколько раз —
-                колонка «Разв.» показывает номер фрагмента.
-                {filteredRows.length > DETAIL_TABLE_MAX_ROWS && (
-                  <>
-                    {' '}
-                    Показаны первые {DETAIL_TABLE_MAX_ROWS} из {filteredRows.length} строк — сузьте срез или экспортируйте
-                    исходный файл для полного списка.
-                  </>
-                )}
-              </p>
-              <div className="excel-analytics-table-wrap excel-analytics-table-wrap--full-sheet">
-                <table className="excel-analytics-table excel-analytics-table--full-sheet">
-                  <thead>
-                    <tr>
-                      <th className="excel-analytics-th-fixed">№ строки</th>
-                      {detailShowSplitColumn && (
-                        <th className="excel-analytics-th-fixed excel-analytics-th-fixed--after-num">Разв.</th>
-                      )}
-                      {Array.from({ length: detailColumnCount }, (_, ci) => (
-                        <th key={ci} className="excel-analytics-th-sheet">
-                          {formatBilingualCellLabel(
-                            headers[ci] ?? `Колонка ${ci + 1}`,
-                            showEnglishExcelLabels ? 'en' : 'ru',
-                          )}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detailTableSlice.map((r) => {
-                      const line = rawRows[r.idx];
-                      return (
-                        <tr key={`${r.idx}-${r.splitPart ?? 0}-${teacherFilterKey ? r.filterValues[teacherFilterKey] : ''}`}>
-                          <td className="excel-analytics-td-fixed">{r.idx + 1}</td>
-                          {detailShowSplitColumn && (
-                            <td className="excel-analytics-td-fixed excel-analytics-td-fixed--after-num">
-                              {r.splitPart != null && r.splitPart > 0 ? r.splitPart : '—'}
-                            </td>
-                          )}
-                          {Array.from({ length: detailColumnCount }, (_, ci) => {
-                            const raw = line?.[ci] as CellPrimitive | undefined;
-                            return (
-                              <td
-                                key={ci}
-                                className="excel-analytics-cell-sheet"
-                                title={excelDetailCellTitle(raw ?? null)}
-                              >
-                                {line ? formatExcelDetailCell(raw ?? null) : '—'}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
             </div>
           </div>
         )}

@@ -62,7 +62,9 @@ export default function PulseExcelChat({
     setInput('');
   }, [contextKey]);
 
+  /** Не прокручиваем к чату при смене фильтров/среза (contextKey сбрасывает messages) — иначе уводит с панели фильтров. */
   useEffect(() => {
+    if (!loading && messages.length === 0) return;
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 

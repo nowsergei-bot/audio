@@ -1,5 +1,6 @@
 import type { CellPrimitive } from './parse';
 import type { ColumnRole, CustomFilterLabels } from './types';
+import { formatBilingualCellLabel } from './excelDisplayLabel';
 import { inferParallelFromClassLabel } from './parallelFromClass';
 import { resolveListFeatureToken, splitListFeatureParts } from './listFeatureTokens';
 
@@ -93,6 +94,61 @@ export function isFilterRole(r: ColumnRole): boolean {
   return FILTER_ROLES.includes(r);
 }
 
+/** Длинные текстовые графы (комментарии, рекомендации, списки признаков) — не измерения фильтра. */
+const PULSE_NON_FILTER_SURVEY_ROLES: ColumnRole[] = [
+  'text_ai_summary',
+  'text_ai_recommendations',
+  'text_list_features',
+];
+
+/** Колонка может попасть в кандидаты опросных фильтров (решение принимает ИИ по сэмплам). */
+export function shouldExposePulseSurveyFilterCandidate(role: ColumnRole): boolean {
+  if (role === 'ignore' || role === 'date') return false;
+  if (isFilterRole(role)) return false;
+  if (role === 'metric_ordinal_text') return false;
+  return !PULSE_NON_FILTER_SURVEY_ROLES.includes(role);
+}
+
+export function listStructuralFilterKeys(
+  roles: ColumnRole[],
+  customLabels: CustomFilterLabels,
+  derivedDimensions: readonly { id: string }[],
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (k: string) => {
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(k);
+  };
+  for (let i = 0; i < roles.length; i++) {
+    const r = roles[i];
+    if (r === 'ignore' || r === 'date') continue;
+    if (isFilterRole(r)) {
+      push(filterKeyForRole(r, customLabels));
+      if (r === 'filter_class' && !roles.includes('filter_parallel')) {
+        push(PULSE_PARALLEL_AUTO_KEY);
+      }
+    }
+  }
+  if (roles.includes('metric_ordinal_text')) {
+    push(PULSE_ORDINAL_LEVEL_KEY);
+  }
+  for (const d of derivedDimensions) {
+    push(d.id);
+  }
+  return out;
+}
+
+export function listSurveyCandidateFilterKeys(roles: ColumnRole[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < roles.length; i++) {
+    if (!shouldExposePulseSurveyFilterCandidate(roles[i])) continue;
+    out.push(pulseSurveyColKey(i));
+  }
+  return out;
+}
+
 export type AnalyticRow = {
   idx: number;
   /** Если в ячейке «наставники» было несколько ФИО, это номер фрагмента (1…N) */
@@ -118,7 +174,7 @@ function cellText(cell: CellPrimitive): string {
 export function buildOrdinalRankMap(levelsOrdered: string[]): Map<string, number> {
   const m = new Map<string, number>();
   levelsOrdered.forEach((raw, i) => {
-    const k = raw.trim().toLowerCase();
+    const k = formatBilingualCellLabel(String(raw), 'ru').trim().toLowerCase();
     if (k && !m.has(k)) m.set(k, i + 1);
   });
   return m;
@@ -128,7 +184,7 @@ export function ordinalRankForCell(
   cell: CellPrimitive,
   rankMap: Map<string, number>,
 ): number | null {
-  const t = cellText(cell).toLowerCase();
+  const t = formatBilingualCellLabel(cellText(cell), 'ru').trim().toLowerCase();
   if (!t) return null;
   return rankMap.get(t) ?? null;
 }
@@ -183,7 +239,8 @@ export function buildAnalyticRows(
 
     if (ordinalCol >= 0) {
       const rawOrd = cellText(line[ordinalCol]);
-      filterValues[PULSE_ORDINAL_LEVEL_KEY] = rawOrd || '(не указано)';
+      const ordRu = formatBilingualCellLabel(rawOrd, 'ru').trim();
+      filterValues[PULSE_ORDINAL_LEVEL_KEY] = ordRu || '(не указано)';
     }
 
     for (let c = 0; c < roles.length; c++) {
@@ -191,6 +248,7 @@ export function buildAnalyticRows(
       if (role === 'ignore' || role === 'date') continue;
       if (isFilterRole(role)) continue;
       if (c === ordinalCol && ordinalCol >= 0) continue;
+      if (!shouldExposePulseSurveyFilterCandidate(role)) continue;
       const key = pulseSurveyColKey(c);
       const raw = cellText(line[c]);
       filterValues[key] = raw || '(не указано)';
@@ -256,6 +314,27 @@ export function applyDerivedDimensionsToRows(
   });
 }
 
+/**
+ * ИИ-нормализация: для указанных измерений подменяет сырое значение в filterValues на каноническую метку.
+ */
+export function applyCanonicalMapsToRows(
+  rows: AnalyticRow[],
+  maps: Record<string, Record<string, string>> | null | undefined,
+): AnalyticRow[] {
+  if (!maps || !Object.keys(maps).length) return rows;
+  return rows.map((r) => {
+    const fv = { ...r.filterValues };
+    for (const [dimKey, m] of Object.entries(maps)) {
+      if (!m || typeof m !== 'object') continue;
+      const v = fv[dimKey];
+      if (v == null || v === '' || v === '(не указано)') continue;
+      const canon = m[v];
+      if (canon && canon !== v) fv[dimKey] = canon;
+    }
+    return { ...r, filterValues: fv };
+  });
+}
+
 function slugForAiDimId(title: string): string {
   const t = title
     .trim()
@@ -272,12 +351,69 @@ export function newAiDerivedDimensionId(title: string): string {
   return `${PULSE_AI_DIM_PREFIX}${slugForAiDimId(title)}_${suf}`;
 }
 
-/** Разделители в ячейке с несколькими наставниками / ФИО */
+/**
+ * Разделители в ячейке с несколькими наставниками / ФИО.
+ * Не используем одиночный «/» — ломает подписи вида «Русский // English».
+ */
 export function splitMultiValues(raw: string): string[] {
   return raw
-    .split(/[,;|]|\/|\n|\r+/)
+    .split(/[,;|]|\n+|\r+/)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+/**
+ * Мультивыбор в графах опроса (запятая, точка с запятой, перевод строки).
+ * Каждый фрагмент — только русская часть до «//».
+ */
+export function splitPulseSurveyCellTokens(raw: string): string[] {
+  const s = String(raw ?? '').trim();
+  if (!s || s === '(не указано)') return [];
+  return s
+    .split(/[,;]|\n+|\r+/)
+    .map((t) => formatBilingualCellLabel(t.trim(), 'ru').trim())
+    .filter(Boolean);
+}
+
+function expandOnePulseSurveyColumn(rows: AnalyticRow[], key: string): AnalyticRow[] {
+  const next: AnalyticRow[] = [];
+  for (const row of rows) {
+    const raw = row.filterValues[key];
+    if (raw == null || raw === '' || raw === '(не указано)') {
+      next.push(row);
+      continue;
+    }
+    const parts = splitPulseSurveyCellTokens(raw);
+    if (parts.length <= 1) {
+      next.push({
+        ...row,
+        filterValues: { ...row.filterValues, [key]: parts[0] ?? raw },
+      });
+      continue;
+    }
+    for (const p of parts) {
+      next.push({
+        ...row,
+        filterValues: { ...row.filterValues, [key]: p },
+      });
+    }
+  }
+  return next;
+}
+
+/** Разворачивает мультивыбор в колонках опроса в отдельные строки (отдельный «пойнт» в фильтре). */
+export function expandRowsForPulseSurveyMultiSelect(rows: AnalyticRow[], roles: ColumnRole[]): AnalyticRow[] {
+  const keys: string[] = [];
+  for (let c = 0; c < roles.length; c++) {
+    const role = roles[c];
+    if (!shouldExposePulseSurveyFilterCandidate(role)) continue;
+    keys.push(pulseSurveyColKey(c));
+  }
+  let out = rows;
+  for (const key of keys) {
+    out = expandOnePulseSurveyColumn(out, key);
+  }
+  return out;
 }
 
 /**
@@ -685,6 +821,7 @@ export function lessonSemanticKey(row: AnalyticRow, excludeTeacherFilterKey: str
   for (const k of keys) {
     if (excludeTeacherFilterKey && k === excludeTeacherFilterKey) continue;
     if (k.startsWith(PULSE_AI_DIM_PREFIX)) continue;
+    if (k.startsWith(PULSE_SURVEY_COL_PREFIX)) continue;
     const v = row.filterValues[k];
     if (!v || v === '(не указано)') continue;
     segs.push(`${k}:${normLessonKeyPart(String(v))}`);

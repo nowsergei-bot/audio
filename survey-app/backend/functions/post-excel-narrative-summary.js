@@ -77,15 +77,19 @@ async function fetchNarrativeFromLlm(context) {
   const filterSummary = truncate(String(context.filterSummary || '').trim(), 4500);
   const userFocus = truncate(String(context.userFocus || '').trim(), 2800);
   const meta = context.meta && typeof context.meta === 'object' ? context.meta : {};
-  const nRows = Number(meta.filteredRowCount);
-  const nUnique = Number(meta.uniqueLessonCount);
-  const smallSample = Number.isFinite(nRows) && nRows > 0 && nRows < 22;
+  const nPoints = Number(meta.filteredRowCount);
+  const nImport = Number(meta.uniqueImportRows ?? meta.uniqueLessonCount);
+  const nSemantic = Number(meta.semanticLessonCount);
+  const smallSample =
+    (Number.isFinite(nImport) && nImport > 0 && nImport < 22) ||
+    (!Number.isFinite(nImport) && Number.isFinite(nPoints) && nPoints > 0 && nPoints < 22);
 
   const system = isDeep ? buildSystemDeep() : buildSystemStandard();
 
   const volLine = [
-    Number.isFinite(nUnique) ? `Ответов в выборке (логических анкет): ${nUnique}` : null,
-    Number.isFinite(nRows) ? `Строк таблицы с учётом отбора: ${nRows}` : null,
+    Number.isFinite(nImport) ? `Уникальных записей в таблице после отбора: ${nImport}` : null,
+    Number.isFinite(nPoints) ? `Аналитических строк после развёртки мультизначений: ${nPoints}` : null,
+    Number.isFinite(nSemantic) ? `Событий по смыслу (дата и срезы без наставника/опроса): ${nSemantic}` : null,
   ]
     .filter(Boolean)
     .join('. ');

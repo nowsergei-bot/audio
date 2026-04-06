@@ -20,6 +20,13 @@ const { handlePostExcelFilterValueGroups } = require('./post-excel-filter-value-
 const { handlePostExcelDerivedFilters } = require('./post-excel-derived-filters');
 const { handlePostExcelNarrativeSummary } = require('./post-excel-narrative-summary');
 const { handlePostExcelDirectorDossier } = require('./post-excel-director-dossier');
+const { handlePostExcelDashboardAi } = require('./post-excel-dashboard-ai');
+const {
+  handleGetExcelAnalyticsProjects,
+  handleGetExcelAnalyticsProject,
+  handlePostExcelAnalyticsProject,
+  handleDeleteExcelAnalyticsProject,
+} = require('./excel-analytics-projects');
 const { handlePostMultiSurveyAnalytics } = require('./post-multi-survey-analytics');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
@@ -55,7 +62,7 @@ const {
 } = require('./get-public-director');
 
 /** Смените при выкладке — по GET /api/ping видно, что в облаке свежий bundle */
-const DEPLOY_STAMP = '2026-04-06-survey-groups-schema-fallback';
+const DEPLOY_STAMP = '2026-04-06-excel-projects-migration-hint';
 
 function segmentsFromPath(path) {
   return path
@@ -291,6 +298,25 @@ async function handlerImpl(event) {
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-director-dossier' && segs.length === 2) {
     return handlePostExcelDirectorDossier(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-dashboard-ai' && segs.length === 2) {
+    return handlePostExcelDashboardAi(pool, event);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs.length === 2) {
+    return handleGetExcelAnalyticsProjects(pool, user, auth.viaAdminKey);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs[2] && segs.length === 3) {
+    const pid = Number(segs[2]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handleGetExcelAnalyticsProject(pool, user, auth.viaAdminKey, pid);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs.length === 2) {
+    return handlePostExcelAnalyticsProject(pool, user, auth.viaAdminKey, event);
+  }
+  if (method === 'DELETE' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs[2] && segs.length === 3) {
+    const pid = Number(segs[2]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handleDeleteExcelAnalyticsProject(pool, user, auth.viaAdminKey, pid);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleCreateSurvey(pool, event, user);

@@ -1,3 +1,4 @@
+import type { SavedExcelSession } from '../lib/excelAnalytics/excelSessionStorage';
 import type {
   AiInsightsPayload,
   AnalyticsChatMessage,
@@ -9,6 +10,7 @@ import type {
   ExcelDerivedFiltersResponse,
   ExcelNarrativeSummaryResponse,
   ExcelDirectorDossierResponse,
+  ExcelDashboardAiResponse,
   MultiSurveyAnalyticsPayload,
   TextQuestionInsightsPayload,
   AnswerSubmit,
@@ -454,9 +456,10 @@ export async function postPulseExcelChat(payload: {
   return data;
 }
 
-/** ИИ: сгруппировать ключи фильтров в разделы боковой панели по контексту колонок (нужен OPENAI_API_KEY). */
+/** ИИ: отобрать опросные фильтры + сгруппировать ключи в разделы панели (нужен OPENAI_API_KEY). */
 export async function postExcelFilterSections(payload: {
-  filterKeys: string[];
+  structuralKeys: string[];
+  surveyCandidateKeys: string[];
   columns: {
     filterKey: string;
     role: string;
@@ -471,6 +474,20 @@ export async function postExcelFilterSections(payload: {
     body: JSON.stringify(payload),
   });
   const data = await parseJson<ExcelFilterSectionsResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** ИИ: нормализация значений, иерархии, NL-срез, объяснение среза, подсказки по графикам. */
+export async function postExcelDashboardAi(
+  payload: { action: string } & Record<string, unknown>,
+): Promise<ExcelDashboardAiResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-dashboard-ai`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelDashboardAiResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
@@ -513,7 +530,13 @@ export async function postExcelNarrativeSummary(payload: {
     numericSummary: string;
     extraContext?: string;
     facetLabels?: Record<string, string>;
-    meta?: { filteredRowCount?: number; uniqueLessonCount?: number };
+    meta?: {
+      filteredRowCount?: number;
+      /** @deprecated use uniqueImportRows */
+      uniqueLessonCount?: number;
+      uniqueImportRows?: number;
+      semanticLessonCount?: number;
+    };
     /** standard (по умолчанию) | deep — расширенный отчёт по тому же срезу */
     analysisMode?: 'standard' | 'deep';
     /** Человекочитаемое описание активных фильтров (параметры среза). */
@@ -546,6 +569,76 @@ export async function postExcelDirectorDossier(payload: {
   const data = await parseJson<ExcelDirectorDossierResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+/** Список сохранённых на сервере проектов Excel-аналитики (нужен вход по логину, не только API-ключ). */
+export type ExcelAnalyticsProjectListItem = {
+  id: number;
+  title: string;
+  fingerprint: string;
+  file_name: string;
+  sheet: string | null;
+  updated_at: string;
+};
+
+export async function listExcelAnalyticsProjects(): Promise<ExcelAnalyticsProjectListItem[]> {
+  const res = await apiFetch(`${API_BASE}/api/excel-analytics-projects`, { headers: adminHeaders() });
+  const data = await parseJson<{ projects?: ExcelAnalyticsProjectListItem[]; error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data.projects || [];
+}
+
+export async function getExcelAnalyticsProject(id: number): Promise<{
+  id: number;
+  title: string;
+  session: SavedExcelSession;
+  file_name: string;
+  fingerprint: string;
+}> {
+  const res = await apiFetch(`${API_BASE}/api/excel-analytics-projects/${id}`, { headers: adminHeaders() });
+  const data = await parseJson<{
+    project?: { id: number; title: string; session: SavedExcelSession; file_name: string; fingerprint: string };
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.project?.session) throw new Error('Нет данных проекта');
+  return {
+    id: data.project.id,
+    title: data.project.title,
+    session: data.project.session,
+    file_name: data.project.file_name,
+    fingerprint: data.project.fingerprint,
+  };
+}
+
+export async function saveExcelAnalyticsProject(payload: {
+  title: string;
+  session: SavedExcelSession;
+  id?: number;
+}): Promise<{ id: number; title: string; updated_at: string }> {
+  const res = await apiFetch(`${API_BASE}/api/excel-analytics-projects`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{
+    project?: { id: number; title: string; updated_at: string };
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.project) throw new Error('Нет ответа');
+  return data.project;
+}
+
+export async function deleteExcelAnalyticsProject(id: number): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/excel-analytics-projects/${id}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  });
+  const data = await parseJson<{ error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
 }
 
 /** Компиляция и вывод по всем текстовым ответам на один вопрос (ИИ — если OPENAI_API_KEY на функции). */
