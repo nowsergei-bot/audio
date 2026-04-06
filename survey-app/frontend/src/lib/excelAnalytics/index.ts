@@ -4,6 +4,7 @@ export * from './parallelFromClass';
 export * from './listFeatureTokens';
 export * from './excelDisplayLabel';
 export * from './engine';
+export * from './filterValueNormalize';
 export * from './serviceTimestamp';
 export * from './autoMap';
 export * from './filterSectionPlanner';

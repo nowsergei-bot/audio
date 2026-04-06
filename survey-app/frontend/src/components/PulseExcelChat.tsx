@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { postPulseExcelChat } from '../api/client';
+import AiWaitIndicator from './AiWaitIndicator';
 import type { AnalyticsChatMessage } from '../types';
 import type { FilterSelection } from '../lib/excelAnalytics/engine';
 
@@ -135,9 +136,15 @@ export default function PulseExcelChat({
           </div>
         ))}
         {loading && (
-          <p className="muted pulse-excel-chat-typing" aria-live="polite">
-            ПУЛЬС отвечает…
-          </p>
+          <AiWaitIndicator
+            active
+            compact
+            className="pulse-excel-chat-wait"
+            label="ПУЛЬС обрабатывает запрос по текущей выборке"
+            typicalMinSec={8}
+            typicalMaxSec={40}
+            slowAfterSec={55}
+          />
         )}
         <div ref={bottomRef} />
       </div>

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { postAnalyticsChat } from '../api/client';
+import AiWaitIndicator from './AiWaitIndicator';
 import type { AnalyticsChatMessage, AnalyticsFilter } from '../types';
 
 type Props = {
@@ -76,9 +77,15 @@ export default function AnalyticsAnalystChat({ surveyId, filters }: Props) {
           </div>
         ))}
         {loading && (
-          <p className="muted analytics-analyst-chat-typing" aria-live="polite">
-            Аналитик пишет…
-          </p>
+          <AiWaitIndicator
+            active
+            compact
+            className="analytics-analyst-chat-wait"
+            label="Аналитик готовит ответ по срезу опроса"
+            typicalMinSec={8}
+            typicalMaxSec={40}
+            slowAfterSec={55}
+          />
         )}
         <div ref={bottomRef} />
       </div>

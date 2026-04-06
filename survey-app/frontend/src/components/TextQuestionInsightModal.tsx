@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { requestTextQuestionInsights } from '../api/client';
+import AiWaitIndicator from './AiWaitIndicator';
 import type { TextQuestionInsightsPayload } from '../types';
 
 type Props = {
@@ -64,7 +65,16 @@ export default function TextQuestionInsightModal({ open, onClose, surveyId, ques
             </div>
 
             <div className="text-q-insight-scroll">
-              {loading && <p className="muted">Загрузка и анализ…</p>}
+              {loading && (
+                <AiWaitIndicator
+                  active
+                  className="text-q-insight-wait"
+                  label="Загружаем ответы и при необходимости запрашиваем вывод нейросети"
+                  typicalMinSec={10}
+                  typicalMaxSec={55}
+                  slowAfterSec={85}
+                />
+              )}
               {err && <p className="err">{err}</p>}
               {data && !loading && (
                 <>

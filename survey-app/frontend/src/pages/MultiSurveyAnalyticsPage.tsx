@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getSurveyGroups, listSurveys, postMultiSurveyAnalytics } from '../api/client';
+import AiWaitIndicator from '../components/AiWaitIndicator';
 import PulseLoadingDashboard from '../components/PulseLoadingDashboard';
 import ResultQuestionCard from '../components/ResultQuestionCard';
 import AnimatedNumber from '../components/AnimatedNumber';
@@ -190,6 +191,17 @@ export default function MultiSurveyAnalyticsPage() {
         </div>
         {listErr && <p className="err">{listErr}</p>}
         {runErr && <p className="err">{runErr}</p>}
+        {running && (
+          <AiWaitIndicator
+            active
+            className="multi-survey-ai-wait"
+            label="Собираем данные по выбранным опросам и строим сводку"
+            typicalMinSec={35}
+            typicalMaxSec={110}
+            slowAfterSec={150}
+            hint="Обычно от 35 с до 2 мин. Несколько опросов и большой объём ответов удлиняют запрос; при таймауте шлюза попробуйте меньше опросов за раз."
+          />
+        )}
         {loadingList ? (
           <PulseLoadingDashboard />
         ) : surveys.length === 0 ? (

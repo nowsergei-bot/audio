@@ -1365,6 +1365,109 @@ body {
   opacity: 0.92;
 }
 
+/* Ожидание ответа нейросети: полоска, таймер, ориентир по времени */
+.ai-wait-indicator {
+  padding: 0.65rem 0.85rem;
+  margin: 0.5rem 0;
+  border-radius: 12px;
+  border: 1px solid rgba(227, 6, 19, 0.18);
+  background: linear-gradient(135deg, rgba(227, 6, 19, 0.06) 0%, rgba(248, 250, 252, 0.95) 55%);
+}
+
+.ai-wait-indicator--compact {
+  padding: 0.45rem 0.6rem;
+  margin: 0.35rem 0;
+}
+
+.ai-wait-indicator-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.ai-wait-indicator-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--page-fg, #0f172a);
+  line-height: 1.35;
+}
+
+.ai-wait-indicator-elapsed {
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-red, #e30613);
+  white-space: nowrap;
+}
+
+.ai-wait-bar-track {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  margin: 0.4rem 0 0.35rem;
+}
+
+.ai-wait-bar-fill {
+  height: 100%;
+  width: 38%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--brand-red, #e30613), #f97316);
+  animation: ai-wait-slide 1.25s ease-in-out infinite;
+}
+
+@keyframes ai-wait-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-wait-bar-fill {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+    transform: none;
+  }
+}
+
+.ai-wait-indicator-meta {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--muted-fg, #64748b);
+}
+
+.ai-wait-indicator-meta--compact {
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.excel-ai-wait-embed {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.excel-dashboard-slice-ai-wait {
+  margin-top: 0.55rem;
+}
+
+.excel-director-dossier-wait {
+  margin-top: 0.35rem;
+}
+
+.multi-survey-ai-wait {
+  margin: 0.75rem 0 0;
+}
+
+.ai-insights-wait-panel {
+  margin: 0.75rem 0 1rem;
+}
+
 /* ПУЛЬС — ИИ-чат на Excel-дашборде */
 .app-admin .pulse-excel-chat {
   padding: 1.15rem 1.35rem 1.25rem;
@@ -4391,6 +4494,27 @@ body {
   border-top: 1px dashed var(--card-border);
 }
 
+.excel-dashboard-slice-ai-details {
+  margin: 0;
+}
+
+.excel-dashboard-slice-ai-summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--page-fg);
+  padding: 0.35rem 0;
+  list-style: none;
+}
+
+.excel-dashboard-slice-ai-summary::-webkit-details-marker {
+  display: none;
+}
+
+.excel-dashboard-slice-ai-inner {
+  padding-top: 0.45rem;
+}
+
 .excel-dashboard-slice-ai-lead {
   margin: 0 0 0.5rem;
   font-size: 0.82rem;
@@ -4407,6 +4531,13 @@ body {
   display: flex;
   flex-direction: column;
   gap: 1.35rem;
+  width: 100%;
+  align-items: stretch;
+}
+
+.excel-slice-section {
+  width: 100%;
+  min-width: 0;
 }
 
 .excel-slice-section-title {
@@ -4419,7 +4550,8 @@ body {
 
 .excel-dashboard-slice-filters-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 160px), 1fr));
+  /* auto-fit схлопывает пустые дорожки — при auto-fill оставались «фантомные» колонки, карточки съезжали влево */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 0.75rem 1rem;
   width: 100%;
 }
@@ -4427,6 +4559,8 @@ body {
 .excel-slice-dimension {
   padding: 0.65rem 0.75rem 0.75rem;
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(17, 24, 39, 0.08);
 }
@@ -5182,6 +5316,46 @@ body {
   gap: 1rem;
 }
 
+.excel-dashboard-main-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.excel-dashboard-main-body .excel-dashboard-main-charts {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .excel-dashboard-main-body--with-dock {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  }
+}
+
+.excel-chart-drill-dock {
+  position: sticky;
+  top: 0.75rem;
+  align-self: start;
+  max-height: min(85vh, 560px);
+}
+
+@media (max-width: 1099px) {
+  .excel-chart-drill-dock {
+    position: static;
+    max-height: min(70vh, 420px);
+  }
+}
+
+.excel-chart-drill-dock-kicker {
+  margin: 0 0 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-fg, #64748b);
+}
+
 .excel-dashboard-chart-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
@@ -5204,7 +5378,7 @@ body {
 }
 
 .excel-dashboard-slice-filters-grid--wide {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 168px), 1fr));
 }
 
 .excel-dash-board-panels--compact {

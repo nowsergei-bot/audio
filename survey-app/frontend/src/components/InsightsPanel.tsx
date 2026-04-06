@@ -2,6 +2,7 @@ import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import { requestAiInsights, requestDirectorAiInsights } from '../api/client';
 import AnimatedNumber from './AnimatedNumber';
+import AiWaitIndicator from './AiWaitIndicator';
 import { staggerContainer, staggerItem } from '../motion/resultsMotion';
 import type { AiInsightsPayload, AnalyticsFilter, InsightBlock, InsightTone } from '../types';
 
@@ -170,6 +171,17 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
           <motion.p className="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {err}
           </motion.p>
+        )}
+
+        {loading && (
+          <AiWaitIndicator
+            active
+            className="ai-insights-wait-panel"
+            label="Считаем показатели и формируем текст по опросу (нейросеть или автосводка)"
+            typicalMinSec={10}
+            typicalMaxSec={50}
+            slowAfterSec={80}
+          />
         )}
 
         <AnimatePresence mode="wait">

@@ -6,6 +6,13 @@ import { resolveListFeatureToken, splitListFeatureParts } from './listFeatureTok
 /** Производное измерение «параллель», если в файле есть класс, но нет отдельной колонки параллели */
 export const PULSE_PARALLEL_AUTO_KEY = '__pulse_parallel_auto';
 
+/** Годы вне диапазона — чаще всего числовые ответы анкеты ошибочно прочитаны как дата Excel (1900-е). */
+function isPlausibleAnalyticsIsoDate(iso: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return false;
+  const y = Number(iso.slice(0, 4));
+  return y >= 1990 && y <= 2100;
+}
+
 function excelSerialToIsoDate(n: number): string | null {
   if (!Number.isFinite(n)) return null;
   const ms = Math.round((n - 25569) * 86400 * 1000);
@@ -16,13 +23,25 @@ function excelSerialToIsoDate(n: number): string | null {
 
 export function parseAnalyticsDate(cell: CellPrimitive): string | null {
   if (cell == null || cell === '') return null;
-  if (cell instanceof Date) return Number.isFinite(cell.getTime()) ? cell.toISOString().slice(0, 10) : null;
-  if (typeof cell === 'number') return excelSerialToIsoDate(cell);
+  if (cell instanceof Date) {
+    if (!Number.isFinite(cell.getTime())) return null;
+    const iso = cell.toISOString().slice(0, 10);
+    return isPlausibleAnalyticsIsoDate(iso) ? iso : null;
+  }
+  if (typeof cell === 'number') {
+    const iso = excelSerialToIsoDate(cell);
+    return iso && isPlausibleAnalyticsIsoDate(iso) ? iso : null;
+  }
   const s = String(cell).trim();
   if (!s) return null;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const iso = s.slice(0, 10);
+    return isPlausibleAnalyticsIsoDate(iso) ? iso : null;
+  }
   const d = new Date(s);
-  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
+  if (!Number.isFinite(d.getTime())) return null;
+  const iso = d.toISOString().slice(0, 10);
+  return isPlausibleAnalyticsIsoDate(iso) ? iso : null;
 }
 
 export function parseNumber(cell: CellPrimitive): number | null {
@@ -445,7 +464,7 @@ export function countsByMonth(rows: AnalyticRow[]): { month: string; count: numb
 export function ordinalDistribution(
   rows: AnalyticRow[],
   ordinalLevelsOrdered: string[],
-): { level: string; count: number }[] {
+): { rank: number; level: string; count: number }[] {
   const m = new Map<number, number>();
   for (const r of rows) {
     if (r.metricOrdinal == null) continue;
@@ -454,9 +473,30 @@ export function ordinalDistribution(
   return [...m.entries()]
     .sort(([a], [b]) => a - b)
     .map(([rank, count]) => ({
+      rank,
       level: ordinalLevelsOrdered[rank - 1]?.trim() || `Уровень ${rank}`,
       count,
     }));
+}
+
+/**
+ * Педагоги с хотя бы одним уроком на выбранном уровне текстовой шкалы (rank 1…N).
+ */
+export function teachersAtOrdinalRank(
+  rowsOnePerLesson: AnalyticRow[],
+  teacherFilterKey: string,
+  rank: number,
+): { teacher: string; lessons: number }[] {
+  const m = new Map<string, number>();
+  for (const row of rowsOnePerLesson) {
+    if (row.metricOrdinal !== rank) continue;
+    const t = row.filterValues[teacherFilterKey];
+    if (!t || t === '(не указано)') continue;
+    m.set(t, (m.get(t) ?? 0) + 1);
+  }
+  return [...m.entries()]
+    .map(([teacher, lessons]) => ({ teacher, lessons }))
+    .sort((a, b) => b.lessons - a.lessons || a.teacher.localeCompare(b.teacher, 'ru'));
 }
 
 export function meanMinMax(rows: AnalyticRow[], colIndex: number): { mean: number; min: number; max: number; n: number } | null {
@@ -527,8 +567,19 @@ const TEXT_KIND_LABEL: Partial<Record<ColumnRole, string>> = {
   text_list_features: 'списки / теги',
 };
 
+/** Убирает из текста для ИИ «хвосты» вроде 4,58955223880597 (ошибки ввода / Excel). */
+function sanitizeNumericNoiseForContext(s: string): string {
+  return s.replace(/\b\d+[.,]\d{5,}\b/g, (m) => {
+    const n = Number(m.replace(',', '.'));
+    if (!Number.isFinite(n)) return m;
+    const r = Math.round(n * 100) / 100;
+    if (Number.isInteger(r)) return String(r);
+    return r.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  });
+}
+
 function excerpt(s: string, max = 160): string {
-  const t = s.replace(/\s+/g, ' ').trim();
+  const t = sanitizeNumericNoiseForContext(s.replace(/\s+/g, ' ').trim());
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
 }
@@ -835,11 +886,9 @@ export function meanOrdinalRankByMonth(rowsOnePerLesson: AnalyticRow[]): { month
     .map(([month, { sum, n }]) => ({ month, meanRank: n > 0 ? sum / n : 0, n }));
 }
 
-function formatFilterBucketLine(b: FilterBucketCounts): string {
-  if (b.expandedRows === b.uniqueLessons) {
-    return `  • ${b.display}: ${b.uniqueLessons}`;
-  }
-  return `  • ${b.display}: ${b.uniqueLessons} уник. записей урока (${b.expandedRows} строк после развёртки мультизначений в ячейках)`;
+/** Строка среза в блоке для ИИ — без технического жаргона подсчёта строк. */
+function formatFilterBucketLineForLlm(b: FilterBucketCounts): string {
+  return `  • ${sanitizeNumericNoiseForContext(b.display)}: ${b.uniqueLessons} ответов`;
 }
 
 /**
@@ -863,27 +912,27 @@ export function buildRichLlmContextRu(
   const filteredOneLesson = dedupeRowsByLessonIdx(filtered);
   const semAll = countUniqueLessonSemantics(allRows, opts.teacherFilterKey);
   const semFiltered = countUniqueLessonSemantics(filtered, opts.teacherFilterKey);
-  const idxAll = countUniqueImportRows(allRows);
-  const idxFiltered = countUniqueImportRows(filtered);
-  lines.push('=== ВЫГРУЗКА ДЛЯ АНАЛИТИЧЕСКОГО ОТЧЁТА (факты по текущему срезу) ===');
+  lines.push('=== Факты по выборке (источник для связного отчёта) ===');
   lines.push(
-    `В файле: ${semAll} уникальных уроков по смыслу (дата, подпись строки, все срезы кроме наставника; совпадающие строки Excel с одним событием схлопываются); ${idxAll} строк импорта; ${allRows.length} аналитических строк после развёртки ячеек.`,
+    `Объём: в полном файле ${semAll} ответов (логических анкет/уроков), в текущем срезе ${semFiltered}.`,
   );
   lines.push(
-    `В текущем срезе: ${semFiltered} уроков по смыслу; ${idxFiltered} строк импорта; ${filtered.length} аналитических строк.`,
-  );
-  lines.push(
-    'Средние по числам и доли по шкале ниже — по одной строке импорта на вес (idx), без раздувания от развёртки. Срезы по фильтрам: первое число — логические уроки с этим значением; в скобках — строки развёртки при необходимости.',
-  );
-  lines.push(
-    'Если в ячейке фильтра несколько значений через запятую — дашборд разворачивает их в отдельные аналитические строки (каждое значение участвует в фильтрах и в графике «по наставникам» как отдельная оценка). Колонки «Список через запятую» (технологии, методики, отмеченные на уроке формулировки): в ячейке перечислены аспекты, за которые на наблюдении поставили «пойнт»/отметку; ниже — частоты по уникальным урокам.',
+    'Средние по баллам и доли по шкале посчитаны корректно (без двойного учёта при нескольких отметках в одной ячейке). Не пересказывай эту служебную строку в отчёте.',
   );
 
   if (opts.dateLabel) {
     const dates = filteredOneLesson.map((r) => r.date).filter((d): d is string => Boolean(d));
     if (dates.length) {
       dates.sort();
-      lines.push(`Период (колонка «${opts.dateLabel}»): с ${dates[0]} по ${dates[dates.length - 1]}.`);
+      const from = dates[0];
+      const to = dates[dates.length - 1];
+      if (isPlausibleAnalyticsIsoDate(from) && isPlausibleAnalyticsIsoDate(to)) {
+        lines.push(`Календарный период (колонка «${opts.dateLabel}»): с ${from} по ${to}.`);
+      } else {
+        lines.push(
+          `Колонка «${opts.dateLabel}» задана как дата, но значения недостоверны для календаря — в отчёте не указывай даты периода; опиши только содержание ответов.`,
+        );
+      }
     }
   }
 
@@ -891,11 +940,9 @@ export function buildRichLlmContextRu(
     const buckets = topFilterBucketsByUniqueLesson(filtered, opts.teacherFilterKey, 200, opts.teacherFilterKey);
     const known = buckets.filter((x) => x.display !== '(не указано)');
     lines.push('');
-    lines.push(
-      `Педагоги по полю «${opts.filterLabels[opts.teacherFilterKey] ?? opts.teacherFilterKey}» (сначала уникальные уроки с этим кодом/ФИО; при развёртке — сколько аналитических строк):`,
-    );
+    lines.push(`Педагоги по полю «${opts.filterLabels[opts.teacherFilterKey] ?? opts.teacherFilterKey}»:`);
     for (const b of known) {
-      lines.push(formatFilterBucketLine(b));
+      lines.push(formatFilterBucketLineForLlm(b));
     }
     if (known.length === 0) lines.push('  (нет заполненных шифров в срезе)');
   }
@@ -906,22 +953,22 @@ export function buildRichLlmContextRu(
     const top = topFilterBucketsByUniqueLesson(filtered, fk, 18, opts.teacherFilterKey);
     if (top.length === 0) continue;
     lines.push('');
-    lines.push(`Срез по «${label}» (топ по числу уникальных уроков; похожие написания объединены):`);
+    lines.push(`Тема/поле «${label}» (топ по числу ответов; близкие формулировки объединены):`);
     for (const b of top) {
-      lines.push(formatFilterBucketLine(b));
+      lines.push(formatFilterBucketLineForLlm(b));
     }
   }
 
   if (opts.numericMetrics.length > 0) {
     lines.push('');
     lines.push(
-      'Числовые критерии по уникальным записям урока (чем выше значение, тем лучше по смыслу пункта; название столбца = формулировка критерия):',
+      'Баллы по вопросам (чем выше, тем лучше по смыслу формулировки столбца; название столбца = формулировка вопроса):',
     );
     for (const { colIndex, label } of opts.numericMetrics) {
       const mm = meanMinMax(filteredOneLesson, colIndex);
       if (mm) {
         lines.push(
-          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, мин. ${mm.min.toFixed(2)}, макс. ${mm.max.toFixed(2)} (уроков с числом: ${mm.n}).`,
+          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, от ${mm.min.toFixed(2)} до ${mm.max.toFixed(2)} (${mm.n} ответов с баллом).`,
         );
       } else {
         lines.push(`  • «${label}»: нет чисел в срезе.`);
@@ -931,7 +978,7 @@ export function buildRichLlmContextRu(
       const st = sumTotalStats(filteredOneLesson);
       if (st) {
         lines.push(
-          `Сумма всех числовых пунктов по строке (пустые не входят): среднее ${st.mean.toFixed(2)}, мин. ${st.min.toFixed(2)}, макс. ${st.max.toFixed(2)} (уроков с ≥1 числом: ${st.n}).`,
+          `Сумма баллов по всем перечисленным вопросам в одной строке (пустые ячейки не входят): в среднем ${st.mean.toFixed(2)}, от ${st.min.toFixed(2)} до ${st.max.toFixed(2)} (${st.n} ответов).`,
         );
       }
     }
@@ -968,10 +1015,10 @@ export function buildRichLlmContextRu(
     if (tagCounts.length === 0 && uni.length === 0) continue;
     lines.push('');
     lines.push(
-      `Колонка «${h}» (список через запятую): в справочнике среза ${uni.length} различных пунктов (объединены дубликаты ru/en и обрывки вроде etc. по правилам модуля); частоты — сколько уникальных уроков содержат отметку (топ 32).`,
+      `Отметки в поле «${sanitizeNumericNoiseForContext(h)}» (несколько вариантов в одной ячейке через запятую). Топ по числу ответов:`,
     );
     for (const { display, uniqueLessons } of tagCounts) {
-      lines.push(`  • ${display}: ${uniqueLessons} уроков`);
+      lines.push(`  • ${sanitizeNumericNoiseForContext(display)}: ${uniqueLessons} ответов`);
     }
   }
 
@@ -994,7 +1041,7 @@ export function buildRichLlmContextRu(
       const kindRu = TEXT_KIND_LABEL[kind] ?? 'текст';
       lines.push(`  «${header}» (${kindRu}):`);
       snippets.forEach((t, i) => {
-        lines.push(`    ${i + 1}) ${excerpt(t, 320)}`);
+        lines.push(`    ${i + 1}) ${excerpt(sanitizeNumericNoiseForContext(t), 320)}`);
       });
     }
   }
@@ -1025,19 +1072,17 @@ export function buildQuickSummaryRu(
   const f1 = dedupeRowsByLessonIdx(filtered);
   const semRows = countUniqueLessonSemantics(rows, opts.mentorFilterKey);
   const semFilt = countUniqueLessonSemantics(filtered, opts.mentorFilterKey);
-  const idxRows = countUniqueImportRows(rows);
-  const idxFilt = countUniqueImportRows(filtered);
-  lines.push(
-    `Уникальных уроков по смыслу: ${semRows} в файле (${idxRows} строк импорта); в срезе: ${semFilt} (${idxFilt} строк импорта). Аналитических строк после развёртки: ${rows.length} (в срезе ${filtered.length}).`,
-  );
-  lines.push(
-    'Средние по числам и шкала — по одной строке импорта на вес (idx), без двойного учёта развёртки наставников/тегов.',
-  );
+  lines.push(`Объём: в файле ${semRows} ответов, в срезе ${semFilt}.`);
+  lines.push('Средние и шкала посчитаны без двойного учёта при размножении строк из одной ячейки.');
   if (opts.dateLabel) {
     const dates = f1.map((r) => r.date).filter((d): d is string => Boolean(d));
     if (dates.length) {
       dates.sort();
-      lines.push(`Период (по колонке «${opts.dateLabel}»): с ${dates[0]} по ${dates[dates.length - 1]}.`);
+      const from = dates[0];
+      const to = dates[dates.length - 1];
+      if (isPlausibleAnalyticsIsoDate(from) && isPlausibleAnalyticsIsoDate(to)) {
+        lines.push(`Период (колонка «${opts.dateLabel}»): с ${from} по ${to}.`);
+      }
     }
   }
   if (opts.hasTeacherFilter && opts.mentorFilterKey) {
@@ -1051,13 +1096,13 @@ export function buildQuickSummaryRu(
   if (opts.numericMetrics.length > 0) {
     lines.push('');
     lines.push(
-      'Числовые пункты (по каждому столбцу: чем выше значение, тем лучше по этому критерию; название столбца — формулировка пункта):',
+      'Баллы по вопросам (чем выше, тем лучше по смыслу; название столбца — формулировка вопроса):',
     );
     for (const { colIndex, label } of opts.numericMetrics) {
       const mm = meanMinMax(f1, colIndex);
       if (mm) {
         lines.push(
-          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, мин. ${mm.min.toFixed(2)}, макс. ${mm.max.toFixed(2)} (уроков с числом: ${mm.n}).`,
+          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, от ${mm.min.toFixed(2)} до ${mm.max.toFixed(2)} (${mm.n} ответов с баллом).`,
         );
       } else {
         lines.push(`  • «${label}»: нет числовых значений в выборке.`);
@@ -1067,7 +1112,7 @@ export function buildQuickSummaryRu(
       const st = sumTotalStats(f1);
       if (st) {
         lines.push(
-          `Сумма всех перечисленных пунктов по строке (сложение набранных баллов по строкам, пустые ячейки не входят): среднее ${st.mean.toFixed(2)}, мин. ${st.min.toFixed(2)}, макс. ${st.max.toFixed(2)} (уроков с хотя бы одним числом: ${st.n}).`,
+          `Сумма баллов по строке (пустые ячейки не входят): в среднем ${st.mean.toFixed(2)}, от ${st.min.toFixed(2)} до ${st.max.toFixed(2)} (${st.n} ответов).`,
         );
       }
     }
@@ -1097,7 +1142,7 @@ export function buildQuickSummaryRu(
       const kindRu = TEXT_KIND_LABEL[kind] ?? 'текст';
       lines.push(`  • «${header}» (${kindRu}), примеры формулировок:`);
       snippets.forEach((t, i) => {
-        lines.push(`    ${i + 1}) ${excerpt(t)}`);
+        lines.push(`    ${i + 1}) ${excerpt(sanitizeNumericNoiseForContext(t))}`);
       });
     }
   }
@@ -1130,35 +1175,33 @@ function buildDirectorSegmentFactsLines(
 ): string {
   const lines: string[] = [];
   const uniqueSemantic = countUniqueLessonSemantics(subRows, opts.teacherFilterKey);
-  const uniqueImport = countUniqueImportRows(subRows);
   const subOne = dedupeRowsByLessonIdx(subRows);
   lines.push(`Педагог: ${opts.teacher} (колонка «${opts.teacherHeader}»).`);
   if (opts.subject != null) {
     lines.push(`Предмет / тематика: ${opts.subject} (колонка «${opts.subjectHeader}»).`);
   }
-  lines.push(
-    `Строк в сегменте: ${subRows.length}. Уроков по смыслу: ${uniqueSemantic}. Строк импорта (idx): ${uniqueImport}.`,
-  );
-  if (subOne.length < subRows.length) {
-    lines.push('Средние и шкала ниже — по уникальным урокам (без двойного учёта из-за развёртки мультизначений).');
-  }
+  lines.push(`В этом сегменте ${uniqueSemantic} ответов (уроков по смыслу).`);
 
   if (opts.dateLabel) {
     const dates = subOne.map((r) => r.date).filter((d): d is string => Boolean(d));
     if (dates.length) {
       dates.sort();
-      lines.push(`Период (колонка «${opts.dateLabel}»): с ${dates[0]} по ${dates[dates.length - 1]}.`);
+      const from = dates[0];
+      const to = dates[dates.length - 1];
+      if (isPlausibleAnalyticsIsoDate(from) && isPlausibleAnalyticsIsoDate(to)) {
+        lines.push(`Период (колонка «${opts.dateLabel}»): с ${from} по ${to}.`);
+      }
     }
   }
 
   if (opts.numericMetrics.length > 0) {
     lines.push('');
-    lines.push('Числовые пункты (по столбцам; для шкалы «больше = лучше»):');
+    lines.push('Баллы по вопросам (чем выше, тем лучше по смыслу столбца):');
     for (const { colIndex, label } of opts.numericMetrics) {
       const mm = meanMinMax(subOne, colIndex);
       if (mm) {
         lines.push(
-          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, мин. ${mm.min.toFixed(2)}, макс. ${mm.max.toFixed(2)} (уроков с числом: ${mm.n}).`,
+          `  • «${label}»: среднее ${mm.mean.toFixed(2)}, от ${mm.min.toFixed(2)} до ${mm.max.toFixed(2)} (${mm.n} ответов с баллом).`,
         );
       } else {
         lines.push(`  • «${label}»: нет числовых значений в этом сегменте.`);
@@ -1168,7 +1211,7 @@ function buildDirectorSegmentFactsLines(
       const st = sumTotalStats(subOne);
       if (st) {
         lines.push(
-          `Сумма пунктов по строке (пустые ячейки не входят): среднее ${st.mean.toFixed(2)}, мин. ${st.min.toFixed(2)}, макс. ${st.max.toFixed(2)} (уроков с хотя бы одним числом: ${st.n}).`,
+          `Сумма баллов по строке (пустые ячейки не входят): в среднем ${st.mean.toFixed(2)}, от ${st.min.toFixed(2)} до ${st.max.toFixed(2)} (${st.n} ответов).`,
         );
       }
     }

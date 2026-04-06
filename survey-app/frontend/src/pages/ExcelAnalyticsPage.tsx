@@ -19,6 +19,7 @@ import {
   postExcelFilterValueGroups,
   postExcelNarrativeSummary,
 } from '../api/client';
+import AiWaitIndicator from '../components/AiWaitIndicator';
 import PulseExcelChat from '../components/PulseExcelChat';
 import { formatBilingualCellLabel } from '../lib/excelAnalytics/excelDisplayLabel';
 import { fadeIn } from '../motion/resultsMotion';
@@ -58,11 +59,13 @@ import {
   listFeatureTagFrequencyByTeacher,
   listFeatureTagUniverse,
   teacherListFeatureCoverage,
+  teachersAtOrdinalRank,
   teachersInMetricBin,
   type AnalyticRow,
   type FilterSelection,
   type HistogramBinDetail,
 } from '../lib/excelAnalytics/engine';
+import { collapseSimilarFilterDimensionValues } from '../lib/excelAnalytics/filterValueNormalize';
 import { applyServiceTimestampIgnore } from '../lib/excelAnalytics/serviceTimestamp';
 import { extractWorkbookCodebookRu } from '../lib/excelAnalytics/decoderSheets';
 import {
@@ -226,6 +229,8 @@ export default function ExcelAnalyticsPage() {
     histMin: number;
     histMax: number;
   } | null>(null);
+  /** Клик по столбцу гистограммы текстовой шкалы — уровень + список педагогов */
+  const [ordinalDrill, setOrdinalDrill] = useState<{ rank: number; levelLabel: string } | null>(null);
   /** Раскрытие блока «Исходные факты» (в т.ч. после выбора педагога из дрилла) */
   const [excelFactsOpen, setExcelFactsOpen] = useState(false);
   /** Подписи из ячеек: по умолчанию только часть до «//» (рус.), иначе часть после «//». */
@@ -540,6 +545,30 @@ export default function ExcelAnalyticsPage() {
       teacherFilterKey,
     );
   }, [metricDrill, teacherFilterKey, filteredRowsOnePerLesson]);
+
+  const ordinalDrillTeachers = useMemo(() => {
+    if (!ordinalDrill || !teacherFilterKey) return [];
+    return teachersAtOrdinalRank(filteredRowsOnePerLesson, teacherFilterKey, ordinalDrill.rank);
+  }, [ordinalDrill, teacherFilterKey, filteredRowsOnePerLesson]);
+
+  const chartDrillOpen = Boolean(teacherFilterKey && (metricDrill || ordinalDrill));
+
+  const closeChartDrill = useCallback(() => {
+    setMetricDrill(null);
+    setOrdinalDrill(null);
+  }, []);
+
+  const ordinalScaleColIndex = roles.indexOf('metric_ordinal_text');
+  const ordinalScaleHeaderUi = useMemo(
+    () =>
+      ordinalScaleColIndex >= 0
+        ? formatBilingualCellLabel(
+            headers[ordinalScaleColIndex] ?? 'Текстовая шкала',
+            showEnglishExcelLabels ? 'en' : 'ru',
+          )
+        : 'Текстовая шкала',
+    [ordinalScaleColIndex, headers, showEnglishExcelLabels],
+  );
 
   const monthData = useMemo(() => countsByMonth(filteredRowsOnePerLesson), [filteredRowsOnePerLesson]);
 
@@ -893,6 +922,7 @@ export default function ExcelAnalyticsPage() {
   const onHistogramBinClick = useCallback((colIdx: number, header: string, bins: HistogramBinDetail[], pt: HistogramBinDetail) => {
     const histMin = Math.min(...bins.map((x) => x.minInclusive));
     const histMax = Math.max(...bins.map((x) => x.maxInclusive));
+    setOrdinalDrill(null);
     setMetricDrill({
       colIndex: colIdx,
       header,
@@ -927,7 +957,16 @@ export default function ExcelAnalyticsPage() {
 
   useEffect(() => {
     setMetricDrill(null);
+    setOrdinalDrill(null);
   }, [metricPickIndex]);
+
+  useEffect(() => {
+    if (!teacherFilterKey || (!metricDrill && !ordinalDrill)) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById('excel-chart-drill-dock')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [metricDrill, ordinalDrill, teacherFilterKey]);
 
   /** Смена среза — сбрасываем записи для директора (нужно сформировать заново). */
   useEffect(() => {
@@ -1064,6 +1103,7 @@ export default function ExcelAnalyticsPage() {
       setFacetGroupsByKey({});
       setFacetGroupsHint(null);
       setMetricDrill(null);
+      setOrdinalDrill(null);
       setExcelFactsOpen(false);
 
       if (strippedIndex != null) {
@@ -1081,6 +1121,7 @@ export default function ExcelAnalyticsPage() {
       let built = buildAnalyticRows(h, matrixRows, rolesForRun, customLabels, ordinalInput);
       built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
       built = augmentRowsWithDerivedParallel(built, rolesForRun, customLabels);
+      built = collapseSimilarFilterDimensionValues(built, rolesForRun, customLabels);
       setAnalyticRows(built);
 
       const sel: FilterSelection = {};
@@ -1143,6 +1184,7 @@ export default function ExcelAnalyticsPage() {
       setFacetGroupsByKey({});
       setFacetGroupsHint(null);
       setMetricDrill(null);
+      setOrdinalDrill(null);
       setExcelFactsOpen(false);
       const suggested = suggestColumnRoles(h, rows);
       const oc = suggested.indexOf('metric_ordinal_text');
@@ -1678,8 +1720,8 @@ export default function ExcelAnalyticsPage() {
                   <p className="excel-dashboard-slice-kicker">Срез выборки</p>
                   <h2 className="excel-dashboard-slice-title">Все параметры из маппинга</h2>
                   <p className="muted excel-dashboard-slice-lead">
-                    Каждая колонка-фильтр — измерение; каскад оставляет только совместимые значения. Сначала настройте
-                    срез, затем смотрите графики и ПУЛЬС ниже.
+                    Каждая колонка-фильтр — измерение; каскад оставляет только совместимые значения. Сузьте выборку
+                    чипами — графики и ПУЛЬС ниже обновятся.
                   </p>
                 </div>
                 <div className="excel-dashboard-slice-toolbar">
@@ -1714,45 +1756,70 @@ export default function ExcelAnalyticsPage() {
               </div>
 
               <div className="excel-dashboard-slice-ai">
-                <p className="muted excel-dashboard-slice-ai-lead">
-                  После «Построить анализ» разделы среза и группы в длинных списках запрашиваются у модели автоматически
-                  (тот же API, что у ПУЛЬС). Кнопки ниже — повторить запрос при смене данных или если ответ не пришёл.
-                </p>
-                <div className="excel-dashboard-filter-ai-actions">
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={!analyticRows.length || aiSectionsBusy}
-                    onClick={() => void fetchAiFilterSections()}
-                  >
-                    {aiSectionsBusy ? 'ИИ: разделы…' : 'Обновить разделы (ИИ)'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={!analyticRows.length || facetGroupsBusy}
-                    onClick={() => void fetchAiValueGroups()}
-                  >
-                    {facetGroupsBusy ? 'ИИ: группы…' : 'Обновить группы в списках (ИИ)'}
-                  </button>
-                  {(aiSectionLayout != null || Object.keys(facetGroupsByKey).length > 0) && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setAiSectionLayout(null);
-                        setFacetGroupsByKey({});
-                        setAiSectionsHint(null);
-                        setFacetGroupsHint(null);
-                      }}
-                    >
-                      Сбросить ИИ
-                    </button>
-                  )}
-                </div>
-                {(aiSectionsHint || facetGroupsHint) && (
-                  <p className="muted excel-dashboard-filter-ai-hint-msg">{aiSectionsHint || facetGroupsHint}</p>
-                )}
+                <details className="excel-dashboard-slice-ai-details">
+                  <summary className="excel-dashboard-slice-ai-summary">
+                    ИИ: разделы панели фильтров и группы длинных списков
+                  </summary>
+                  <div className="excel-dashboard-slice-ai-inner">
+                    <p className="muted excel-dashboard-slice-ai-lead">
+                      После «Построить анализ» разделы среза и группы в длинных списках запрашиваются у модели
+                      автоматически (тот же API, что у ПУЛЬС). Кнопки — повторить запрос при смене данных или если ответ
+                      не пришёл.
+                    </p>
+                    <div className="excel-dashboard-filter-ai-actions">
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={!analyticRows.length || aiSectionsBusy}
+                        onClick={() => void fetchAiFilterSections()}
+                      >
+                        {aiSectionsBusy ? 'ИИ: разделы…' : 'Обновить разделы (ИИ)'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        disabled={!analyticRows.length || facetGroupsBusy}
+                        onClick={() => void fetchAiValueGroups()}
+                      >
+                        {facetGroupsBusy ? 'ИИ: группы…' : 'Обновить группы в списках (ИИ)'}
+                      </button>
+                      {(aiSectionLayout != null || Object.keys(facetGroupsByKey).length > 0) && (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => {
+                            setAiSectionLayout(null);
+                            setFacetGroupsByKey({});
+                            setAiSectionsHint(null);
+                            setFacetGroupsHint(null);
+                          }}
+                        >
+                          Сбросить ИИ
+                        </button>
+                      )}
+                    </div>
+                    {(aiSectionsBusy || facetGroupsBusy) && (
+                      <AiWaitIndicator
+                        active
+                        compact
+                        className="excel-dashboard-slice-ai-wait"
+                        label={
+                          aiSectionsBusy && facetGroupsBusy
+                            ? 'ИИ: разделы панели и группы в списках'
+                            : aiSectionsBusy
+                              ? 'ИИ предлагает разделы для панели фильтров'
+                              : 'ИИ группирует значения в длинных списках'
+                        }
+                        typicalMinSec={12}
+                        typicalMaxSec={45}
+                        slowAfterSec={70}
+                      />
+                    )}
+                    {(aiSectionsHint || facetGroupsHint) && (
+                      <p className="muted excel-dashboard-filter-ai-hint-msg">{aiSectionsHint || facetGroupsHint}</p>
+                    )}
+                  </div>
+                </details>
               </div>
 
               <p className="muted excel-dashboard-filter-hint excel-dashboard-slice-hint">
@@ -1812,12 +1879,15 @@ export default function ExcelAnalyticsPage() {
                     <p className="excel-dashboard-main-kicker">Панель анализа</p>
                     <h2 className="excel-dashboard-main-title">Графики, выводы и детализация</h2>
                     <p className="muted excel-dashboard-main-lead">
-                      Ниже — графики по текущему срезу, краткая сводка, затем ПУЛЬС: чат и отчёты ИИ в одном блоке. Фильтры
-                      остаются вверху страницы.
+                      Шаги: срез вверху → графики по выборке → клик по столбцу гистограммы открывает одну панель
+                      педагогов (справа на широком экране, под графиками на узком) → внизу ПУЛЬС: чат и отчёты ИИ.
                     </p>
                   </div>
                 </header>
 
+                <div
+                  className={`excel-dashboard-main-body${chartDrillOpen ? ' excel-dashboard-main-body--with-dock' : ''}`}
+                >
                 <div className="excel-dashboard-main-charts">
                   <section className="card glass-surface excel-dash-card excel-dash-card--wide excel-dash-chart-catalog">
                     <h3 className="excel-dash-card-title">Визуализации по текущему срезу</h3>
@@ -1896,17 +1966,10 @@ export default function ExcelAnalyticsPage() {
                       <p className="muted excel-dash-card-sub">
                         Распределение значений по уникальным урокам в срезе.
                         {teacherFilterKey
-                          ? ' Клик по столбцу — справа список педагогов в этом интервале; по педагогу — срез и сводка ниже.'
+                          ? ' Клик по столбцу — список педагогов в одной закреплённой панели справа (на узком экране — под графиками); по ФИО — срез и сводка.'
                           : ' Назначьте колонке роль «Код/шифр педагога», чтобы по клику видеть список педагогов в интервале.'}
                       </p>
-                      <div
-                        className={
-                          metricDrill && teacherFilterKey
-                            ? 'excel-histogram-multi-with-panel'
-                            : 'excel-histogram-multi-with-panel excel-histogram-multi-with-panel--solo'
-                        }
-                      >
-                        <div className="excel-histogram-multi-grid">
+                      <div className="excel-histogram-multi-grid">
                           {metricNumericCols.map((mi, idx) => {
                             const histBins = histogramNumericBins(
                               filteredRowsOnePerLesson,
@@ -1940,9 +2003,11 @@ export default function ExcelAnalyticsPage() {
                                             fill={baseFill}
                                             cursor={teacherFilterKey ? 'pointer' : 'default'}
                                             opacity={
-                                              metricDrill?.colIndex === mi && metricDrill?.bin.binIndex === entry.binIndex
-                                                ? 1
-                                                : 0.45
+                                              teacherFilterKey && metricDrill?.colIndex === mi
+                                                ? metricDrill.bin.binIndex === entry.binIndex
+                                                  ? 1
+                                                  : 0.45
+                                                : 1
                                             }
                                             onClick={() => {
                                               if (!teacherFilterKey) return;
@@ -1957,54 +2022,6 @@ export default function ExcelAnalyticsPage() {
                               </div>
                             );
                           })}
-                        </div>
-                        {metricDrill && teacherFilterKey && (
-                          <aside className="excel-metric-drill-panel" aria-label="Педагоги в выбранном интервале метрики">
-                            <div className="excel-metric-drill-panel-head">
-                              <div>
-                                <div className="excel-metric-drill-panel-metric">{metricDrill.header}</div>
-                                <div className="excel-metric-drill-panel-bin">Интервал: {metricDrill.bin.label}</div>
-                              </div>
-                              <button
-                                type="button"
-                                className="btn excel-metric-drill-close"
-                                aria-label="Закрыть панель"
-                                onClick={() => setMetricDrill(null)}
-                              >
-                                ×
-                              </button>
-                            </div>
-                            <p className="muted excel-metric-drill-panel-hint">
-                              Уроки в выбранном диапазоне по этому пункту. Клик по ФИО — сузить дашборд, краткая сводка
-                              появится здесь, блок «Исходные факты» ниже раскроется автоматически.
-                            </p>
-                            {metricDrillTeachers.length === 0 ? (
-                              <p className="muted">В этом интервале нет строк с указанным педагогом.</p>
-                            ) : (
-                              <ul className="excel-metric-drill-teacher-list">
-                                {metricDrillTeachers.map((t) => (
-                                  <li key={t.teacher}>
-                                    <button
-                                      type="button"
-                                      className="excel-metric-drill-teacher-btn"
-                                      onClick={() => drillSelectTeacher(t.teacher)}
-                                    >
-                                      <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
-                                      <span className="muted">{t.lessons} ур.</span>
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {singleTeacherFilterName && quickText ? (
-                              <ExcelDrillMiniSummary
-                                teacherName={singleTeacherFilterName}
-                                quickText={quickText}
-                                onOpenFacts={openExcelFactsAndScroll}
-                              />
-                            ) : null}
-                          </aside>
-                        )}
                       </div>
                     </section>
                   )}
@@ -2313,7 +2330,7 @@ export default function ExcelAnalyticsPage() {
                         <h3 className="excel-dash-card-title">Распределение по пункту</h3>
                         <p className="muted excel-dash-card-sub excel-metric-pick-hint">
                           {teacherFilterKey
-                            ? 'Клик по столбцу — список педагогов справа; по ФИО — краткая сводка в панели и автоматически раскрываются «Исходные факты» ниже.'
+                            ? 'Клик по столбцу — та же закреплённая панель педагогов, что и у блока гистограмм выше; по ФИО — сводка и «Исходные факты» ниже.'
                             : 'Для списка педагогов по интервалу назначьте колонку «Код/шифр педагога».'}
                         </p>
                         <label className="excel-analytics-field">
@@ -2331,13 +2348,7 @@ export default function ExcelAnalyticsPage() {
                           </select>
                         </label>
                         {histogramBinsForPick.length > 0 && metricPickIndex != null && (
-                          <div
-                            className={
-                              metricDrill && teacherFilterKey && metricDrill.colIndex === metricPickIndex
-                                ? 'excel-metric-drill-row'
-                                : 'excel-metric-drill-row excel-metric-drill-row--solo'
-                            }
-                          >
+                          <div className="excel-metric-drill-row excel-metric-drill-row--solo">
                             <div className="excel-metric-drill-chart-wrap excel-analytics-chart">
                               <ResponsiveContainer width="100%" height={260}>
                                 <BarChart data={histogramBinsForPick} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
@@ -2359,10 +2370,12 @@ export default function ExcelAnalyticsPage() {
                                         fill="var(--chart-bar)"
                                         cursor={teacherFilterKey ? 'pointer' : 'default'}
                                         opacity={
-                                          metricDrill?.colIndex === metricPickIndex &&
-                                          metricDrill?.bin.binIndex === entry.binIndex
-                                            ? 1
-                                            : 0.5
+                                          teacherFilterKey &&
+                                          metricDrill?.colIndex === metricPickIndex
+                                            ? metricDrill.bin.binIndex === entry.binIndex
+                                              ? 1
+                                              : 0.45
+                                            : 1
                                         }
                                         onClick={() => {
                                           if (!teacherFilterKey) return;
@@ -2380,51 +2393,6 @@ export default function ExcelAnalyticsPage() {
                               </ResponsiveContainer>
                               <p className="muted">{metricHeaderLabel}</p>
                             </div>
-                            {metricDrill &&
-                              teacherFilterKey &&
-                              metricDrill.colIndex === metricPickIndex && (
-                                <aside className="excel-metric-drill-panel" aria-label="Педагоги в интервале">
-                                  <div className="excel-metric-drill-panel-head">
-                                    <div>
-                                      <div className="excel-metric-drill-panel-metric">{metricDrill.header}</div>
-                                      <div className="excel-metric-drill-panel-bin">Интервал: {metricDrill.bin.label}</div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="btn excel-metric-drill-close"
-                                      aria-label="Закрыть"
-                                      onClick={() => setMetricDrill(null)}
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                  {metricDrillTeachers.length === 0 ? (
-                                    <p className="muted">Нет педагогов в этом интервале.</p>
-                                  ) : (
-                                    <ul className="excel-metric-drill-teacher-list">
-                                      {metricDrillTeachers.map((t) => (
-                                        <li key={t.teacher}>
-                                          <button
-                                            type="button"
-                                            className="excel-metric-drill-teacher-btn"
-                                            onClick={() => drillSelectTeacher(t.teacher)}
-                                          >
-                                            <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
-                                            <span className="muted">{t.lessons} ур.</span>
-                                          </button>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                  {singleTeacherFilterName && quickText ? (
-                                    <ExcelDrillMiniSummary
-                                      teacherName={singleTeacherFilterName}
-                                      quickText={quickText}
-                                      onOpenFacts={openExcelFactsAndScroll}
-                                    />
-                                  ) : null}
-                                </aside>
-                              )}
                           </div>
                         )}
                       </section>
@@ -2487,16 +2455,42 @@ export default function ExcelAnalyticsPage() {
                   {ordinalChartDisplay.length > 0 && (
                     <section className="card glass-surface excel-dash-card excel-dash-card--ordinal">
                       <h3 className="excel-dash-card-title">Текстовая шкала</h3>
+                      <p className="muted excel-dash-card-sub">
+                        Распределение уникальных уроков по уровням шкалы.
+                        {teacherFilterKey
+                          ? ' Клик по столбцу — та же панель педагогов справа (на узком экране — под графиками); по ФИО — срез дашборда и сводка.'
+                          : ' Назначьте колонке роль «Код/шифр педагога», чтобы видеть список педагогов по уровню.'}
+                      </p>
                       <div className="excel-analytics-chart">
-                        <ResponsiveContainer width="100%" height={280}>
-                          <BarChart data={ordinalChartDisplay} layout="vertical" margin={{ top: 8, right: 8, left: 120, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                            <XAxis type="number" tick={{ fontSize: 11 }} />
-                            <YAxis type="category" dataKey="level" width={110} tick={{ fontSize: 11 }} />
-                            <Tooltip />
-                            <Bar dataKey="count" fill="var(--chart-bar)" name="Кол-во" radius={[0, 4, 4, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
+                          <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={ordinalChartDisplay} layout="vertical" margin={{ top: 8, right: 8, left: 120, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                              <XAxis type="number" tick={{ fontSize: 11 }} />
+                              <YAxis type="category" dataKey="level" width={110} tick={{ fontSize: 11 }} />
+                              <Tooltip />
+                              <Bar dataKey="count" fill="var(--chart-bar)" name="Кол-во" radius={[0, 4, 4, 0]}>
+                                {ordinalChartDisplay.map((entry) => (
+                                  <Cell
+                                    key={entry.rank}
+                                    cursor={teacherFilterKey ? 'pointer' : 'default'}
+                                    fill="var(--chart-bar)"
+                                    opacity={
+                                      teacherFilterKey && ordinalDrill
+                                        ? ordinalDrill.rank === entry.rank
+                                          ? 1
+                                          : 0.45
+                                        : 1
+                                    }
+                                    onClick={() => {
+                                      if (!teacherFilterKey) return;
+                                      setMetricDrill(null);
+                                      setOrdinalDrill({ rank: entry.rank, levelLabel: entry.level });
+                                    }}
+                                  />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
                       </div>
                       <details className="excel-dash-details-more">
                         <summary>Таблица по уровням</summary>
@@ -2510,7 +2504,7 @@ export default function ExcelAnalyticsPage() {
                             </thead>
                             <tbody>
                               {ordinalChartDisplay.map((r) => (
-                                <tr key={r.level}>
+                                <tr key={r.rank}>
                                   <td>{r.level}</td>
                                   <td>{r.count}</td>
                                 </tr>
@@ -2521,7 +2515,94 @@ export default function ExcelAnalyticsPage() {
                       </details>
                     </section>
                   )}
-                </div><div className="excel-dash-board-panels excel-dash-board-panels--compact">
+                </div>
+                {chartDrillOpen && (
+                  <aside
+                    id="excel-chart-drill-dock"
+                    className="excel-chart-drill-dock excel-metric-drill-panel"
+                    aria-label={
+                      ordinalDrill ? 'Педагоги на выбранном уровне шкалы' : 'Педагоги в выбранном интервале метрики'
+                    }
+                  >
+                    <p className="excel-chart-drill-dock-kicker">Педагоги по выбору на графике</p>
+                    <div className="excel-metric-drill-panel-head">
+                      <div>
+                        {ordinalDrill ? (
+                          <>
+                            <div className="excel-metric-drill-panel-metric">{ordinalScaleHeaderUi}</div>
+                            <div className="excel-metric-drill-panel-bin">Уровень: {ordinalDrill.levelLabel}</div>
+                          </>
+                        ) : metricDrill ? (
+                          <>
+                            <div className="excel-metric-drill-panel-metric">{metricDrill.header}</div>
+                            <div className="excel-metric-drill-panel-bin">Интервал: {metricDrill.bin.label}</div>
+                          </>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn excel-metric-drill-close"
+                        aria-label="Закрыть панель"
+                        onClick={closeChartDrill}
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <p className="muted excel-metric-drill-panel-hint">
+                      {ordinalDrill
+                        ? 'Уроки с этим уровнем шкалы в текущем срезе. Клик по ФИО — сузить дашборд; блок «Исходные факты» ниже раскроется.'
+                        : 'Уроки в выбранном диапазоне по этому пункту. Клик по ФИО — сузить дашборд; краткая сводка появится здесь, блок «Исходные факты» ниже раскроется автоматически.'}
+                    </p>
+                    {ordinalDrill ? (
+                      ordinalDrillTeachers.length === 0 ? (
+                        <p className="muted">На этом уровне нет строк с указанным педагогом.</p>
+                      ) : (
+                        <ul className="excel-metric-drill-teacher-list">
+                          {ordinalDrillTeachers.map((t) => (
+                            <li key={t.teacher}>
+                              <button
+                                type="button"
+                                className="excel-metric-drill-teacher-btn"
+                                onClick={() => drillSelectTeacher(t.teacher)}
+                              >
+                                <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
+                                <span className="muted">{t.lessons} ур.</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                    ) : metricDrill ? (
+                      metricDrillTeachers.length === 0 ? (
+                        <p className="muted">В этом интервале нет строк с указанным педагогом.</p>
+                      ) : (
+                        <ul className="excel-metric-drill-teacher-list">
+                          {metricDrillTeachers.map((t) => (
+                            <li key={t.teacher}>
+                              <button
+                                type="button"
+                                className="excel-metric-drill-teacher-btn"
+                                onClick={() => drillSelectTeacher(t.teacher)}
+                              >
+                                <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
+                                <span className="muted">{t.lessons} ур.</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )
+                    ) : null}
+                    {singleTeacherFilterName && quickText ? (
+                      <ExcelDrillMiniSummary
+                        teacherName={singleTeacherFilterName}
+                        quickText={quickText}
+                        onOpenFacts={openExcelFactsAndScroll}
+                      />
+                    ) : null}
+                  </aside>
+                )}
+                </div>
+                <div className="excel-dash-board-panels excel-dash-board-panels--compact">
                   <div className="excel-dash-panel-row excel-dash-panel-row--two excel-dash-panel-row--compact-kpi">
                     <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
                       <h3 className="excel-dash-card-title">Сводка выборки</h3>
@@ -2673,14 +2754,25 @@ export default function ExcelAnalyticsPage() {
                               <span className="excel-dash-ai-report-badge">≈ {summaryNarrativeWords} слов</span>
                             )}
                           </summary>
-                          <p className="muted excel-dash-card-sub excel-summary-source-note">
-                            {summaryNarrativeLoading &&
-                              'Готовим развёрнутый текст. Пока можно открыть «Исходные факты» ниже.'}
-                            {!summaryNarrativeLoading && summaryNarrative && 'Связный документ по текущему срезу и фактам из таблицы.'}
-                            {!summaryNarrativeLoading && !summaryNarrative &&
-                              (summaryNarrativeApiHint ||
-                                'ИИ-отчёт не сформирован: проверьте ключи LLM на Cloud Function и логи.')}
-                          </p>
+                          {!summaryNarrativeLoading && (
+                            <p className="muted excel-dash-card-sub excel-summary-source-note">
+                              {summaryNarrative && 'Связный документ по текущему срезу и фактам из таблицы.'}
+                              {!summaryNarrative &&
+                                (summaryNarrativeApiHint ||
+                                  'ИИ-отчёт не сформирован: проверьте ключи LLM на Cloud Function и логи.')}
+                            </p>
+                          )}
+                          {summaryNarrativeLoading && (
+                            <AiWaitIndicator
+                              active
+                              className="excel-ai-wait-embed"
+                              label="Формируем аналитический отчёт по выборке (нейросеть на сервере)"
+                              typicalMinSec={18}
+                              typicalMaxSec={95}
+                              slowAfterSec={120}
+                              hint="Обычно от 20 с до полутора минут. Пока ждёте, можно открыть «Исходные факты» ниже."
+                            />
+                          )}
                           {summaryNarrative ? (
                             <article className="excel-ai-report-prose">
                               {splitNarrativeParagraphs(summaryNarrative).map((para, i) => (
@@ -2738,6 +2830,17 @@ export default function ExcelAnalyticsPage() {
                               {deepLoading ? 'Формируем…' : 'Сформировать полный отчёт'}
                             </button>
                           </div>
+                          {deepLoading && (
+                            <AiWaitIndicator
+                              active
+                              className="excel-ai-wait-embed"
+                              label="Глубокий разбор среза — длинный ответ модели"
+                              typicalMinSec={40}
+                              typicalMaxSec={130}
+                              slowAfterSec={170}
+                              hint="Обычно от 40 с до 2–3 мин в зависимости от объёма фактов."
+                            />
+                          )}
                           {deepHint && <p className="excel-director-dossier-hint">{deepHint}</p>}
                           {deepNarrative ? (
                             <article className="excel-ai-report-prose excel-ai-report-prose--deep">
@@ -2747,7 +2850,7 @@ export default function ExcelAnalyticsPage() {
                             </article>
                           ) : (
                             <p className="muted excel-ai-report-placeholder">
-                              {deepLoading ? '…' : 'Нажмите кнопку выше.'}
+                              {deepLoading ? 'Ответ появится ниже после завершения запроса.' : 'Нажмите кнопку выше.'}
                             </p>
                           )}
                         </details>
@@ -2774,6 +2877,18 @@ export default function ExcelAnalyticsPage() {
                                 </span>
                               )}
                             </div>
+                            {directorDossierBusy && (
+                              <AiWaitIndicator
+                                active
+                                compact
+                                className="excel-ai-wait-embed excel-director-dossier-wait"
+                                label="Записки по педагогам — несколько запросов к модели"
+                                typicalMinSec={25}
+                                typicalMaxSec={90}
+                                slowAfterSec={140}
+                                hint="Время растёт с числом педагогов и пакетов; возможны последовательные вызовы API."
+                              />
+                            )}
                             {directorDossierHint && <p className="excel-director-dossier-hint">{directorDossierHint}</p>}
                             {directorDossier && directorDossier.length > 0 && (
                               <div className="excel-director-dossier-list">
