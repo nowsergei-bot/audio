@@ -182,6 +182,24 @@ export interface ExcelFilterValueGroupsResponse {
   hint?: string;
 }
 
+/** ИИ: 1–3 производных измерения (каждое — маппинг значения базовой колонки → группа). */
+export interface ExcelDerivedFilterDimensionPayload {
+  title: string;
+  assignments: Record<string, string>;
+}
+
+export interface ExcelDerivedFiltersResponse {
+  source: string;
+  dimensions: ExcelDerivedFilterDimensionPayload[] | null;
+  hint?: string;
+}
+
+/** Сохраняется на клиенте вместе с id и исходным ключом фильтра */
+export interface ExcelDerivedFilterDimension extends ExcelDerivedFilterDimensionPayload {
+  id: string;
+  sourceFilterKey: string;
+}
+
 /** Связный текст сводки Excel-дашборда (ИИ по машинной сводке). */
 export interface ExcelNarrativeSummaryResponse {
   source: string;

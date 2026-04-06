@@ -6,6 +6,26 @@ import { resolveListFeatureToken, splitListFeatureParts } from './listFeatureTok
 /** Производное измерение «параллель», если в файле есть класс, но нет отдельной колонки параллели */
 export const PULSE_PARALLEL_AUTO_KEY = '__pulse_parallel_auto';
 
+/** Подпись уровня текстовой шкалы как отдельное измерение среза */
+export const PULSE_ORDINAL_LEVEL_KEY = '__pulse_ordinal_level';
+
+/** Производные измерения от ИИ; не входят в семантический ключ «урока» */
+export const PULSE_AI_DIM_PREFIX = '__pulse_ai_dim_';
+
+const PULSE_SURVEY_COL_PREFIX = '__pulse_survey_col_';
+
+/** Колонка опроса как измерение среза (все графы кроме даты — через роли ≠ ignore/date и не дублируя фильтры). */
+export function pulseSurveyColKey(colIndex: number): string {
+  return `${PULSE_SURVEY_COL_PREFIX}${colIndex}`;
+}
+
+/** Спецификация смысловой группы (значение базовой колонки → метка группы) */
+export type DerivedFilterDimensionSpec = {
+  id: string;
+  sourceFilterKey: string;
+  assignments: Record<string, string>;
+};
+
 /** Годы вне диапазона — чаще всего числовые ответы анкеты ошибочно прочитаны как дата Excel (1900-е). */
 function isPlausibleAnalyticsIsoDate(iso: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return false;
@@ -161,6 +181,21 @@ export function buildAnalyticRows(
       }
     });
 
+    if (ordinalCol >= 0) {
+      const rawOrd = cellText(line[ordinalCol]);
+      filterValues[PULSE_ORDINAL_LEVEL_KEY] = rawOrd || '(не указано)';
+    }
+
+    for (let c = 0; c < roles.length; c++) {
+      const role = roles[c];
+      if (role === 'ignore' || role === 'date') continue;
+      if (isFilterRole(role)) continue;
+      if (c === ordinalCol && ordinalCol >= 0) continue;
+      const key = pulseSurveyColKey(c);
+      const raw = cellText(line[c]);
+      filterValues[key] = raw || '(не указано)';
+    }
+
     out.push({
       idx,
       date: dateCol >= 0 ? parseAnalyticsDate(line[dateCol]) : null,
@@ -198,6 +233,43 @@ export function augmentRowsWithDerivedParallel(
       },
     };
   });
+}
+
+export function applyDerivedDimensionsToRows(
+  rows: AnalyticRow[],
+  dims: DerivedFilterDimensionSpec[] | null | undefined,
+): AnalyticRow[] {
+  if (!dims?.length) return rows;
+  return rows.map((r) => {
+    const fv = { ...r.filterValues };
+    for (const d of dims) {
+      const raw = fv[d.sourceFilterKey];
+      if (raw == null || raw === '' || raw === '(не указано)') {
+        fv[d.id] = '(не указано)';
+      } else {
+        const g = d.assignments[raw];
+        const t = g != null ? String(g).trim() : '';
+        fv[d.id] = t ? t.slice(0, 120) : 'Прочее';
+      }
+    }
+    return { ...r, filterValues: fv };
+  });
+}
+
+function slugForAiDimId(title: string): string {
+  const t = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, '_')
+    .replace(/^_+|_+$/g, '');
+  return (t || 'dim').slice(0, 36);
+}
+
+export function newAiDerivedDimensionId(title: string): string {
+  const suf =
+    (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID?.().slice(0, 8)) ||
+    String(Date.now()).slice(-8);
+  return `${PULSE_AI_DIM_PREFIX}${slugForAiDimId(title)}_${suf}`;
 }
 
 /** Разделители в ячейке с несколькими наставниками / ФИО */
@@ -612,6 +684,7 @@ export function lessonSemanticKey(row: AnalyticRow, excludeTeacherFilterKey: str
   const keys = Object.keys(row.filterValues).sort((a, b) => a.localeCompare(b, 'ru'));
   for (const k of keys) {
     if (excludeTeacherFilterKey && k === excludeTeacherFilterKey) continue;
+    if (k.startsWith(PULSE_AI_DIM_PREFIX)) continue;
     const v = row.filterValues[k];
     if (!v || v === '(не указано)') continue;
     segs.push(`${k}:${normLessonKeyPart(String(v))}`);

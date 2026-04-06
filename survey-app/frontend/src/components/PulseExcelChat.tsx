@@ -123,55 +123,57 @@ export default function PulseExcelChat({
         </p>
       </div>
       {embeddedPanel != null ? <div className="pulse-excel-embedded-panel">{embeddedPanel}</div> : null}
-      <div className="pulse-excel-chat-log" role="log">
-        {messages.length === 0 && !loading && (
-          <p className="muted pulse-excel-chat-placeholder">
-            Например: «Расскажи про уроки географии в 7 классах», «Кто из наставников выше по пункту „Вовлечённость“?»
-          </p>
-        )}
-        {messages.map((m, i) => (
-          <div key={`${i}-${m.role}`} className={`pulse-excel-chat-msg pulse-excel-chat-msg--${m.role}`}>
-            <span className="pulse-excel-chat-msg-label">{m.role === 'user' ? 'Вы' : 'ПУЛЬС'}</span>
-            <div className="pulse-excel-chat-msg-body">{m.content}</div>
-          </div>
-        ))}
-        {loading && (
-          <AiWaitIndicator
-            active
-            compact
-            className="pulse-excel-chat-wait"
-            label="ПУЛЬС обрабатывает запрос по текущей выборке"
-            typicalMinSec={8}
-            typicalMaxSec={40}
-            slowAfterSec={55}
+      <div className="pulse-excel-chat-conversation">
+        <div className="pulse-excel-chat-log" role="log">
+          {messages.length === 0 && !loading && (
+            <p className="muted pulse-excel-chat-placeholder">
+              Например: «Расскажи про уроки географии в 7 классах», «Кто из наставников выше по пункту „Вовлечённость“?»
+            </p>
+          )}
+          {messages.map((m, i) => (
+            <div key={`${i}-${m.role}`} className={`pulse-excel-chat-msg pulse-excel-chat-msg--${m.role}`}>
+              <span className="pulse-excel-chat-msg-label">{m.role === 'user' ? 'Вы' : 'ПУЛЬС'}</span>
+              <div className="pulse-excel-chat-msg-body">{m.content}</div>
+            </div>
+          ))}
+          {loading && (
+            <AiWaitIndicator
+              active
+              compact
+              className="pulse-excel-chat-wait"
+              label="ПУЛЬС обрабатывает запрос по текущей выборке"
+              typicalMinSec={8}
+              typicalMaxSec={40}
+              slowAfterSec={55}
+            />
+          )}
+          <div ref={bottomRef} />
+        </div>
+        {err && <p className="err pulse-excel-chat-err">{err}</p>}
+        <div className="pulse-excel-chat-input-row">
+          <textarea
+            className="field pulse-excel-chat-textarea"
+            rows={2}
+            placeholder="Запрос к выборке…"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            disabled={loading || disabled}
           />
-        )}
-        <div ref={bottomRef} />
-      </div>
-      {err && <p className="err pulse-excel-chat-err">{err}</p>}
-      <div className="pulse-excel-chat-input-row">
-        <textarea
-          className="field pulse-excel-chat-textarea"
-          rows={2}
-          placeholder="Запрос к выборке…"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            }
-          }}
-          disabled={loading || disabled}
-        />
-        <button
-          type="button"
-          className="btn primary pulse-excel-chat-send"
-          disabled={loading || !input.trim() || disabled}
-          onClick={() => void send()}
-        >
-          Спросить
-        </button>
+          <button
+            type="button"
+            className="btn primary pulse-excel-chat-send"
+            disabled={loading || !input.trim() || disabled}
+            onClick={() => void send()}
+          >
+            Спросить
+          </button>
+        </div>
       </div>
     </motion.section>
   );

@@ -1,5 +1,8 @@
 import type { ColumnRole } from './types';
 import { normalizeHeader } from './types';
+import { PULSE_AI_DIM_PREFIX, PULSE_ORDINAL_LEVEL_KEY } from './engine';
+
+const PULSE_SURVEY_COL_PREFIX = '__pulse_survey_col_';
 
 export type FilterColumnForSections = {
   filterKey: string;
@@ -12,6 +15,9 @@ export type FilterColumnForSections = {
 const FIXED_SECTIONS: { id: string; title: string; rank: number }[] = [
   { id: 'mentors', title: 'Наставники и педагоги', rank: 10 },
   { id: 'class-line', title: 'Параллель, класс, группа', rank: 20 },
+  { id: 'survey-fields', title: 'Поля опроса (кроме даты)', rank: 21 },
+  { id: 'text-metrics', title: 'Текстовые метрики', rank: 22 },
+  { id: 'ai-derived', title: 'Смысловые группы (ИИ)', rank: 24 },
   { id: 'subject', title: 'Предмет и тематика', rank: 30 },
   { id: 'format', title: 'Формат занятия', rank: 40 },
   { id: 'site', title: 'Площадка и организация', rank: 50 },
@@ -114,6 +120,25 @@ export function buildAutoFilterSections(columns: FilterColumnForSections[]): { i
   for (const col of columns) {
     if (seenKeys.has(col.filterKey)) continue;
     seenKeys.add(col.filterKey);
+
+    if (col.filterKey === PULSE_ORDINAL_LEVEL_KEY) {
+      const bucket = ensureFixed('text-metrics');
+      bucket.keys.push(col.filterKey);
+      bucket.minCol = Math.min(bucket.minCol, col.colIndex);
+      continue;
+    }
+    if (col.filterKey.startsWith(PULSE_AI_DIM_PREFIX)) {
+      const bucket = ensureFixed('ai-derived');
+      bucket.keys.push(col.filterKey);
+      bucket.minCol = Math.min(bucket.minCol, col.colIndex);
+      continue;
+    }
+    if (col.filterKey.startsWith(PULSE_SURVEY_COL_PREFIX)) {
+      const bucket = ensureFixed('survey-fields');
+      bucket.keys.push(col.filterKey);
+      bucket.minCol = Math.min(bucket.minCol, col.colIndex);
+      continue;
+    }
 
     let sectionId: string | null = roleToFixedSection(col.role);
     if (sectionId == null) {

@@ -5,15 +5,14 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
-  Line,
   Cell,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import {
+  postExcelDerivedFilters,
   postExcelDirectorDossier,
   postExcelFilterSections,
   postExcelFilterValueGroups,
@@ -24,6 +23,7 @@ import PulseExcelChat from '../components/PulseExcelChat';
 import { formatBilingualCellLabel } from '../lib/excelAnalytics/excelDisplayLabel';
 import { fadeIn } from '../motion/resultsMotion';
 import {
+  applyDerivedDimensionsToRows,
   applyFilters,
   applyFiltersExceptKey,
   augmentRowsWithDerivedParallel,
@@ -33,7 +33,6 @@ import {
   buildRichLlmContextRu,
   countUniqueImportRows,
   countUniqueLessonSemantics,
-  countsByMonth,
   dedupeRowsByLessonIdx,
   expandRowsForMultiValueFilterColumns,
   filterKeyForRole,
@@ -43,15 +42,15 @@ import {
   meanByNumericColumn,
   meanByTeacherGrouped,
   meanMinMax,
-  meanNumericByMonth,
-  meanNumericByMonthAllMetrics,
-  meanOrdinalRankByMonth,
   normalizeFacetAggregateKey,
   ordinalDistribution,
   parseAnalyticsDate,
+  newAiDerivedDimensionId,
+  PULSE_AI_DIM_PREFIX,
+  PULSE_ORDINAL_LEVEL_KEY,
   PULSE_PARALLEL_AUTO_KEY,
+  pulseSurveyColKey,
   pruneFilterSelection,
-  rowNumericSum,
   sumTotalStats,
   topFilterBucketsByUniqueLesson,
   uniqueFilterValues,
@@ -76,7 +75,7 @@ import {
 } from '../lib/excelAnalytics/parse';
 import { suggestColumnRoles } from '../lib/excelAnalytics/autoMap';
 import { buildAutoFilterSections, type FilterColumnForSections } from '../lib/excelAnalytics/filterSectionPlanner';
-import type { ExcelFilterSectionPlan, ExcelFilterValueGroup } from '../types';
+import type { ExcelDerivedFilterDimension, ExcelFilterSectionPlan, ExcelFilterValueGroup } from '../types';
 import {
   COLUMN_ROLE_OPTIONS,
   loadTemplates,
@@ -89,9 +88,38 @@ import {
 } from '../lib/excelAnalytics/types';
 
 const MAX_ROWS = 8000;
+/** Сколько строк среза показывать в таблице «как в Excel» (остальные — в подписи). */
+const DETAIL_TABLE_MAX_ROWS = 500;
 const DIRECTOR_DOSSIER_CHUNK = 8;
 const METRIC_HIST_BINS = 8;
 const DRILL_MINI_SUMMARY_CHARS = 960;
+
+function formatExcelDetailCell(c: CellPrimitive): string {
+  if (c == null || c === '') return '—';
+  if (c instanceof Date) {
+    return Number.isFinite(c.getTime()) ? c.toISOString().slice(0, 10) : '—';
+  }
+  if (typeof c === 'boolean') return c ? 'да' : 'нет';
+  if (typeof c === 'number') {
+    if (Number.isInteger(c) && Math.abs(c) < 1e15) return String(c);
+    const t = String(c);
+    return t.length > 28 ? `${t.slice(0, 25)}…` : t;
+  }
+  const s = String(c).replace(/\s+/g, ' ').trim();
+  if (!s) return '—';
+  if (s.length > 240) return `${s.slice(0, 237)}…`;
+  return s;
+}
+
+function excelDetailCellTitle(c: CellPrimitive | undefined): string | undefined {
+  if (c == null || c === '') return undefined;
+  if (c instanceof Date) {
+    return Number.isFinite(c.getTime()) ? c.toISOString().slice(0, 10) : undefined;
+  }
+  const s = String(c).replace(/\s+/g, ' ').trim();
+  if (s.length <= 40) return undefined;
+  return s.length > 4000 ? `${s.slice(0, 3997)}…` : s;
+}
 
 function ExcelDrillMiniSummary({
   teacherName,
@@ -132,6 +160,16 @@ function buildFilterKeyLabels(
   if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
     m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
   }
+  if (roles.includes('metric_ordinal_text')) {
+    const oci = roles.indexOf('metric_ordinal_text');
+    m[PULSE_ORDINAL_LEVEL_KEY] = headers[oci]?.trim() || 'Текстовая шкала';
+  }
+  roles.forEach((r, i) => {
+    if (r === 'ignore' || r === 'date') return;
+    if (isFilterRole(r)) return;
+    if (r === 'metric_ordinal_text') return;
+    m[pulseSurveyColKey(i)] = headers[i]?.trim() || `Колонка ${i + 1}`;
+  });
   return m;
 }
 
@@ -140,29 +178,6 @@ function splitNarrativeParagraphs(text: string): string[] {
     .split(/\n\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
-}
-
-const MONTH_LABELS_RU = [
-  'янв.',
-  'фев.',
-  'мар.',
-  'апр.',
-  'май',
-  'июн.',
-  'июл.',
-  'авг.',
-  'сен.',
-  'окт.',
-  'ноя.',
-  'дек.',
-];
-
-function formatMonthRu(ym: string): string {
-  const m = /^(\d{4})-(\d{2})$/.exec(ym.trim());
-  if (!m) return ym;
-  const mi = parseInt(m[2], 10) - 1;
-  const label = MONTH_LABELS_RU[mi] ?? m[2];
-  return `${label} ${m[1]}`;
 }
 
 function mentorHeatColor(v: number, min: number, max: number): string {
@@ -242,13 +257,6 @@ export default function ExcelAnalyticsPage() {
   const [summaryNarrativeWords, setSummaryNarrativeWords] = useState<number | null>(null);
   const [summaryNarrativeApiHint, setSummaryNarrativeApiHint] = useState<string | null>(null);
 
-  /** Полный «глубокий» отчёт по тому же срезу (вручную; параметры = фильтры). */
-  const [deepNarrative, setDeepNarrative] = useState<string | null>(null);
-  const [deepLoading, setDeepLoading] = useState(false);
-  const [deepHint, setDeepHint] = useState<string | null>(null);
-  const [deepWords, setDeepWords] = useState<number | null>(null);
-  const [deepUserFocus, setDeepUserFocus] = useState('');
-
   /** ИИ: альтернативная группировка разделов боковой панели (поверх авто). */
   const [aiSectionLayout, setAiSectionLayout] = useState<ExcelFilterSectionPlan[] | null>(null);
   const [aiSectionsBusy, setAiSectionsBusy] = useState(false);
@@ -268,8 +276,11 @@ export default function ExcelAnalyticsPage() {
     null,
   );
 
-  /** Какой фильтр показывать на графике «распределение по срезу» (null = первый из списка). */
-  const [userFilterChartKey, setUserFilterChartKey] = useState<string | null>(null);
+  /** ИИ: производные измерения среза (маппинг значения базовой колонки → группа). */
+  const [aiDerivedDimensions, setAiDerivedDimensions] = useState<ExcelDerivedFilterDimension[]>([]);
+  const [aiDerivedBusy, setAiDerivedBusy] = useState(false);
+  const [aiDerivedHint, setAiDerivedHint] = useState<string | null>(null);
+  const [derivedSourceKey, setDerivedSourceKey] = useState<string | null>(null);
 
   /** Педагог для блоков «список через запятую»: покрытие X из Y и топ отметок. */
   const [listFeatureMentorPick, setListFeatureMentorPick] = useState('');
@@ -294,6 +305,9 @@ export default function ExcelAnalyticsPage() {
       setRawRows([]);
       setRoles([]);
       setAnalyticRows([]);
+      setAiDerivedDimensions([]);
+      setAiDerivedHint(null);
+      setDerivedSourceKey(null);
       setFilterSelection({});
       setServiceStripNote(null);
       setSummaryNarrative(null);
@@ -344,9 +358,14 @@ export default function ExcelAnalyticsPage() {
     return lines;
   }, [headers, roles]);
 
+  const analyticRowsComposed = useMemo(
+    () => applyDerivedDimensionsToRows(analyticRows, aiDerivedDimensions),
+    [analyticRows, aiDerivedDimensions],
+  );
+
   const filteredRows = useMemo(() => {
-    return applyFilters(analyticRows, filterSelection);
-  }, [analyticRows, filterSelection]);
+    return applyFilters(analyticRowsComposed, filterSelection);
+  }, [analyticRowsComposed, filterSelection]);
 
   /** Одна строка на урок: средние, гистограммы и шкала без лишнего веса после развёртки тегов/наставников. */
   const filteredRowsOnePerLesson = useMemo(
@@ -378,11 +397,11 @@ export default function ExcelAnalyticsPage() {
     [filteredRows, teacherFilterKey],
   );
   const uniqueLessonCount = useMemo(
-    () => countUniqueLessonSemantics(analyticRows, teacherFilterKey),
-    [analyticRows, teacherFilterKey],
+    () => countUniqueLessonSemantics(analyticRowsComposed, teacherFilterKey),
+    [analyticRowsComposed, teacherFilterKey],
   );
   const kpiImportRowsFiltered = useMemo(() => countUniqueImportRows(filteredRows), [filteredRows]);
-  const kpiImportRowsTotal = useMemo(() => countUniqueImportRows(analyticRows), [analyticRows]);
+  const kpiImportRowsTotal = useMemo(() => countUniqueImportRows(analyticRowsComposed), [analyticRowsComposed]);
 
   const kpiMentors = useMemo(() => {
     if (!teacherFilterKey) return 0;
@@ -390,36 +409,97 @@ export default function ExcelAnalyticsPage() {
   }, [filteredRows, teacherFilterKey]);
 
   const filterKeys = useMemo(() => {
-    const keys = new Set<string>();
-    roles.forEach((r) => {
-      if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
-    });
-    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
-      keys.add(PULSE_PARALLEL_AUTO_KEY);
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const push = (k: string) => {
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push(k);
+    };
+    for (let i = 0; i < roles.length; i++) {
+      const r = roles[i];
+      if (r === 'ignore' || r === 'date') continue;
+      if (isFilterRole(r)) {
+        push(filterKeyForRole(r, customLabels));
+        if (r === 'filter_class' && !roles.includes('filter_parallel')) {
+          push(PULSE_PARALLEL_AUTO_KEY);
+        }
+      } else if (r !== 'metric_ordinal_text') {
+        push(pulseSurveyColKey(i));
+      }
     }
-    return [...keys];
-  }, [roles, customLabels]);
+    if (roles.includes('metric_ordinal_text')) {
+      push(PULSE_ORDINAL_LEVEL_KEY);
+    }
+    for (const d of aiDerivedDimensions) {
+      push(d.id);
+    }
+    return out;
+  }, [roles, customLabels, aiDerivedDimensions]);
+
+  const eligibleDerivedSourceKeys = useMemo(
+    () => filterKeys.filter((k) => k !== PULSE_ORDINAL_LEVEL_KEY && !k.startsWith(PULSE_AI_DIM_PREFIX)),
+    [filterKeys],
+  );
+
+  useEffect(() => {
+    if (!eligibleDerivedSourceKeys.length) {
+      setDerivedSourceKey(null);
+      return;
+    }
+    setDerivedSourceKey((prev) =>
+      prev && eligibleDerivedSourceKeys.includes(prev) ? prev : eligibleDerivedSourceKeys[0],
+    );
+  }, [eligibleDerivedSourceKeys]);
 
   const filterSectionColumns = useMemo((): FilterColumnForSections[] => {
-    const base = roles
-      .map((r, i) => ({ r, i }))
-      .filter(({ r }) => isFilterRole(r))
-      .map(({ r, i }) => ({
-        filterKey: filterKeyForRole(r, customLabels),
-        role: r,
-        header: headers[i] || '',
-        colIndex: i,
-      }));
-    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
-      base.unshift({
-        filterKey: PULSE_PARALLEL_AUTO_KEY,
-        role: 'filter_parallel',
-        header: 'Параллель (из класса: 7А, 7B → 7)',
-        colIndex: -1,
+    const base: FilterColumnForSections[] = [];
+    for (let i = 0; i < roles.length; i++) {
+      const r = roles[i];
+      if (r === 'ignore' || r === 'date') continue;
+      if (isFilterRole(r)) {
+        base.push({
+          filterKey: filterKeyForRole(r, customLabels),
+          role: r,
+          header: headers[i] || '',
+          colIndex: i,
+        });
+        if (r === 'filter_class' && !roles.includes('filter_parallel')) {
+          base.push({
+            filterKey: PULSE_PARALLEL_AUTO_KEY,
+            role: 'filter_parallel',
+            header: 'Параллель (из класса: 7А, 7B → 7)',
+            colIndex: -1,
+          });
+        }
+      } else if (r !== 'metric_ordinal_text') {
+        base.push({
+          filterKey: pulseSurveyColKey(i),
+          role: 'filter_custom_1',
+          header: headers[i] || `Колонка ${i + 1}`,
+          colIndex: i,
+        });
+      }
+    }
+    const oci = roles.indexOf('metric_ordinal_text');
+    if (oci >= 0) {
+      base.push({
+        filterKey: PULSE_ORDINAL_LEVEL_KEY,
+        role: 'filter_custom_1',
+        header: headers[oci] || 'Текстовая шкала',
+        colIndex: oci,
       });
     }
+    aiDerivedDimensions.forEach((d, i) => {
+      base.push({
+        filterKey: d.id,
+        role: 'filter_custom_1',
+        header: d.title,
+        colIndex: 2000 + i,
+      });
+    });
     return base;
-  }, [roles, headers, customLabels]);
+  }, [roles, headers, customLabels, aiDerivedDimensions]);
 
   const autoFilterSections = useMemo(() => buildAutoFilterSections(filterSectionColumns), [filterSectionColumns]);
   const filterSections = aiSectionLayout ?? autoFilterSections;
@@ -437,8 +517,21 @@ export default function ExcelAnalyticsPage() {
     if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
       m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
     }
+    if (roles.includes('metric_ordinal_text')) {
+      const oci = roles.indexOf('metric_ordinal_text');
+      m[PULSE_ORDINAL_LEVEL_KEY] = headers[oci]?.trim() || 'Текстовая шкала';
+    }
+    for (const d of aiDerivedDimensions) {
+      m[d.id] = d.title;
+    }
+    roles.forEach((r, i) => {
+      if (r === 'ignore' || r === 'date') return;
+      if (isFilterRole(r)) return;
+      if (r === 'metric_ordinal_text') return;
+      m[pulseSurveyColKey(i)] = headers[i]?.trim() || `Колонка ${i + 1}`;
+    });
     return m;
-  }, [roles, headers, customLabels]);
+  }, [roles, headers, customLabels, aiDerivedDimensions]);
 
   const filterKeyDisplayLabelUi = useMemo(() => {
     const mode = showEnglishExcelLabels ? 'en' : 'ru';
@@ -486,7 +579,7 @@ export default function ExcelAnalyticsPage() {
 
   /** Текст для ИИ: фильтры = параметры среза. */
   const filterParameterSummaryRu = useMemo(() => {
-    if (!analyticRows.length) return '';
+    if (!analyticRowsComposed.length) return '';
     const lines: string[] = [];
     lines.push(`Файл: ${fileName || '—'}, лист: ${sheet || '—'}`);
     lines.push(
@@ -501,7 +594,7 @@ export default function ExcelAnalyticsPage() {
     }
     return lines.join('\n');
   }, [
-    analyticRows.length,
+    analyticRowsComposed.length,
     fileName,
     sheet,
     kpiLessons,
@@ -527,6 +620,25 @@ export default function ExcelAnalyticsPage() {
   }, [filteredRowsOnePerLesson, metricNumericCols, headers]);
 
   const sumStatsRow = useMemo(() => sumTotalStats(filteredRowsOnePerLesson), [filteredRowsOnePerLesson]);
+
+  const detailTableSlice = useMemo(
+    () => filteredRows.slice(0, DETAIL_TABLE_MAX_ROWS),
+    [filteredRows],
+  );
+
+  const detailColumnCount = useMemo(() => {
+    let m = headers.length;
+    for (const r of detailTableSlice) {
+      const L = rawRows[r.idx]?.length ?? 0;
+      if (L > m) m = L;
+    }
+    return Math.max(m, 0);
+  }, [headers.length, rawRows, detailTableSlice]);
+
+  const detailShowSplitColumn = useMemo(
+    () => filteredRows.some((r) => r.splitPart != null && r.splitPart > 0),
+    [filteredRows],
+  );
 
   const histogramBinsForPick = useMemo(() => {
     if (metricPickIndex == null) return [];
@@ -570,8 +682,6 @@ export default function ExcelAnalyticsPage() {
     [ordinalScaleColIndex, headers, showEnglishExcelLabels],
   );
 
-  const monthData = useMemo(() => countsByMonth(filteredRowsOnePerLesson), [filteredRowsOnePerLesson]);
-
   const ordinalChartData = useMemo(() => {
     if (roles.indexOf('metric_ordinal_text') < 0) return [];
     return ordinalDistribution(filteredRowsOnePerLesson, ordinalLevels);
@@ -586,10 +696,6 @@ export default function ExcelAnalyticsPage() {
   }, [ordinalChartData, showEnglishExcelLabels]);
 
   const metricHeaderLabel = metricPickIndex != null ? headers[metricPickIndex] ?? 'Метрика' : '';
-  const metricHeaderLabelUi = useMemo(
-    () => formatBilingualCellLabel(metricHeaderLabel, showEnglishExcelLabels ? 'en' : 'ru'),
-    [metricHeaderLabel, showEnglishExcelLabels],
-  );
 
   const metricColLegendLabel = useCallback(
     (colIndex: number, fallback: string) => {
@@ -631,29 +737,22 @@ export default function ExcelAnalyticsPage() {
     });
   }, [meanChartRows, showEnglishExcelLabels]);
 
-  const effectiveFilterChartKey =
-    userFilterChartKey && filterKeys.includes(userFilterChartKey) ? userFilterChartKey : filterKeys[0] ?? null;
-
-  const filterBarChartData = useMemo(() => {
-    if (!effectiveFilterChartKey) return [];
-    return topFilterBucketsByUniqueLesson(filteredRows, effectiveFilterChartKey, 18, teacherFilterKey).map((b) => ({
-      short: b.display.length > 42 ? `${b.display.slice(0, 39)}…` : b.display,
-      fullName: b.display,
-      uniqueLessons: b.uniqueLessons,
-    }));
-  }, [filteredRows, effectiveFilterChartKey, teacherFilterKey]);
-
-  const filterBarChartDisplay = useMemo(() => {
+  const allFilterDistributionCharts = useMemo(() => {
     const mode = showEnglishExcelLabels ? 'en' : 'ru';
-    return filterBarChartData.map((b) => {
-      const full = formatBilingualCellLabel(b.fullName, mode);
-      return {
-        short: full.length > 42 ? `${full.slice(0, 39)}…` : full,
-        fullName: full,
-        uniqueLessons: b.uniqueLessons,
-      };
+    return filterKeys.map((key) => {
+      const label = filterKeyDisplayLabelUi[key] ?? key;
+      const rawBars = topFilterBucketsByUniqueLesson(filteredRows, key, 10, teacherFilterKey);
+      const bars = rawBars.map((b) => {
+        const full = formatBilingualCellLabel(b.display, mode);
+        return {
+          short: full.length > 28 ? `${full.slice(0, 25)}…` : full,
+          fullName: full,
+          uniqueLessons: b.uniqueLessons,
+        };
+      });
+      return { key, label, bars };
     });
-  }, [filterBarChartData, showEnglishExcelLabels]);
+  }, [filterKeys, filteredRows, teacherFilterKey, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
 
   const listFeatureHeaders = useMemo(() => {
     const out: string[] = [];
@@ -750,39 +849,6 @@ export default function ExcelAnalyticsPage() {
       });
   }, [listFeatureDetailBundles, showEnglishExcelLabels, teacherFilterKey, listFeatureMentorEffective]);
 
-  const meanByMonthData = useMemo(() => {
-    if (metricPickIndex == null) return [];
-    return meanNumericByMonth(filteredRowsOnePerLesson, metricPickIndex);
-  }, [filteredRowsOnePerLesson, metricPickIndex]);
-
-  const meanByMonthChartRows = useMemo(
-    () => meanByMonthData.map((r) => ({ ...r, monthLabel: formatMonthRu(r.month) })),
-    [meanByMonthData],
-  );
-
-  const multiMetricMonthRows = useMemo(() => {
-    if (metricNumericCols.length === 0) return [];
-    const raw = meanNumericByMonthAllMetrics(filteredRowsOnePerLesson, metricNumericCols);
-    return raw.map((row) => {
-      const rec: Record<string, string | number | null> = {
-        month: row.month,
-        monthLabel: formatMonthRu(row.month),
-      };
-      for (const mi of metricNumericCols) {
-        rec[`m${mi}`] = row.means[mi] ?? null;
-      }
-      return rec;
-    });
-  }, [filteredRowsOnePerLesson, metricNumericCols]);
-
-  const ordinalTrendByMonthRows = useMemo(() => {
-    if (roles.indexOf('metric_ordinal_text') < 0) return [];
-    return meanOrdinalRankByMonth(filteredRowsOnePerLesson).map((r) => ({
-      ...r,
-      monthLabel: formatMonthRu(r.month),
-    }));
-  }, [filteredRowsOnePerLesson, roles]);
-
   const mentorColRanges = useMemo(() => {
     if (!mentorChartData.length || !metricNumericCols.length) return [];
     return metricNumericCols.map((mi) => {
@@ -797,22 +863,22 @@ export default function ExcelAnalyticsPage() {
   }, [mentorChartData, metricNumericCols]);
 
   const quickText = useMemo(() => {
-    if (!analyticRows.length) return '';
+    if (!analyticRowsComposed.length) return '';
     const di = roles.indexOf('date');
-    return buildQuickSummaryRu(analyticRows, filteredRows, {
+    return buildQuickSummaryRu(analyticRowsComposed, filteredRows, {
       hasTeacherFilter: roles.includes('filter_teacher_code'),
       mentorFilterKey: teacherFilterKey,
       dateLabel: di >= 0 ? headers[di] : '',
       numericMetrics: numericMetricsForSummary,
       hasOrdinal: roles.includes('metric_ordinal_text'),
     });
-  }, [analyticRows, filteredRows, roles, headers, numericMetricsForSummary, teacherFilterKey]);
+  }, [analyticRowsComposed, filteredRows, roles, headers, numericMetricsForSummary, teacherFilterKey]);
 
   /** Развёрнутая фактическая база для ИИ (срезы, шкала, шифры, больше цитат) — как вход для «комплексного отчёта». */
   const richLlmContext = useMemo(() => {
-    if (!analyticRows.length) return '';
+    if (!analyticRowsComposed.length) return '';
     const di = roles.indexOf('date');
-    return buildRichLlmContextRu(analyticRows, filteredRows, {
+    return buildRichLlmContextRu(analyticRowsComposed, filteredRows, {
       dateLabel: di >= 0 ? headers[di] : '',
       numericMetrics: numericMetricsForSummary,
       hasOrdinal: roles.includes('metric_ordinal_text'),
@@ -822,7 +888,7 @@ export default function ExcelAnalyticsPage() {
       filterLabels: filterKeyDisplayLabel,
     });
   }, [
-    analyticRows,
+    analyticRowsComposed,
     filteredRows,
     roles,
     headers,
@@ -837,11 +903,11 @@ export default function ExcelAnalyticsPage() {
   const pulseFacetOptions = useMemo(() => {
     const m: Record<string, string[]> = {};
     for (const k of filterKeys) {
-      const base = applyFiltersExceptKey(analyticRows, filterSelection, k);
+      const base = applyFiltersExceptKey(analyticRowsComposed, filterSelection, k);
       m[k] = uniqueFilterValues(base, k).slice(0, 72);
     }
     return m;
-  }, [filterKeys, analyticRows, filterSelection]);
+  }, [filterKeys, analyticRowsComposed, filterSelection]);
 
   const pulseFacetLabels = useMemo(() => {
     const m: Record<string, string> = {};
@@ -853,8 +919,21 @@ export default function ExcelAnalyticsPage() {
     if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
       m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
     }
+    if (roles.includes('metric_ordinal_text')) {
+      const oci = roles.indexOf('metric_ordinal_text');
+      m[PULSE_ORDINAL_LEVEL_KEY] = headers[oci] || 'Текстовая шкала';
+    }
+    for (const d of aiDerivedDimensions) {
+      m[d.id] = d.title;
+    }
+    roles.forEach((r, i) => {
+      if (r === 'ignore' || r === 'date') return;
+      if (isFilterRole(r)) return;
+      if (r === 'metric_ordinal_text') return;
+      m[pulseSurveyColKey(i)] = headers[i] || `Колонка ${i + 1}`;
+    });
     return m;
-  }, [roles, customLabels, headers]);
+  }, [roles, customLabels, headers, aiDerivedDimensions]);
 
   const workbookCodebookRu = useMemo(() => {
     if (!buffer || !sheet) return '';
@@ -894,10 +973,10 @@ export default function ExcelAnalyticsPage() {
     (update: (prev: FilterSelection) => FilterSelection) => {
       setFilterSelection((prev) => {
         const draft = update(prev);
-        return pruneFilterSelection(analyticRows, draft, filterKeys);
+        return pruneFilterSelection(analyticRowsComposed, draft, filterKeys);
       });
     },
-    [analyticRows, filterKeys],
+    [analyticRowsComposed, filterKeys],
   );
 
   const openExcelFactsAndScroll = useCallback(() => {
@@ -939,12 +1018,12 @@ export default function ExcelAnalyticsPage() {
    * Локальные обновления чипов и ПУЛЬС дополнительно прогоняют prune сами.
    */
   useEffect(() => {
-    if (!analyticRows.length || !filterKeys.length) return;
+    if (!analyticRowsComposed.length || !filterKeys.length) return;
     setFilterSelection((prev) => {
-      const next = pruneFilterSelection(analyticRows, prev, filterKeys);
+      const next = pruneFilterSelection(analyticRowsComposed, prev, filterKeys);
       return filterSelectionsEqual(prev, next, filterKeys) ? prev : next;
     });
-  }, [analyticRows, filterKeysSig]);
+  }, [analyticRowsComposed, filterKeysSig]);
 
   /** Пустой срез — убираем ИИ-разметку (при новом «Построить» сброс делается в runAnalysis). */
   useEffect(() => {
@@ -953,6 +1032,9 @@ export default function ExcelAnalyticsPage() {
     setAiSectionsHint(null);
     setFacetGroupsByKey({});
     setFacetGroupsHint(null);
+    setAiDerivedDimensions([]);
+    setAiDerivedHint(null);
+    setDerivedSourceKey(null);
   }, [analyticRows.length]);
 
   useEffect(() => {
@@ -976,7 +1058,13 @@ export default function ExcelAnalyticsPage() {
   }, [analyticRows, filterSelection]);
 
   const runAiFilterSectionsFor = useCallback(
-    async (rows: AnalyticRow[], rolesArg: ColumnRole[], sel: FilterSelection, keys: string[]) => {
+    async (
+      rows: AnalyticRow[],
+      rolesArg: ColumnRole[],
+      sel: FilterSelection,
+      keys: string[],
+      derivedDims: ExcelDerivedFilterDimension[],
+    ) => {
       if (!rows.length || !keys.length) return;
       setAiSectionsBusy(true);
       setAiSectionsHint(null);
@@ -995,14 +1083,48 @@ export default function ExcelAnalyticsPage() {
               samples: uniqueFilterValues(base, fk).slice(0, 14),
             };
           });
+        if (keys.includes(PULSE_ORDINAL_LEVEL_KEY)) {
+          const oci = rolesArg.indexOf('metric_ordinal_text');
+          const baseOrd = applyFiltersExceptKey(rows, sel, PULSE_ORDINAL_LEVEL_KEY);
+          columns.push({
+            filterKey: PULSE_ORDINAL_LEVEL_KEY,
+            role: 'metric_ordinal_text',
+            roleLabel: 'Текстовая шкала',
+            header: oci >= 0 ? headers[oci] || PULSE_ORDINAL_LEVEL_KEY : PULSE_ORDINAL_LEVEL_KEY,
+            samples: uniqueFilterValues(baseOrd, PULSE_ORDINAL_LEVEL_KEY).slice(0, 14),
+          });
+        }
+        for (const d of derivedDims) {
+          if (!keys.includes(d.id)) continue;
+          const baseD = applyFiltersExceptKey(rows, sel, d.id);
+          columns.push({
+            filterKey: d.id,
+            role: 'filter_custom_1',
+            roleLabel: 'Смысловая группа (ИИ)',
+            header: d.title,
+            samples: uniqueFilterValues(baseD, d.id).slice(0, 14),
+          });
+        }
+        for (const k of keys) {
+          const sm = /^__pulse_survey_col_(\d+)$/.exec(k);
+          if (!sm) continue;
+          const ci = Number(sm[1]);
+          const baseS = applyFiltersExceptKey(rows, sel, k);
+          columns.push({
+            filterKey: k,
+            role: 'filter_custom_1',
+            roleLabel: 'Поле опроса',
+            header: headers[ci] || k,
+            samples: uniqueFilterValues(baseS, k).slice(0, 14),
+          });
+        }
         const res = await postExcelFilterSections({ filterKeys: keys, columns });
         if (res.source === 'llm' && res.sections?.length) {
           setAiSectionLayout(res.sections);
           setAiSectionsHint(null);
         } else {
           setAiSectionsHint(
-            res.hint?.trim() ||
-              'Модель не вернула разделы. Проверьте ключи LLM на Cloud Function (см. BACKEND_AND_API.md).',
+            res.hint?.trim() || 'Модель не вернула разделы. Повторите запрос позже или обратитесь к администратору.',
           );
         }
       } catch (e) {
@@ -1061,12 +1183,53 @@ export default function ExcelAnalyticsPage() {
   );
 
   const fetchAiFilterSections = useCallback(() => {
-    void runAiFilterSectionsFor(analyticRows, roles, filterSelection, filterKeys);
-  }, [runAiFilterSectionsFor, analyticRows, roles, filterSelection, filterKeys]);
+    void runAiFilterSectionsFor(analyticRowsComposed, roles, filterSelection, filterKeys, aiDerivedDimensions);
+  }, [runAiFilterSectionsFor, analyticRowsComposed, roles, filterSelection, filterKeys, aiDerivedDimensions]);
 
   const fetchAiValueGroups = useCallback(() => {
-    void runAiValueGroupsFor(analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel);
-  }, [runAiValueGroupsFor, analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel]);
+    void runAiValueGroupsFor(analyticRowsComposed, filterSelection, filterKeys, filterKeyDisplayLabel);
+  }, [runAiValueGroupsFor, analyticRowsComposed, filterSelection, filterKeys, filterKeyDisplayLabel]);
+
+  const fetchAiDerivedFilters = useCallback(async () => {
+    if (!derivedSourceKey || !analyticRowsComposed.length) {
+      setAiDerivedHint('Выберите колонку-источник для группировки.');
+      return;
+    }
+    const vals = uniqueFilterValues(analyticRowsComposed, derivedSourceKey).filter((x) => x !== '(не указано)');
+    if (vals.length < 4) {
+      setAiDerivedHint('Нужно минимум 4 различных значения в колонке (кроме «не указано»).');
+      return;
+    }
+    setAiDerivedBusy(true);
+    setAiDerivedHint(null);
+    try {
+      const res = await postExcelDerivedFilters({
+        sourceFilterKey: derivedSourceKey,
+        sourceHeader: filterKeyDisplayLabel[derivedSourceKey] ?? derivedSourceKey,
+        values: vals.slice(0, 220),
+      });
+      if (res.source === 'llm' && res.dimensions?.length) {
+        const newDims: ExcelDerivedFilterDimension[] = res.dimensions.map((d) => ({
+          id: newAiDerivedDimensionId(d.title),
+          title: d.title.trim(),
+          sourceFilterKey: derivedSourceKey,
+          assignments: d.assignments,
+        }));
+        setAiDerivedDimensions((prev) => [...prev, ...newDims]);
+        setFilterSelection((prev) => {
+          const n = { ...prev };
+          for (const d of newDims) n[d.id] = null;
+          return n;
+        });
+      } else {
+        setAiDerivedHint(res.hint?.trim() || 'Модель не вернула измерения.');
+      }
+    } catch (e) {
+      setAiDerivedHint(e instanceof Error ? e.message : 'Ошибка запроса');
+    } finally {
+      setAiDerivedBusy(false);
+    }
+  }, [derivedSourceKey, analyticRowsComposed, filterKeyDisplayLabel]);
 
   const executeAnalysis = useCallback(
     (
@@ -1102,6 +1265,8 @@ export default function ExcelAnalyticsPage() {
       setAiSectionsHint(null);
       setFacetGroupsByKey({});
       setFacetGroupsHint(null);
+      setAiDerivedDimensions([]);
+      setAiDerivedHint(null);
       setMetricDrill(null);
       setOrdinalDrill(null);
       setExcelFactsOpen(false);
@@ -1126,11 +1291,21 @@ export default function ExcelAnalyticsPage() {
 
       const sel: FilterSelection = {};
       const keys = new Set<string>();
-      rolesForRun.forEach((r) => {
-        if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
-      });
-      if (rolesForRun.includes('filter_class') && !rolesForRun.includes('filter_parallel')) {
-        keys.add(PULSE_PARALLEL_AUTO_KEY);
+      const ordRun = rolesForRun.indexOf('metric_ordinal_text');
+      for (let i = 0; i < rolesForRun.length; i++) {
+        const r = rolesForRun[i];
+        if (r === 'ignore' || r === 'date') continue;
+        if (isFilterRole(r)) {
+          keys.add(filterKeyForRole(r, customLabels));
+          if (r === 'filter_class' && !rolesForRun.includes('filter_parallel')) {
+            keys.add(PULSE_PARALLEL_AUTO_KEY);
+          }
+        } else if (r !== 'metric_ordinal_text') {
+          keys.add(pulseSurveyColKey(i));
+        }
+      }
+      if (ordRun >= 0) {
+        keys.add(PULSE_ORDINAL_LEVEL_KEY);
       }
       keys.forEach((k) => {
         sel[k] = null;
@@ -1144,7 +1319,7 @@ export default function ExcelAnalyticsPage() {
       const keysArr = [...keys];
       const labelsM = buildFilterKeyLabels(rolesForRun, h, customLabels);
       void (async () => {
-        await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr);
+        await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr, []);
         await runAiValueGroupsFor(built, sel, keysArr, labelsM);
       })();
     },
@@ -1174,6 +1349,9 @@ export default function ExcelAnalyticsPage() {
       setHeaders(h);
       setRawRows(rows);
       setAnalyticRows([]);
+      setAiDerivedDimensions([]);
+      setAiDerivedHint(null);
+      setDerivedSourceKey(null);
       setFilterSelection({});
       setServiceStripNote(null);
       setSummaryNarrative(null);
@@ -1323,7 +1501,7 @@ export default function ExcelAnalyticsPage() {
                     else nextVal = arr;
                   }
                   const updated = { ...prev, [key]: nextVal };
-                  return pruneFilterSelection(analyticRows, updated, filterKeys);
+                  return pruneFilterSelection(analyticRowsComposed, updated, filterKeys);
                 });
               }}
             />
@@ -1347,14 +1525,8 @@ export default function ExcelAnalyticsPage() {
       }
       return <div className="excel-analytics-filter-chips">{all.map(chip)}</div>;
     },
-    [filterSelection, facetGroupsByKey, analyticRows, filterKeys],
+    [filterSelection, facetGroupsByKey, analyticRowsComposed, filterKeys],
   );
-
-  useEffect(() => {
-    setDeepNarrative(null);
-    setDeepHint(null);
-    setDeepWords(null);
-  }, [richLlmContext]);
 
   useEffect(() => {
     if (!richLlmContext.trim()) {
@@ -1395,7 +1567,7 @@ export default function ExcelAnalyticsPage() {
           setSummaryNarrative(null);
           setSummaryNarrativeWords(null);
           setSummaryNarrativeApiHint(
-            'Запрос к API не выполнен (сеть, API Gateway, таймаут или HTTP-ошибка). Если ключи LLM уже заданы на функции — проверьте шлюз и логи; иначе см. BACKEND_AND_API.md (OpenRouter: OPENAI_API_KEY + OPENAI_BASE_URL).',
+            'Не удалось получить отчёт: нет связи с сервером или ответ прерван. Попробуйте обновить страницу и снова открыть блок отчёта.',
           );
         }
       })
@@ -1406,49 +1578,6 @@ export default function ExcelAnalyticsPage() {
       cancelled = true;
     };
   }, [richLlmContext, pulseLlmExtraBundle, pulseFacetLabels, filteredRows.length, filterParameterSummaryRu, kpiLessons]);
-
-  const fetchDeepDashboardAnalysis = useCallback(async () => {
-    if (!richLlmContext.trim()) return;
-    setDeepLoading(true);
-    setDeepHint(null);
-    setDeepWords(null);
-    try {
-      const res = await postExcelNarrativeSummary({
-        context: {
-          analysisMode: 'deep',
-          numericSummary: richLlmContext.slice(0, 24000),
-          extraContext: pulseLlmExtraBundle.trim() || undefined,
-          facetLabels: pulseFacetLabels,
-          filterSummary: filterParameterSummaryRu.trim() || undefined,
-          userFocus: deepUserFocus.trim() || undefined,
-          meta: { filteredRowCount: filteredRows.length, uniqueLessonCount: kpiLessons },
-        },
-      });
-      if (res.source === 'llm' && res.narrative?.trim()) {
-        setDeepNarrative(res.narrative.trim());
-        setDeepWords(typeof res.wordCount === 'number' ? res.wordCount : null);
-        setDeepHint(null);
-      } else {
-        setDeepNarrative(null);
-        setDeepWords(null);
-        setDeepHint(res.hint?.trim() || 'Не удалось получить отчёт.');
-      }
-    } catch {
-      setDeepNarrative(null);
-      setDeepWords(null);
-      setDeepHint('Ошибка запроса к API.');
-    } finally {
-      setDeepLoading(false);
-    }
-  }, [
-    richLlmContext,
-    pulseLlmExtraBundle,
-    pulseFacetLabels,
-    filterParameterSummaryRu,
-    deepUserFocus,
-    filteredRows.length,
-    kpiLessons,
-  ]);
 
   const saveTemplate = () => {
     const name = templateName.trim();
@@ -1713,15 +1842,16 @@ export default function ExcelAnalyticsPage() {
         )}
 
         {analyticRows.length > 0 && (
-          <div className="excel-dashboard excel-dashboard--stacked">
+          <div className="excel-dashboard excel-dashboard--stacked excel-dashboard--fullwidth">
             <div className="card glass-surface excel-dashboard-slice-strip" aria-label="Срез по всем параметрам наблюдения">
               <div className="excel-dashboard-slice-top">
                 <div className="excel-dashboard-slice-intro">
                   <p className="excel-dashboard-slice-kicker">Срез выборки</p>
                   <h2 className="excel-dashboard-slice-title">Все параметры из маппинга</h2>
                   <p className="muted excel-dashboard-slice-lead">
-                    Каждая колонка-фильтр — измерение; каскад оставляет только совместимые значения. Сузьте выборку
-                    чипами — графики и ПУЛЬС ниже обновятся.
+                    В срез входят все колонки опроса, кроме даты (дата идёт в графики и сводки, но не дублируется как
+                    измерение). Явные роли «фильтр» и текстовая шкала — вместе с остальными графами; каскад оставляет
+                    совместимые значения. Сузьте чипами — графики и ПУЛЬС ниже пересчитаются.
                   </p>
                 </div>
                 <div className="excel-dashboard-slice-toolbar">
@@ -1783,7 +1913,9 @@ export default function ExcelAnalyticsPage() {
                       >
                         {facetGroupsBusy ? 'ИИ: группы…' : 'Обновить группы в списках (ИИ)'}
                       </button>
-                      {(aiSectionLayout != null || Object.keys(facetGroupsByKey).length > 0) && (
+                      {(aiSectionLayout != null ||
+                        Object.keys(facetGroupsByKey).length > 0 ||
+                        aiDerivedDimensions.length > 0) && (
                         <button
                           type="button"
                           className="btn"
@@ -1792,31 +1924,97 @@ export default function ExcelAnalyticsPage() {
                             setFacetGroupsByKey({});
                             setAiSectionsHint(null);
                             setFacetGroupsHint(null);
+                            setAiDerivedDimensions([]);
+                            setAiDerivedHint(null);
                           }}
                         >
                           Сбросить ИИ
                         </button>
                       )}
                     </div>
-                    {(aiSectionsBusy || facetGroupsBusy) && (
+                    <div className="excel-dashboard-filter-ai-derived">
+                      <p className="muted excel-dashboard-slice-ai-lead">
+                        Смысловые измерения (ИИ): по уникальным значениям выбранной колонки модель предлагает 1–3
+                        дополнительных фильтра (например кафедра или предметный блок по коду педагога). Повторите для
+                        другой колонки — измерения суммируются.
+                      </p>
+                      <div className="excel-dashboard-filter-ai-actions excel-dashboard-filter-ai-actions--wrap">
+                        {eligibleDerivedSourceKeys.length > 0 ? (
+                          <label className="excel-derived-source-label">
+                            <span className="muted">Колонка-источник</span>
+                            <select
+                              className="excel-derived-source-select"
+                              value={derivedSourceKey ?? ''}
+                              onChange={(e) => setDerivedSourceKey(e.target.value || null)}
+                            >
+                              {eligibleDerivedSourceKeys.map((k) => (
+                                <option key={k} value={k}>
+                                  {filterKeyDisplayLabelUi[k] ?? k}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <span className="muted">Нет колонки-источника: назначьте хотя бы один фильтр в маппинге.</span>
+                        )}
+                        <button
+                          type="button"
+                          className="btn primary"
+                          disabled={!analyticRows.length || aiDerivedBusy || eligibleDerivedSourceKeys.length === 0}
+                          onClick={() => void fetchAiDerivedFilters()}
+                        >
+                          {aiDerivedBusy ? 'ИИ: смысловые измерения…' : 'Добавить смысловые группы (ИИ)'}
+                        </button>
+                      </div>
+                      {aiDerivedDimensions.length > 0 && (
+                        <ul className="excel-derived-dim-list">
+                          {aiDerivedDimensions.map((d) => (
+                            <li key={d.id} className="excel-derived-dim-item">
+                              <span className="excel-derived-dim-title">{d.title}</span>
+                              <span className="muted excel-derived-dim-src">
+                                ← {filterKeyDisplayLabelUi[d.sourceFilterKey] ?? d.sourceFilterKey}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn excel-derived-dim-remove"
+                                onClick={() => {
+                                  setAiDerivedDimensions((prev) => prev.filter((x) => x.id !== d.id));
+                                  setFilterSelection((prev) => {
+                                    const { [d.id]: _, ...rest } = prev;
+                                    return rest;
+                                  });
+                                }}
+                              >
+                                Убрать
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    {(aiSectionsBusy || facetGroupsBusy || aiDerivedBusy) && (
                       <AiWaitIndicator
                         active
                         compact
                         className="excel-dashboard-slice-ai-wait"
                         label={
-                          aiSectionsBusy && facetGroupsBusy
-                            ? 'ИИ: разделы панели и группы в списках'
+                          [aiSectionsBusy, facetGroupsBusy, aiDerivedBusy].filter(Boolean).length > 1
+                            ? 'ИИ обрабатывает запрос (разделы, группы или смысловые измерения)'
                             : aiSectionsBusy
                               ? 'ИИ предлагает разделы для панели фильтров'
-                              : 'ИИ группирует значения в длинных списках'
+                              : aiDerivedBusy
+                                ? 'ИИ формирует дополнительные измерения среза'
+                                : 'ИИ группирует значения в длинных списках'
                         }
                         typicalMinSec={12}
                         typicalMaxSec={45}
                         slowAfterSec={70}
                       />
                     )}
-                    {(aiSectionsHint || facetGroupsHint) && (
-                      <p className="muted excel-dashboard-filter-ai-hint-msg">{aiSectionsHint || facetGroupsHint}</p>
+                    {(aiSectionsHint || facetGroupsHint || aiDerivedHint) && (
+                      <p className="muted excel-dashboard-filter-ai-hint-msg">
+                        {aiSectionsHint || facetGroupsHint || aiDerivedHint}
+                      </p>
                     )}
                   </div>
                 </details>
@@ -1825,15 +2023,16 @@ export default function ExcelAnalyticsPage() {
               <p className="muted excel-dashboard-filter-hint excel-dashboard-slice-hint">
                 Снятые галочки по измерению значат «не сужать по этому полю». Отметьте нужные значения — срез сузится.
                 Несколько значений в ячейке фильтра через запятую дают отдельные варианты. Колонка «Список через запятую»
-                (пойнты) в фильтры не попадает — она в графиках и ИИ. Есть только «Класс» без «Параллель» — появится
-                измерение «Параллель (из класса)» для среза по 7А/7B/7… → параллель 7 и сравнения наставников.
+                (пойнты) в фильтры не попадает — она в графиках и ИИ. Текстовая шкала попадает в блок «Текстовые метрики».
+                Есть только «Класс» без «Параллель» — появится измерение «Параллель (из класса)». Блок ИИ выше может
+                добавить производные фильтры (кафедры, блоки) по смыслу значений любой колонки-источника.
               </p>
 
               <div className="excel-dashboard-slice-sections">
                 {filterSections.length === 0 ? (
                   <p className="muted excel-dashboard-slice-empty">
-                    В маппинге нет колонок с ролью фильтра — срез по измерениям не строится. Назначьте хотя бы одну
-                    колонку ролью «Параллель», «Класс», «Предмет», «Формат» или доп. фильтр.
+                    Нет колонок для среза: все столбцы помечены как «Не использовать» или только одна колонка «Дата» без
+                    прочих граф. Снимите «игнор» хотя бы с одной графы опроса (кроме даты) или добавьте текстовую шкалу.
                   </p>
                 ) : (
                   filterSections.map((section) => (
@@ -1841,7 +2040,10 @@ export default function ExcelAnalyticsPage() {
                       <h3 className="excel-slice-section-title">{section.title}</h3>
                       <div className="excel-dashboard-slice-filters-grid excel-dashboard-slice-filters-grid--wide">
                         {section.keys.map((key) => {
-                          const all = uniqueFilterValues(applyFiltersExceptKey(analyticRows, filterSelection, key), key);
+                          const all = uniqueFilterValues(
+                            applyFiltersExceptKey(analyticRowsComposed, filterSelection, key),
+                            key,
+                          );
                           return (
                             <div key={key} className="excel-slice-dimension card glass-surface">
                               <div className="excel-slice-dimension-head">
@@ -1855,7 +2057,7 @@ export default function ExcelAnalyticsPage() {
                                     className="btn"
                                     onClick={() =>
                                       setFilterSelection((p) =>
-                                        pruneFilterSelection(analyticRows, { ...p, [key]: null }, filterKeys),
+                                        pruneFilterSelection(analyticRowsComposed, { ...p, [key]: null }, filterKeys),
                                       )
                                     }
                                   >
@@ -1873,14 +2075,15 @@ export default function ExcelAnalyticsPage() {
               </div>
             </div>
 
+            <div className="excel-dashboard-below-slice">
             <div className="excel-dashboard-main">
                 <header className="excel-dashboard-main-head card glass-surface">
                   <div className="excel-dashboard-main-head-text">
                     <p className="excel-dashboard-main-kicker">Панель анализа</p>
                     <h2 className="excel-dashboard-main-title">Графики, выводы и детализация</h2>
                     <p className="muted excel-dashboard-main-lead">
-                      Шаги: срез вверху → графики по выборке → клик по столбцу гистограммы открывает одну панель
-                      педагогов (справа на широком экране, под графиками на узком) → внизу ПУЛЬС: чат и отчёты ИИ.
+                      Шаги: срез сверху на всю ширину → графики → клик по столбцу открывает панель педагогов → ПУЛЬС внизу:
+                      чат и отчёты ИИ.
                     </p>
                   </div>
                 </header>
@@ -1892,73 +2095,11 @@ export default function ExcelAnalyticsPage() {
                   <section className="card glass-surface excel-dash-card excel-dash-card--wide excel-dash-chart-catalog">
                     <h3 className="excel-dash-card-title">Визуализации по текущему срезу</h3>
                     <p className="muted excel-dash-card-sub">
-                      Доступно: распределение уроков по значению фильтра; сравнение средних всех числовых пунктов по
-                      месяцам; отдельная гистограмма под каждый пункт; динамика числа уроков и среднего по одному пункту;
-                      при текстовой шкале — столбчатое распределение и линия среднего ранга по месяцам; при колонке
-                      наставника — групповые столбцы и тепловая таблица средних; списки через запятую — справочник и топы.
+                      Компактные диаграммы распределения по каждому измерению среза; гистограммы по числовым пунктам;
+                      при текстовой шкале — столбчатое распределение; при колонке наставника — групповые столбцы и
+                      тепловая таблица средних; списки через запятую — справочник и топы.
                     </p>
                   </section>
-
-                  {multiMetricMonthRows.length >= 2 && metricNumericCols.length > 0 && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
-                      <h3 className="excel-dash-card-title">Средние по всем числовым пунктам по месяцам</h3>
-                      <p className="muted excel-dash-card-sub">
-                        Одна линия на каждый пункт из маппинга; по оси X — месяц из колонки «Дата». Пропуски, если в месяце
-                        не было чисел по пункту.
-                      </p>
-                      <div className="excel-analytics-chart excel-analytics-chart--tall">
-                        <ResponsiveContainer width="100%" height={340}>
-                          <LineChart data={multiMetricMonthRows} margin={{ top: 8, right: 28, left: 4, bottom: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-16} textAnchor="end" height={48} />
-                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-                            <Tooltip />
-                            <Legend wrapperStyle={{ paddingTop: 6 }} />
-                            {metricNumericCols.map((mi, i) => (
-                              <Line
-                                key={mi}
-                                type="monotone"
-                                dataKey={`m${mi}`}
-                                name={metricColLegendLabel(mi, `П.${mi + 1}`)}
-                                stroke={DASH_BAR_COLORS[i % DASH_BAR_COLORS.length]}
-                                strokeWidth={2}
-                                dot={{ r: 2 }}
-                                connectNulls
-                              />
-                            ))}
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </section>
-                  )}
-
-                  {ordinalTrendByMonthRows.length >= 2 && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
-                      <h3 className="excel-dash-card-title">Динамика текстовой шкалы (средний ранг по месяцам)</h3>
-                      <p className="muted excel-dash-card-sub">
-                        Ранг соответствует порядку уровней, который вы задали при построении анализа (выше на графике —
-                        в сторону «лучшего» конца шкалы).
-                      </p>
-                      <div className="excel-analytics-chart">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <LineChart data={ordinalTrendByMonthRows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-14} textAnchor="end" height={46} />
-                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-                            <Tooltip formatter={(v: number) => [v != null ? Number(v).toFixed(2) : '—', 'Средн. ранг']} />
-                            <Line
-                              type="monotone"
-                              dataKey="meanRank"
-                              stroke="#7c3aed"
-                              strokeWidth={2}
-                              dot={{ r: 3 }}
-                              name="Средний ранг"
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </section>
-                  )}
 
                   {metricNumericCols.length > 1 && (
                     <section className="card glass-surface excel-dash-card excel-dash-card--wide">
@@ -2026,67 +2167,77 @@ export default function ExcelAnalyticsPage() {
                     </section>
                   )}
 
-                  {filterKeys.length > 0 && filterBarChartDisplay.length > 0 && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
-                      <h3 className="excel-dash-card-title">Распределение по фильтру (уникальные уроки)</h3>
-                      <p className="muted excel-dash-card-sub">
-                        По оси — сколько логических уроков в текущем срезе имеют каждое значение среза. Похожие написания
-                        объединяются. Выберите измерение:
-                      </p>
-                      <label className="excel-analytics-field">
-                        Фильтр
-                        <select
-                          className="excel-analytics-select"
-                          value={effectiveFilterChartKey ?? ''}
-                          onChange={(e) => setUserFilterChartKey(e.target.value || null)}
-                        >
-                          {filterKeys.map((k) => (
-                            <option key={k} value={k}>
-                              {filterKeyDisplayLabelUi[k] ?? k}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="excel-analytics-chart">
-                        <ResponsiveContainer
-                          width="100%"
-                          height={Math.min(480, 48 + filterBarChartDisplay.length * 30)}
-                        >
-                          <BarChart
-                            data={filterBarChartDisplay}
-                            layout="vertical"
-                            margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                            <XAxis type="number" tick={{ fontSize: 11 }} />
-                            <YAxis type="category" dataKey="short" width={200} tick={{ fontSize: 10 }} interval={0} />
-                            <Tooltip
-                              content={({ active, payload }) => {
-                                if (!active || !payload?.length) return null;
-                                const p = payload[0].payload as { fullName: string; uniqueLessons: number };
-                                return (
-                                  <div
-                                    style={{
-                                      background: '#fff',
-                                      border: '1px solid var(--card-border)',
-                                      borderRadius: 8,
-                                      padding: '0.5rem 0.75rem',
-                                      fontSize: 12,
-                                      maxWidth: 320,
-                                    }}
+                  {filterKeys.length > 0 &&
+                    allFilterDistributionCharts.some((c) => c.bars.length > 0) && (
+                      <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                        <h3 className="excel-dash-card-title">Распределение по измерениям среза</h3>
+                        <p className="muted excel-dash-card-sub">
+                          По каждому полю — сколько логических уроков в текущем срезе с каждым значением (топ вариантов).
+                          Похожие написания объединяются.
+                        </p>
+                        <div className="excel-filter-distributions-grid">
+                          {allFilterDistributionCharts.map(({ key, label, bars }) =>
+                            bars.length === 0 ? null : (
+                              <div key={key} className="excel-filter-distribution-mini card glass-surface">
+                                <h4 className="excel-filter-distribution-mini-title">{label}</h4>
+                                <div className="excel-analytics-chart excel-filter-distribution-mini-chart">
+                                  <ResponsiveContainer
+                                    width="100%"
+                                    height={Math.min(220, 36 + bars.length * 22)}
                                   >
-                                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{p.fullName}</div>
-                                    <div>Уроков: {p.uniqueLessons}</div>
-                                  </div>
-                                );
-                              }}
-                            />
-                            <Bar dataKey="uniqueLessons" fill="#115e59" name="Уроков" radius={[0, 4, 4, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </section>
-                  )}
+                                    <BarChart
+                                      data={bars}
+                                      layout="vertical"
+                                      margin={{ top: 4, right: 8, left: 4, bottom: 4 }}
+                                    >
+                                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                                      <XAxis type="number" tick={{ fontSize: 9 }} />
+                                      <YAxis
+                                        type="category"
+                                        dataKey="short"
+                                        width={88}
+                                        tick={{ fontSize: 8 }}
+                                        interval={0}
+                                      />
+                                      <Tooltip
+                                        content={({ active, payload }) => {
+                                          if (!active || !payload?.length) return null;
+                                          const p = payload[0].payload as {
+                                            fullName: string;
+                                            uniqueLessons: number;
+                                          };
+                                          return (
+                                            <div
+                                              style={{
+                                                background: '#fff',
+                                                border: '1px solid var(--card-border)',
+                                                borderRadius: 8,
+                                                padding: '0.35rem 0.5rem',
+                                                fontSize: 11,
+                                                maxWidth: 280,
+                                              }}
+                                            >
+                                              <div style={{ fontWeight: 700, marginBottom: 2 }}>{p.fullName}</div>
+                                              <div>Уроков: {p.uniqueLessons}</div>
+                                            </div>
+                                          );
+                                        }}
+                                      />
+                                      <Bar
+                                        dataKey="uniqueLessons"
+                                        fill="#115e59"
+                                        name="Уроков"
+                                        radius={[0, 3, 3, 0]}
+                                      />
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </section>
+                    )}
 
                   {listFeatureChartsPrepared.length > 0 && (
                     <details className="excel-dash-details-list-features">
@@ -2212,37 +2363,6 @@ export default function ExcelAnalyticsPage() {
                         </div>
                       </div>
                     </details>
-                  )}
-
-                  {metricPickIndex != null && meanByMonthChartRows.length >= 2 && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
-                      <h3 className="excel-dash-card-title">Динамика среднего по месяцам</h3>
-                      <p className="muted excel-dash-card-sub">
-                        По выбранному в блоке «Распределение по пункту» числовому пункту — среднее значение по уникальным
-                        урокам внутри каждого календарного месяца (колонка «Дата»).
-                      </p>
-                      <div className="excel-analytics-chart">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <LineChart data={meanByMonthChartRows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-18} textAnchor="end" height={52} />
-                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
-                            <Tooltip
-                              formatter={(v: number) => [v != null ? Number(v).toFixed(2) : '—', 'Среднее']}
-                              labelFormatter={(label) => String(label)}
-                            />
-                            <Line
-                              type="monotone"
-                              dataKey="mean"
-                              stroke="var(--brand-red)"
-                              strokeWidth={2}
-                              dot={{ r: 3 }}
-                              name={metricHeaderLabelUi}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </section>
                   )}
 
                   {mentorChartData.length > 0 && metricNumericCols.length > 0 && (
@@ -2434,22 +2554,6 @@ export default function ExcelAnalyticsPage() {
                       </section>
                     )}
 
-                    {monthData.length > 0 && (
-                      <section className="card glass-surface excel-dash-card excel-dash-card--in-row">
-                        <h3 className="excel-dash-card-title">Динамика по месяцам</h3>
-                        <div className="excel-analytics-chart">
-                          <ResponsiveContainer width="100%" height={240}>
-                            <LineChart data={monthData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                              <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                              <YAxis tick={{ fontSize: 11 }} />
-                              <Tooltip />
-                              <Line type="monotone" dataKey="count" stroke="var(--brand-red)" strokeWidth={2} dot name="Строк" />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      </section>
-                    )}
                   </div>
 
                   {ordinalChartDisplay.length > 0 && (
@@ -2747,6 +2851,12 @@ export default function ExcelAnalyticsPage() {
                   embeddedPanel={
                     <>
                       <div className="pulse-excel-embed-stack" id="excel-drill-summary">
+                        <p className="muted excel-pulse-vs-notes-hint">
+                          <strong>ПУЛЬС</strong> (чат внизу карточки) — диалог с моделью: вы задаёте вопросы словами, ответ
+                          опирается на текущий срез и при необходимости подставляет фильтры.{' '}
+                          <strong>Сформировать вывод (записки ИИ)</strong> — не чат, а отдельные короткие тексты по
+                          каждому педагогу (и предмету, если задано в маппинге) из той же выборки.
+                        </p>
                         <details className="pulse-excel-embed-details" open>
                           <summary className="pulse-excel-embed-summary">
                             <span>Аналитический отчёт (ИИ)</span>
@@ -2798,68 +2908,12 @@ export default function ExcelAnalyticsPage() {
                           </details>
                         </details>
 
-                        <details className="pulse-excel-embed-details">
-                          <summary className="pulse-excel-embed-summary">
-                            <span>Полный разбор среза (глубокий режим)</span>
-                            {deepWords != null && (
-                              <span className="excel-dash-ai-report-badge">≈ {deepWords} слов</span>
-                            )}
-                          </summary>
-                          <p className="muted excel-dash-card-sub">
-                            Развёрнутый текст по текущим фильтрам. Выполняется по кнопке (отдельный запрос к модели на
-                            функции).
-                          </p>
-                          <label className="excel-deep-focus-label">
-                            <span className="muted">Дополнительный фокус (необязательно)</span>
-                            <textarea
-                              className="field excel-deep-focus-textarea"
-                              rows={3}
-                              value={deepUserFocus}
-                              onChange={(e) => setDeepUserFocus(e.target.value)}
-                              placeholder="Например: сравни очный и онлайн; акцент на младших классах"
-                              disabled={deepLoading || !richLlmContext.trim()}
-                            />
-                          </label>
-                          <div className="excel-deep-report-actions">
-                            <button
-                              type="button"
-                              className="btn primary"
-                              disabled={deepLoading || !richLlmContext.trim()}
-                              onClick={() => void fetchDeepDashboardAnalysis()}
-                            >
-                              {deepLoading ? 'Формируем…' : 'Сформировать полный отчёт'}
-                            </button>
-                          </div>
-                          {deepLoading && (
-                            <AiWaitIndicator
-                              active
-                              className="excel-ai-wait-embed"
-                              label="Глубокий разбор среза — длинный ответ модели"
-                              typicalMinSec={40}
-                              typicalMaxSec={130}
-                              slowAfterSec={170}
-                              hint="Обычно от 40 с до 2–3 мин в зависимости от объёма фактов."
-                            />
-                          )}
-                          {deepHint && <p className="excel-director-dossier-hint">{deepHint}</p>}
-                          {deepNarrative ? (
-                            <article className="excel-ai-report-prose excel-ai-report-prose--deep">
-                              {splitNarrativeParagraphs(deepNarrative).map((para, i) => (
-                                <p key={i}>{para}</p>
-                              ))}
-                            </article>
-                          ) : (
-                            <p className="muted excel-ai-report-placeholder">
-                              {deepLoading ? 'Ответ появится ниже после завершения запроса.' : 'Нажмите кнопку выше.'}
-                            </p>
-                          )}
-                        </details>
-
                         {teacherFilterKey && (
                           <details className="pulse-excel-embed-details">
-                            <summary className="pulse-excel-embed-summary">Записки для директора по педагогам</summary>
+                            <summary className="pulse-excel-embed-summary">Сформировать вывод (записки ИИ)</summary>
                             <p className="muted excel-dash-card-sub">
-                              По срезу — блоки по педагогам (и предмету, если задан в маппинге).
+                              Готовые короткие тексты по каждому педагогу в срезе (и по паре педагог+предмет, если в
+                              маппинге есть колонка предмета). Это не диалог: один запрос — пакет записок.
                             </p>
                             <div className="excel-director-dossier-actions">
                               <button
@@ -2868,7 +2922,7 @@ export default function ExcelAnalyticsPage() {
                                 disabled={directorDossierBusy || !filteredRows.length}
                                 onClick={() => void fetchDirectorDossier()}
                               >
-                                {directorDossierBusy ? 'Формируем…' : 'Сформировать записки (ИИ)'}
+                                {directorDossierBusy ? 'Формируем…' : 'Сформировать вывод (записки ИИ)'}
                               </button>
                               {directorDossierMeta && (
                                 <span className="muted excel-director-dossier-meta">
@@ -2924,58 +2978,60 @@ export default function ExcelAnalyticsPage() {
               </div>
 
             <section className="card glass-surface excel-analytics-section excel-dashboard-table-section">
-              <h2 className="admin-dash-h2">Детализация: первые 50 строк текущей выборки</h2>
+              <h2 className="admin-dash-h2">Детализация: строки среза (все колонки листа)</h2>
               <p className="muted excel-dashboard-table-lead">
-                Полные значения по строкам; состав колонок зависит от ролей в маппинге и подходит для любого загружаемого файла.
+                Таблица повторяет столбцы загруженного Excel; остаются только строки, прошедшие фильтры среза. Если в
+                ячейке было несколько значений (наставники, списки), одна строка файла может отображаться несколько раз —
+                колонка «Разв.» показывает номер фрагмента.
+                {filteredRows.length > DETAIL_TABLE_MAX_ROWS && (
+                  <>
+                    {' '}
+                    Показаны первые {DETAIL_TABLE_MAX_ROWS} из {filteredRows.length} строк — сузьте срез или экспортируйте
+                    исходный файл для полного списка.
+                  </>
+                )}
               </p>
-              <div className="excel-analytics-table-wrap">
-                <table className="excel-analytics-table">
+              <div className="excel-analytics-table-wrap excel-analytics-table-wrap--full-sheet">
+                <table className="excel-analytics-table excel-analytics-table--full-sheet">
                   <thead>
                     <tr>
-                      <th>#</th>
-                      {teacherFilterKey != null && <th>Наставник</th>}
-                      <th>Дата</th>
-                      <th>Подпись</th>
-                      {metricNumericCols.map((mi) => (
-                        <th key={mi}>
-                          {formatBilingualCellLabel(headers[mi] ?? '', showEnglishExcelLabels ? 'en' : 'ru')}
+                      <th className="excel-analytics-th-fixed">№ строки</th>
+                      {detailShowSplitColumn && (
+                        <th className="excel-analytics-th-fixed excel-analytics-th-fixed--after-num">Разв.</th>
+                      )}
+                      {Array.from({ length: detailColumnCount }, (_, ci) => (
+                        <th key={ci} className="excel-analytics-th-sheet">
+                          {formatBilingualCellLabel(
+                            headers[ci] ?? `Колонка ${ci + 1}`,
+                            showEnglishExcelLabels ? 'en' : 'ru',
+                          )}
                         </th>
                       ))}
-                      {metricNumericCols.length > 1 && <th>Σ пунктов</th>}
-                      {roles.includes('metric_ordinal_text') && <th>Шкала</th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRows.slice(0, 50).map((r) => {
-                      const rowSum = rowNumericSum(r);
+                    {detailTableSlice.map((r) => {
+                      const line = rawRows[r.idx];
                       return (
                         <tr key={`${r.idx}-${r.splitPart ?? 0}-${teacherFilterKey ? r.filterValues[teacherFilterKey] : ''}`}>
-                          <td>
-                            {r.idx + 1}
-                            {r.splitPart != null && r.splitPart > 0 ? ` · ${r.splitPart}` : ''}
-                          </td>
-                          {teacherFilterKey != null && (
-                            <td className="excel-analytics-cell-clip">{r.filterValues[teacherFilterKey] ?? '—'}</td>
-                          )}
-                          <td>{r.date ?? '—'}</td>
-                          <td className="excel-analytics-cell-clip">{r.rowLabel ?? '—'}</td>
-                          {metricNumericCols.map((mi) => {
-                            const m = r.metricsNumeric.find((x) => x.colIndex === mi);
-                            return <td key={mi}>{m?.value != null ? String(m.value) : '—'}</td>;
-                          })}
-                          {metricNumericCols.length > 1 && (
-                            <td>{rowSum != null ? rowSum.toFixed(2) : '—'}</td>
-                          )}
-                          {roles.includes('metric_ordinal_text') && (
-                            <td>
-                              {r.metricOrdinal != null
-                                ? formatBilingualCellLabel(
-                                    String(ordinalLevels[r.metricOrdinal - 1] ?? r.metricOrdinal),
-                                    showEnglishExcelLabels ? 'en' : 'ru',
-                                  )
-                                : '—'}
+                          <td className="excel-analytics-td-fixed">{r.idx + 1}</td>
+                          {detailShowSplitColumn && (
+                            <td className="excel-analytics-td-fixed excel-analytics-td-fixed--after-num">
+                              {r.splitPart != null && r.splitPart > 0 ? r.splitPart : '—'}
                             </td>
                           )}
+                          {Array.from({ length: detailColumnCount }, (_, ci) => {
+                            const raw = line?.[ci] as CellPrimitive | undefined;
+                            return (
+                              <td
+                                key={ci}
+                                className="excel-analytics-cell-sheet"
+                                title={excelDetailCellTitle(raw ?? null)}
+                              >
+                                {line ? formatExcelDetailCell(raw ?? null) : '—'}
+                              </td>
+                            );
+                          })}
                         </tr>
                       );
                     })}
@@ -2983,6 +3039,7 @@ export default function ExcelAnalyticsPage() {
                 </table>
               </div>
             </section>
+            </div>
           </div>
         )}
       </motion.div>

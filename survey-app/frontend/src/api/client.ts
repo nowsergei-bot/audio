@@ -6,6 +6,7 @@ import type {
   PulseExcelChatResponse,
   ExcelFilterSectionsResponse,
   ExcelFilterValueGroupsResponse,
+  ExcelDerivedFiltersResponse,
   ExcelNarrativeSummaryResponse,
   ExcelDirectorDossierResponse,
   MultiSurveyAnalyticsPayload,
@@ -36,11 +37,15 @@ const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE || '');
 async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(input, init);
-  } catch {
-    const hint = API_BASE
-      ? 'Проверьте: 1) в спецификации API Gateway блок x-yc-apigateway.cors (см. scripts/survey-api-gw.yaml); 2) CORS_ORIGIN на функции совпадает с сайтом; 3) VITE_API_BASE без лишнего /api в конце.'
-      : 'Соберите фронт с VITE_API_BASE=https://… (URL шлюза) и снова залейте в бакет.';
-    throw new Error(`Запрос к API не выполнился (сеть или CORS). ${hint}`);
+  } catch (e) {
+    const dev =
+      API_BASE ?
+        'Администратору: CORS в API Gateway (survey-api-gw.yaml), CORS_ORIGIN на функции, VITE_API_BASE без /api в конце.'
+      : 'Администратору: соберите фронт с VITE_API_BASE (URL шлюза или функции).';
+    console.warn('[api]', dev, input, e);
+    throw new Error(
+      'Не удалось связаться с сервером. Проверьте интернет и попробуйте снова. Если ошибка повторяется — напишите администратору.',
+    );
   }
 }
 
@@ -64,26 +69,18 @@ async function parseJson<T>(res: Response): Promise<T> {
   }
   const lead = t.trimStart().slice(0, 1);
   if (lead === '<') {
+    console.warn('[api] HTML/XML вместо JSON', res.status, API_BASE || '(нет VITE_API_BASE)', t.slice(0, 400));
     throw new Error(
-      API_BASE
-        ? 'Сервер ответил страницей/XML вместо JSON — проверьте VITE_API_BASE и путь API.'
-        : 'API не настроен: соберите фронт с VITE_API_BASE=https://… (URL функции или API Gateway) и залейте в бакет снова.',
+      'Сервер вернул неожиданный формат ответа. Попробуйте позже или обратитесь к администратору.',
     );
   }
   try {
     return JSON.parse(t) as T;
   } catch (e) {
     const preview = t.replace(/\s+/g, ' ').slice(0, 220);
-    const base = API_BASE || '(VITE_API_BASE не задан при сборке)';
-    const syntaxDetail = e instanceof SyntaxError && e.message ? ` (${e.message})` : '';
-    const hint =
-      e instanceof SyntaxError
-        ? ' Похоже на обрезанный ответ, HTML вместо JSON или неверный URL (не вставляйте адрес API в консоль без fetch/кавычек).'
-        : '';
+    console.warn('[api] parseJson', res.status, e, preview);
     throw new Error(
-      `Ответ не JSON (HTTP ${res.status}).${hint}${syntaxDetail} ` +
-        (preview ? `Начало ответа: ${preview}` : 'Пустой или битый ответ') +
-        `. Ожидался JSON с ${base}/api/… Проверьте адрес API в сборке, маршруты шлюза и CORS_ORIGIN на функции.`,
+      `Сервер вернул некорректные данные (код ${res.status}). Подождите минуту и попробуйте снова.`,
     );
   }
 }
@@ -364,21 +361,18 @@ export async function postMultiSurveyAnalytics(surveyIds: number[]): Promise<Mul
     }
   >(res);
   if (!res.ok) {
-    const hint =
-      data.path != null
-        ? ` Сервер: path=${data.path}${data.method ? ` method=${data.method}` : ''}${data.segments?.length ? ` (${data.segments.join('/')})` : ''}`
-        : '';
-    const statusLabel =
-      res.status === 504 || res.status === 502
-        ? `Таймаут или недоступность бэкенда (HTTP ${res.status}). Для сводки по нескольким опросам уменьшите число волн, на функции увеличьте execution-timeout (например 120–180 с), в API Gateway — таймаут интеграции ≥ таймаута функции.`
-        : '';
+    console.warn('[api] multi-survey-analytics', res.status, data);
     const bodyMsg = (data.message || data.error || '').trim();
-    const fallback = bodyMsg || res.statusText || `HTTP ${res.status}`;
-    throw new Error((statusLabel || fallback) + hint);
+    const short =
+      res.status === 504 || res.status === 502
+        ? 'Сервер долго не отвечает. Попробуйте меньше опросов за раз или повторите позже.'
+        : bodyMsg || `Запрос не выполнен (код ${res.status}).`;
+    throw new Error(short);
   }
   if (!data || typeof data !== 'object' || !('source' in data)) {
+    console.warn('[api] multi-survey incomplete payload', data);
     throw new Error(
-      'Сервер вернул пустой или неполный ответ при сводке по опросам (часто таймаут). Попробуйте меньше опросов за один запрос или увеличьте таймауты функции и шлюза.',
+      'Сводка пришла неполной (часто из‑за таймаута). Уменьшите число опросов в одном запросе и попробуйте снова.',
     );
   }
   return data;
@@ -493,6 +487,22 @@ export async function postExcelFilterValueGroups(payload: {
     body: JSON.stringify(payload),
   });
   const data = await parseJson<ExcelFilterValueGroupsResponse & { error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** ИИ: смысловые группы по значениям одной колонки → отдельные измерения среза (кафедры, блоки и т.д.). */
+export async function postExcelDerivedFilters(payload: {
+  sourceFilterKey: string;
+  sourceHeader: string;
+  values: string[];
+}): Promise<ExcelDerivedFiltersResponse> {
+  const res = await apiFetch(`${API_BASE}/api/excel-derived-filters`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<ExcelDerivedFiltersResponse & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }

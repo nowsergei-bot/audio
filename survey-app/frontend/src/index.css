@@ -1489,6 +1489,18 @@ body {
   max-width: 58rem;
 }
 
+/* Узкая колонка чата: ответы читаются примерно в половине экрана, без растягивания строк */
+.app-admin .pulse-excel-chat-conversation {
+  max-width: min(42rem, 50vw);
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .app-admin .pulse-excel-chat-conversation {
+    max-width: 100%;
+  }
+}
+
 .app-admin .pulse-excel-chat-log {
   max-height: 22rem;
   overflow-y: auto;
@@ -4299,10 +4311,62 @@ body {
   border-radius: var(--radius-sm);
 }
 
+.excel-analytics-table-wrap--full-sheet {
+  max-height: min(78vh, 760px);
+}
+
 .excel-analytics-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+}
+
+.excel-analytics-table--full-sheet {
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.8rem;
+}
+
+.excel-analytics-th-sheet,
+.excel-analytics-cell-sheet {
+  max-width: 11rem;
+  min-width: 5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.excel-analytics-th-fixed,
+.excel-analytics-td-fixed {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 4.5rem;
+  max-width: 5.5rem;
+  background: #fff;
+  box-shadow: 3px 0 8px -4px rgba(15, 23, 42, 0.2);
+}
+
+.excel-analytics-table--full-sheet thead .excel-analytics-th-fixed {
+  background: #f9fafb;
+  z-index: 3;
+}
+
+.excel-analytics-table--full-sheet tr:nth-child(even) .excel-analytics-td-fixed {
+  background: #fafafa;
+}
+
+.excel-analytics-table--full-sheet tr:hover .excel-analytics-td-fixed {
+  background: rgba(227, 6, 19, 0.04);
+}
+
+.excel-analytics-th-fixed--after-num,
+.excel-analytics-td-fixed--after-num {
+  left: 5.35rem;
+}
+
+.excel-analytics-table--full-sheet thead .excel-analytics-th-fixed--after-num {
+  background: #f9fafb;
 }
 
 .excel-analytics-table th,
@@ -4419,6 +4483,67 @@ body {
 
 .excel-dashboard--stacked {
   gap: 1.25rem;
+}
+
+/* Полная ширина: срез сверху, под ним графики и ПУЛЬС */
+.excel-dashboard--fullwidth {
+  width: 100%;
+}
+
+.excel-dashboard-below-slice {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.excel-dashboard-filter-ai-derived {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--card-border);
+}
+
+.excel-dashboard-filter-ai-actions--wrap {
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.excel-derived-source-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+}
+
+.excel-derived-source-select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg, #fff);
+  color: inherit;
+}
+
+.excel-derived-dim-list {
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.excel-derived-dim-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.88rem;
+}
+
+.excel-derived-dim-remove {
+  margin-left: auto;
 }
 
 .excel-dashboard-slice-strip {
@@ -4594,6 +4719,39 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 252px), 1fr));
   gap: 1rem;
+}
+
+.excel-filter-distributions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.excel-filter-distribution-mini {
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.excel-filter-distribution-mini-title {
+  margin: 0 0 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--page-fg, #0f172a);
+}
+
+.excel-filter-distribution-mini-chart {
+  margin: 0;
+  min-height: 0;
+}
+
+.excel-pulse-vs-notes-hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  max-width: 58rem;
 }
 
 .excel-histogram-mini {

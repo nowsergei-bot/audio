@@ -17,6 +17,7 @@ const { handlePostAnalyticsChat } = require('./post-analytics-chat');
 const { handlePostPulseExcelChat } = require('./post-pulse-excel-chat');
 const { handlePostExcelFilterSections } = require('./post-excel-filter-sections');
 const { handlePostExcelFilterValueGroups } = require('./post-excel-filter-value-groups');
+const { handlePostExcelDerivedFilters } = require('./post-excel-derived-filters');
 const { handlePostExcelNarrativeSummary } = require('./post-excel-narrative-summary');
 const { handlePostExcelDirectorDossier } = require('./post-excel-director-dossier');
 const { handlePostMultiSurveyAnalytics } = require('./post-multi-survey-analytics');
@@ -281,6 +282,9 @@ async function handlerImpl(event) {
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-filter-value-groups' && segs.length === 2) {
     return handlePostExcelFilterValueGroups(pool, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-derived-filters' && segs.length === 2) {
+    return handlePostExcelDerivedFilters(pool, event);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-narrative-summary' && segs.length === 2) {
     return handlePostExcelNarrativeSummary(pool, event);

@@ -112,10 +112,8 @@ export default function MultiSurveyAnalyticsPage() {
       setResult(null);
       const msg = e instanceof Error ? e.message : 'Ошибка запроса';
       const timeoutHint =
-        /504|502|gateway timeout|timed out|таймаут|пустой или неполный ответ|Unexpected end of JSON/i.test(
-          msg,
-        )
-          ? ' Если это таймаут: возьмите меньше опросов за один запрос; на Cloud Function выставьте execution-timeout 120–180s и при API Gateway — лимит интеграции не ниже таймаута функции. После смены настроек создайте новую версию функции.'
+        /504|502|gateway timeout|timed out|таймаут|неполн|Unexpected end of JSON/i.test(msg)
+          ? ' Совет: выберите меньше опросов за один раз и повторите.'
           : '';
       setRunErr(msg + timeoutHint);
     } finally {
