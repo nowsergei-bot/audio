@@ -5,6 +5,7 @@ import {
   createSurvey,
   directorSurveyUrl,
   getSurvey,
+  getSurveyGroups,
   getSurveyExportRows,
   getSurveyInvites,
   getSurveyInviteTemplate,
@@ -19,7 +20,7 @@ import TemplateGallery from '../components/TemplateGallery';
 import { getSurveyTemplate, saveCustomTemplate } from '../data/surveyTemplates';
 import { QUESTION_TYPE_LABEL_RU } from '../lib/labels';
 import { adminStaggerItem } from '../motion/adminMotion';
-import type { QuestionType, Survey, SurveyStatus } from '../types';
+import type { QuestionType, Survey, SurveyGroup, SurveyStatus } from '../types';
 
 type DraftQuestion = {
   tempKey: string;
@@ -111,6 +112,8 @@ export default function SurveyBuilder() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [surveyGroupId, setSurveyGroupId] = useState<number | ''>('');
+  const [surveyGroups, setSurveyGroups] = useState<SurveyGroup[]>([]);
   const [status, setStatus] = useState<SurveyStatus>('draft');
   const [accessLink, setAccessLink] = useState('');
   const [directorToken, setDirectorToken] = useState<string | null>(null);
@@ -131,6 +134,21 @@ export default function SurveyBuilder() {
   const [err, setErr] = useState<string | null>(null);
   const [tplEmoji, setTplEmoji] = useState('🧩');
   const [tplCategory, setTplCategory] = useState('Пользовательские');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const g = await getSurveyGroups();
+        if (!cancelled) setSurveyGroups(g);
+      } catch {
+        if (!cancelled) setSurveyGroups([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isEdit) return;
@@ -176,6 +194,7 @@ export default function SurveyBuilder() {
         if (cancelled) return;
         setTitle(s.title);
         setDescription(s.description);
+        setSurveyGroupId(s.survey_group_id ?? '');
         setStatus(s.status);
         setAccessLink(s.access_link);
         setDirectorToken(s.director_token != null && s.director_token !== '' ? s.director_token : null);
@@ -303,6 +322,7 @@ export default function SurveyBuilder() {
         access_link: accessLink || undefined,
         questions: payloadQuestions,
         media: { photos },
+        survey_group_id: surveyGroupId === '' ? null : surveyGroupId,
       };
       let s: Survey;
       if (isEdit) {
@@ -509,6 +529,26 @@ export default function SurveyBuilder() {
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
+        <label style={{ display: 'block', marginTop: '0.75rem' }}>
+          Раздел (группа)
+          <select
+            className="field"
+            value={surveyGroupId === '' ? '' : String(surveyGroupId)}
+            onChange={(e) => setSurveyGroupId(e.target.value === '' ? '' : Number(e.target.value))}
+          >
+            <option value="">Не выбран</option>
+            {surveyGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {g.curator_name ? ` (${g.curator_name})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+          Разделы задаются в админке; массово можно назначить в разделе{' '}
+          <Link to="/surveys/groups">«Разделы опросов»</Link>.
+        </p>
         <div className="row" style={{ marginTop: '0.75rem' }}>
           <label>
             Статус

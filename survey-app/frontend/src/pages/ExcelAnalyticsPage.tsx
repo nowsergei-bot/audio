@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Legend,
   Line,
+  Cell,
   LineChart,
   ResponsiveContainer,
   Tooltip,
@@ -19,10 +20,12 @@ import {
   postExcelNarrativeSummary,
 } from '../api/client';
 import PulseExcelChat from '../components/PulseExcelChat';
+import { formatBilingualCellLabel } from '../lib/excelAnalytics/excelDisplayLabel';
 import { fadeIn } from '../motion/resultsMotion';
 import {
   applyFilters,
   applyFiltersExceptKey,
+  augmentRowsWithDerivedParallel,
   buildAnalyticRows,
   buildDirectorFactPackets,
   buildQuickSummaryRu,
@@ -34,19 +37,31 @@ import {
   expandRowsForMultiValueFilterColumns,
   filterKeyForRole,
   filterSelectionsEqual,
-  histogramNumeric,
+  histogramNumericBins,
   isFilterRole,
   meanByNumericColumn,
   meanByTeacherGrouped,
   meanMinMax,
+  meanNumericByMonth,
+  meanNumericByMonthAllMetrics,
+  meanOrdinalRankByMonth,
+  normalizeFacetAggregateKey,
   ordinalDistribution,
   parseAnalyticsDate,
+  PULSE_PARALLEL_AUTO_KEY,
   pruneFilterSelection,
   rowNumericSum,
   sumTotalStats,
+  topFilterBucketsByUniqueLesson,
   uniqueFilterValues,
+  listFeatureTagCounts,
+  listFeatureTagFrequencyByTeacher,
+  listFeatureTagUniverse,
+  teacherListFeatureCoverage,
+  teachersInMetricBin,
   type AnalyticRow,
   type FilterSelection,
+  type HistogramBinDetail,
 } from '../lib/excelAnalytics/engine';
 import { applyServiceTimestampIgnore } from '../lib/excelAnalytics/serviceTimestamp';
 import { extractWorkbookCodebookRu } from '../lib/excelAnalytics/decoderSheets';
@@ -72,12 +87,86 @@ import {
 
 const MAX_ROWS = 8000;
 const DIRECTOR_DOSSIER_CHUNK = 8;
+const METRIC_HIST_BINS = 8;
+const DRILL_MINI_SUMMARY_CHARS = 960;
+
+function ExcelDrillMiniSummary({
+  teacherName,
+  quickText,
+  onOpenFacts,
+}: {
+  teacherName: string;
+  quickText: string;
+  onOpenFacts: () => void;
+}) {
+  const preview =
+    quickText.length > DRILL_MINI_SUMMARY_CHARS
+      ? `${quickText.slice(0, DRILL_MINI_SUMMARY_CHARS)}…`
+      : quickText;
+  return (
+    <div className="excel-metric-drill-mini-summary">
+      <h4 className="excel-metric-drill-mini-summary-title">Сводка по срезу: {teacherName}</h4>
+      <p className="muted excel-metric-drill-mini-summary-lead">Краткий машинный пересказ выборки (можно развернуть полный блок ниже).</p>
+      <div className="excel-metric-drill-mini-summary-body">{preview}</div>
+      <button type="button" className="btn excel-metric-drill-mini-summary-btn" onClick={onOpenFacts}>
+        Полный текст в «Исходные факты»
+      </button>
+    </div>
+  );
+}
+
+function buildFilterKeyLabels(
+  roles: ColumnRole[],
+  headers: string[],
+  customLabels: CustomFilterLabels,
+): Record<string, string> {
+  const m: Record<string, string> = {};
+  roles.forEach((r, i) => {
+    if (!isFilterRole(r)) return;
+    const fk = filterKeyForRole(r, customLabels);
+    m[fk] = headers[i]?.trim() || fk;
+  });
+  if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
+    m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
+  }
+  return m;
+}
 
 function splitNarrativeParagraphs(text: string): string[] {
   return text
     .split(/\n\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
+}
+
+const MONTH_LABELS_RU = [
+  'янв.',
+  'фев.',
+  'мар.',
+  'апр.',
+  'май',
+  'июн.',
+  'июл.',
+  'авг.',
+  'сен.',
+  'окт.',
+  'ноя.',
+  'дек.',
+];
+
+function formatMonthRu(ym: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(ym.trim());
+  if (!m) return ym;
+  const mi = parseInt(m[2], 10) - 1;
+  const label = MONTH_LABELS_RU[mi] ?? m[2];
+  return `${label} ${m[1]}`;
+}
+
+function mentorHeatColor(v: number, min: number, max: number): string {
+  const span = max - min || 1;
+  const t = Math.max(0, Math.min(1, (v - min) / span));
+  const a = 0.14 + t * 0.52;
+  return `rgba(227, 6, 19, ${a})`;
 }
 
 const DASH_BAR_COLORS = [
@@ -128,8 +217,21 @@ export default function ExcelAnalyticsPage() {
   const [analyticRows, setAnalyticRows] = useState<AnalyticRow[]>([]);
   const [filterSelection, setFilterSelection] = useState<FilterSelection>({});
   const [metricPickIndex, setMetricPickIndex] = useState<number | null>(null);
+  /** Клик по столбцу гистограммы метрики: интервал + список педагогов */
+  const [metricDrill, setMetricDrill] = useState<{
+    colIndex: number;
+    header: string;
+    bin: HistogramBinDetail;
+    bins: number;
+    histMin: number;
+    histMax: number;
+  } | null>(null);
+  /** Раскрытие блока «Исходные факты» (в т.ч. после выбора педагога из дрилла) */
+  const [excelFactsOpen, setExcelFactsOpen] = useState(false);
   /** При загрузке листа сразу подбирать роли по заголовкам и данным */
-  const [autoMapOnLoad, setAutoMapOnLoad] = useState(true);
+  const [autoMapOnLoad, setAutoMapOnLoad] = useState(false);
+  /** Подписи из ячеек: по умолчанию только часть до «//» (рус.), иначе часть после «//». */
+  const [showEnglishExcelLabels, setShowEnglishExcelLabels] = useState(false);
   /** Сообщение, если при анализе отсечена служебная колонка времени */
   const [serviceStripNote, setServiceStripNote] = useState<string | null>(null);
   const [summaryNarrative, setSummaryNarrative] = useState<string | null>(null);
@@ -162,6 +264,12 @@ export default function ExcelAnalyticsPage() {
   const [directorDossierMeta, setDirectorDossierMeta] = useState<{ truncated: boolean; totalGroups: number } | null>(
     null,
   );
+
+  /** Какой фильтр показывать на графике «распределение по срезу» (null = первый из списка). */
+  const [userFilterChartKey, setUserFilterChartKey] = useState<string | null>(null);
+
+  /** Педагог для блоков «список через запятую»: покрытие X из Y и топ отметок. */
+  const [listFeatureMentorPick, setListFeatureMentorPick] = useState('');
 
   const onFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -265,61 +373,6 @@ export default function ExcelAnalyticsPage() {
     return lines;
   }, [headers, roles]);
 
-  const runAnalysis = () => {
-    const v = validateRoles(roles);
-    if (!v.ok) {
-      setErr(v.message ?? 'Проверьте маппинг');
-      return;
-    }
-    const ordCol = roles.indexOf('metric_ordinal_text');
-    if (ordCol >= 0 && ordinalLevels.length === 0) {
-      setErr('Для текстовой шкалы задайте порядок уровней (или нажмите «Подставить из данных»).');
-      return;
-    }
-
-    const { roles: rolesForRun, strippedIndex } = applyServiceTimestampIgnore(headers, rawRows, roles);
-    const vRun = validateRoles(rolesForRun);
-    if (!vRun.ok) {
-      setErr(
-        vRun.message
-          ? `После автоотсечения служебной колонки: ${vRun.message}`
-          : 'Проверьте маппинг после автоотсечения служебной колонки.',
-      );
-      return;
-    }
-
-    setErr(null);
-    if (strippedIndex != null) {
-      setServiceStripNote(
-        `Столбец «${headers[strippedIndex] || strippedIndex + 1}» распознан как служебная метка времени (например, момент голосования) и исключён из анализа. Роли колонок обновлены.`,
-      );
-    } else {
-      setServiceStripNote(null);
-    }
-
-    if (rolesForRun.some((r, i) => r !== roles[i])) {
-      setRoles(rolesForRun);
-    }
-
-    let built = buildAnalyticRows(headers, rawRows, rolesForRun, customLabels, ordinalLevels);
-    built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
-    setAnalyticRows(built);
-
-    const sel: FilterSelection = {};
-    const keys = new Set<string>();
-    rolesForRun.forEach((r) => {
-      if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
-    });
-    keys.forEach((k) => {
-      sel[k] = null;
-    });
-    setFilterSelection(sel);
-
-    const firstMetric =
-      rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
-    setMetricPickIndex(firstMetric);
-  };
-
   const filteredRows = useMemo(() => {
     return applyFilters(analyticRows, filterSelection);
   }, [analyticRows, filterSelection]);
@@ -370,11 +423,14 @@ export default function ExcelAnalyticsPage() {
     roles.forEach((r) => {
       if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
     });
+    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
+      keys.add(PULSE_PARALLEL_AUTO_KEY);
+    }
     return [...keys];
   }, [roles, customLabels]);
 
   const filterSectionColumns = useMemo((): FilterColumnForSections[] => {
-    return roles
+    const base = roles
       .map((r, i) => ({ r, i }))
       .filter(({ r }) => isFilterRole(r))
       .map(({ r, i }) => ({
@@ -383,10 +439,21 @@ export default function ExcelAnalyticsPage() {
         header: headers[i] || '',
         colIndex: i,
       }));
+    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
+      base.unshift({
+        filterKey: PULSE_PARALLEL_AUTO_KEY,
+        role: 'filter_parallel',
+        header: 'Параллель (из класса: 7А, 7B → 7)',
+        colIndex: -1,
+      });
+    }
+    return base;
   }, [roles, headers, customLabels]);
 
   const autoFilterSections = useMemo(() => buildAutoFilterSections(filterSectionColumns), [filterSectionColumns]);
   const filterSections = aiSectionLayout ?? autoFilterSections;
+
+  const filterKeysSig = useMemo(() => [...filterKeys].sort().join('\u0001'), [filterKeys]);
 
   const filterKeyDisplayLabel = useMemo(() => {
     const m: Record<string, string> = {};
@@ -396,8 +463,20 @@ export default function ExcelAnalyticsPage() {
       const h = headers[i]?.trim();
       m[fk] = h || fk;
     });
+    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
+      m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
+    }
     return m;
   }, [roles, headers, customLabels]);
+
+  const filterKeyDisplayLabelUi = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
+    const m: Record<string, string> = {};
+    for (const [k, v] of Object.entries(filterKeyDisplayLabel)) {
+      m[k] = formatBilingualCellLabel(v, mode);
+    }
+    return m;
+  }, [filterKeyDisplayLabel, showEnglishExcelLabels]);
 
   const dashboardDateRange = useMemo(() => {
     const dates = filteredRowsOnePerLesson.map((r) => r.date).filter((d): d is string => Boolean(d));
@@ -407,19 +486,32 @@ export default function ExcelAnalyticsPage() {
   }, [filteredRowsOnePerLesson]);
 
   const filterSnapshotRows = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
     const rows: { label: string; value: string }[] = [];
     for (const k of filterKeys) {
       const sel = filterSelection[k];
-      const label = filterKeyDisplayLabel[k] ?? k;
+      const label = filterKeyDisplayLabelUi[k] ?? k;
       if (sel === null) {
         rows.push({ label, value: 'Все значения' });
       } else if (Array.isArray(sel)) {
         if (sel.length === 0) rows.push({ label, value: 'Нет (срез по столбцу пуст)' });
-        else rows.push({ label, value: sel.join('; ') });
+        else rows.push({ label, value: sel.map((x) => formatBilingualCellLabel(x, mode)).join('; ') });
       }
     }
     return rows;
-  }, [filterKeys, filterSelection, filterKeyDisplayLabel]);
+  }, [filterKeys, filterSelection, filterKeyDisplayLabelUi, showEnglishExcelLabels]);
+
+  const filterSnapshotAllOpen = useMemo(
+    () => filterSnapshotRows.length > 0 && filterSnapshotRows.every((r) => r.value === 'Все значения'),
+    [filterSnapshotRows],
+  );
+
+  const singleTeacherFilterName = useMemo(() => {
+    if (!teacherFilterKey) return null;
+    const s = filterSelection[teacherFilterKey];
+    if (Array.isArray(s) && s.length === 1) return s[0];
+    return null;
+  }, [teacherFilterKey, filterSelection]);
 
   /** Текст для ИИ: фильтры = параметры среза. */
   const filterParameterSummaryRu = useMemo(() => {
@@ -465,10 +557,23 @@ export default function ExcelAnalyticsPage() {
 
   const sumStatsRow = useMemo(() => sumTotalStats(filteredRowsOnePerLesson), [filteredRowsOnePerLesson]);
 
-  const histogramData = useMemo(() => {
+  const histogramBinsForPick = useMemo(() => {
     if (metricPickIndex == null) return [];
-    return histogramNumeric(filteredRowsOnePerLesson, metricPickIndex, 8);
+    return histogramNumericBins(filteredRowsOnePerLesson, metricPickIndex, METRIC_HIST_BINS);
   }, [filteredRowsOnePerLesson, metricPickIndex]);
+
+  const metricDrillTeachers = useMemo(() => {
+    if (!metricDrill || !teacherFilterKey) return [];
+    return teachersInMetricBin(
+      filteredRowsOnePerLesson,
+      metricDrill.colIndex,
+      metricDrill.bin,
+      metricDrill.histMin,
+      metricDrill.histMax,
+      metricDrill.bins,
+      teacherFilterKey,
+    );
+  }, [metricDrill, teacherFilterKey, filteredRowsOnePerLesson]);
 
   const monthData = useMemo(() => countsByMonth(filteredRowsOnePerLesson), [filteredRowsOnePerLesson]);
 
@@ -477,7 +582,27 @@ export default function ExcelAnalyticsPage() {
     return ordinalDistribution(filteredRowsOnePerLesson, ordinalLevels);
   }, [filteredRowsOnePerLesson, ordinalLevels, roles]);
 
+  const ordinalChartDisplay = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
+    return ordinalChartData.map((r) => ({
+      ...r,
+      level: formatBilingualCellLabel(r.level, mode),
+    }));
+  }, [ordinalChartData, showEnglishExcelLabels]);
+
   const metricHeaderLabel = metricPickIndex != null ? headers[metricPickIndex] ?? 'Метрика' : '';
+  const metricHeaderLabelUi = useMemo(
+    () => formatBilingualCellLabel(metricHeaderLabel, showEnglishExcelLabels ? 'en' : 'ru'),
+    [metricHeaderLabel, showEnglishExcelLabels],
+  );
+
+  const metricColLegendLabel = useCallback(
+    (colIndex: number, fallback: string) => {
+      const raw = headers[colIndex] ?? fallback;
+      return formatBilingualCellLabel(raw, showEnglishExcelLabels ? 'en' : 'ru') || fallback;
+    },
+    [headers, showEnglishExcelLabels],
+  );
 
   const numericMetricsForSummary = useMemo(
     () => metricNumericCols.map((mi) => ({ colIndex: mi, label: headers[mi] ?? `Колонка ${mi + 1}` })),
@@ -498,6 +623,183 @@ export default function ExcelAnalyticsPage() {
       })),
     [meanByColumnData],
   );
+
+  const meanChartDisplay = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
+    return meanChartRows.map((d) => {
+      const full = formatBilingualCellLabel(d.fullName, mode);
+      return {
+        short: full.length > 42 ? `${full.slice(0, 39)}…` : full,
+        fullName: full,
+        mean: d.mean,
+      };
+    });
+  }, [meanChartRows, showEnglishExcelLabels]);
+
+  const effectiveFilterChartKey =
+    userFilterChartKey && filterKeys.includes(userFilterChartKey) ? userFilterChartKey : filterKeys[0] ?? null;
+
+  const filterBarChartData = useMemo(() => {
+    if (!effectiveFilterChartKey) return [];
+    return topFilterBucketsByUniqueLesson(filteredRows, effectiveFilterChartKey, 18, teacherFilterKey).map((b) => ({
+      short: b.display.length > 42 ? `${b.display.slice(0, 39)}…` : b.display,
+      fullName: b.display,
+      uniqueLessons: b.uniqueLessons,
+    }));
+  }, [filteredRows, effectiveFilterChartKey, teacherFilterKey]);
+
+  const filterBarChartDisplay = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
+    return filterBarChartData.map((b) => {
+      const full = formatBilingualCellLabel(b.fullName, mode);
+      return {
+        short: full.length > 42 ? `${full.slice(0, 39)}…` : full,
+        fullName: full,
+        uniqueLessons: b.uniqueLessons,
+      };
+    });
+  }, [filterBarChartData, showEnglishExcelLabels]);
+
+  const listFeatureHeaders = useMemo(() => {
+    const out: string[] = [];
+    roles.forEach((r, i) => {
+      if (r === 'text_list_features') out.push(headers[i] || `Колонка ${i + 1}`);
+    });
+    return out;
+  }, [roles, headers]);
+
+  const listFeatureMentorOptions = useMemo(() => {
+    if (!teacherFilterKey) return [] as string[];
+    return uniqueFilterValues(filteredRows, teacherFilterKey).filter((x) => x && x !== '(не указано)');
+  }, [teacherFilterKey, filteredRows]);
+
+  const listFeatureMentorEffective = useMemo(() => {
+    if (!teacherFilterKey || listFeatureMentorOptions.length === 0) return '';
+    if (listFeatureMentorPick && listFeatureMentorOptions.includes(listFeatureMentorPick)) {
+      return listFeatureMentorPick;
+    }
+    return listFeatureMentorOptions[0] ?? '';
+  }, [teacherFilterKey, listFeatureMentorOptions, listFeatureMentorPick]);
+
+  const listFeatureDetailBundles = useMemo(() => {
+    return listFeatureHeaders.map((header) => {
+      const universe = listFeatureTagUniverse(filteredRowsOnePerLesson, header);
+      const universeKeys = new Set(universe.map((u) => u.key));
+      const globalFreq = listFeatureTagCounts(filteredRowsOnePerLesson, header, 28);
+      const globalFreqChart = globalFreq.map((r) => ({
+        short: r.display.length > 36 ? `${r.display.slice(0, 33)}…` : r.display,
+        fullName: r.display,
+        uniqueLessons: r.uniqueLessons,
+      }));
+      let teacherFreqChart: { short: string; fullName: string; lessonCount: number }[] = [];
+      let coverage: { collected: number; total: number } | null = null;
+      if (teacherFilterKey && listFeatureMentorEffective) {
+        const tf = listFeatureTagFrequencyByTeacher(
+          filteredRows,
+          teacherFilterKey,
+          listFeatureMentorEffective,
+          header,
+          28,
+        );
+        teacherFreqChart = tf.map((r) => ({
+          short: r.display.length > 36 ? `${r.display.slice(0, 33)}…` : r.display,
+          fullName: r.display,
+          lessonCount: r.lessonCount,
+        }));
+        const cov = teacherListFeatureCoverage(
+          filteredRows,
+          teacherFilterKey,
+          listFeatureMentorEffective,
+          header,
+          universeKeys,
+        );
+        coverage = { collected: cov.collectedUnique, total: cov.totalUniverse };
+      }
+      return { header, universe, globalFreqChart, teacherFreqChart, coverage };
+    });
+  }, [
+    listFeatureHeaders,
+    filteredRowsOnePerLesson,
+    filteredRows,
+    teacherFilterKey,
+    listFeatureMentorEffective,
+  ]);
+
+  const listFeatureChartsPrepared = useMemo(() => {
+    const mode = showEnglishExcelLabels ? 'en' : 'ru';
+    return listFeatureDetailBundles
+      .filter((b) => b.universe.length > 0)
+      .map((b) => {
+        const grouped = b.globalFreqChart.map((g) => {
+          const gk = normalizeFacetAggregateKey(g.fullName);
+          const t = b.teacherFreqChart.find((x) => normalizeFacetAggregateKey(x.fullName) === gk);
+          const full = formatBilingualCellLabel(g.fullName, mode);
+          return {
+            short: full.length > 42 ? `${full.slice(0, 39)}…` : full,
+            fullName: full,
+            slice: g.uniqueLessons,
+            teacher: t?.lessonCount ?? 0,
+          };
+        });
+        return {
+          header: formatBilingualCellLabel(b.header, mode),
+          universeDisplay: b.universe.map((u) => ({
+            key: u.key,
+            display: formatBilingualCellLabel(u.display, mode),
+          })),
+          grouped,
+          coverage: b.coverage,
+          hasTeacher: Boolean(teacherFilterKey && listFeatureMentorEffective),
+          mentorName: listFeatureMentorEffective,
+        };
+      });
+  }, [listFeatureDetailBundles, showEnglishExcelLabels, teacherFilterKey, listFeatureMentorEffective]);
+
+  const meanByMonthData = useMemo(() => {
+    if (metricPickIndex == null) return [];
+    return meanNumericByMonth(filteredRowsOnePerLesson, metricPickIndex);
+  }, [filteredRowsOnePerLesson, metricPickIndex]);
+
+  const meanByMonthChartRows = useMemo(
+    () => meanByMonthData.map((r) => ({ ...r, monthLabel: formatMonthRu(r.month) })),
+    [meanByMonthData],
+  );
+
+  const multiMetricMonthRows = useMemo(() => {
+    if (metricNumericCols.length === 0) return [];
+    const raw = meanNumericByMonthAllMetrics(filteredRowsOnePerLesson, metricNumericCols);
+    return raw.map((row) => {
+      const rec: Record<string, string | number | null> = {
+        month: row.month,
+        monthLabel: formatMonthRu(row.month),
+      };
+      for (const mi of metricNumericCols) {
+        rec[`m${mi}`] = row.means[mi] ?? null;
+      }
+      return rec;
+    });
+  }, [filteredRowsOnePerLesson, metricNumericCols]);
+
+  const ordinalTrendByMonthRows = useMemo(() => {
+    if (roles.indexOf('metric_ordinal_text') < 0) return [];
+    return meanOrdinalRankByMonth(filteredRowsOnePerLesson).map((r) => ({
+      ...r,
+      monthLabel: formatMonthRu(r.month),
+    }));
+  }, [filteredRowsOnePerLesson, roles]);
+
+  const mentorColRanges = useMemo(() => {
+    if (!mentorChartData.length || !metricNumericCols.length) return [];
+    return metricNumericCols.map((mi) => {
+      const vals = mentorChartData
+        .map((row) => row[`m${mi}`])
+        .filter((v): v is number => v != null && Number.isFinite(Number(v)))
+        .map(Number);
+      const min = vals.length ? Math.min(...vals) : 0;
+      const max = vals.length ? Math.max(...vals) : 1;
+      return { mi, min, max: max <= min ? min + 1e-6 : max };
+    });
+  }, [mentorChartData, metricNumericCols]);
 
   const quickText = useMemo(() => {
     if (!analyticRows.length) return '';
@@ -553,6 +855,9 @@ export default function ExcelAnalyticsPage() {
       const k = filterKeyForRole(r, customLabels);
       m[k] = headers[i] || k;
     });
+    if (roles.includes('filter_class') && !roles.includes('filter_parallel')) {
+      m[PULSE_PARALLEL_AUTO_KEY] = 'Параллель (из класса)';
+    }
     return m;
   }, [roles, customLabels, headers]);
 
@@ -590,26 +895,73 @@ export default function ExcelAnalyticsPage() {
     return parts.join('\n\n');
   }, [workbookCodebookRu, pulseExtraContext]);
 
-  const applyPulseFilters = useCallback((update: (prev: FilterSelection) => FilterSelection) => {
-    setFilterSelection(update);
+  const applyPulseFilters = useCallback(
+    (update: (prev: FilterSelection) => FilterSelection) => {
+      setFilterSelection((prev) => {
+        const draft = update(prev);
+        return pruneFilterSelection(analyticRows, draft, filterKeys);
+      });
+    },
+    [analyticRows, filterKeys],
+  );
+
+  const openExcelFactsAndScroll = useCallback(() => {
+    setExcelFactsOpen(true);
+    requestAnimationFrame(() => {
+      document.getElementById('excel-drill-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }, []);
 
-  /** После смены среза убираем значения, которые не встречаются вместе с выбранными другими фильтрами. */
+  const drillSelectTeacher = useCallback(
+    (name: string) => {
+      if (!teacherFilterKey) return;
+      setExcelFactsOpen(true);
+      applyPulseFilters((prev) => ({ ...prev, [teacherFilterKey]: [name] }));
+      requestAnimationFrame(() => {
+        document.getElementById('excel-drill-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    [teacherFilterKey, applyPulseFilters],
+  );
+
+  const onHistogramBinClick = useCallback((colIdx: number, header: string, bins: HistogramBinDetail[], pt: HistogramBinDetail) => {
+    const histMin = Math.min(...bins.map((x) => x.minInclusive));
+    const histMax = Math.max(...bins.map((x) => x.maxInclusive));
+    setMetricDrill({
+      colIndex: colIdx,
+      header,
+      bin: pt,
+      bins: METRIC_HIST_BINS,
+      histMin,
+      histMax,
+    });
+  }, []);
+
+  /**
+   * Подчищаем срез только при смене данных или набора ключей фильтров.
+   * Не зависим от filterSelection — иначе возможны лишние проходы и конфликт с кликами по чипам.
+   * Локальные обновления чипов и ПУЛЬС дополнительно прогоняют prune сами.
+   */
   useEffect(() => {
     if (!analyticRows.length || !filterKeys.length) return;
     setFilterSelection((prev) => {
       const next = pruneFilterSelection(analyticRows, prev, filterKeys);
       return filterSelectionsEqual(prev, next, filterKeys) ? prev : next;
     });
-  }, [analyticRows, filterKeys, filterSelection]);
+  }, [analyticRows, filterKeysSig]);
 
-  /** Новый набор строк — сбрасываем ИИ-разметку разделов и подгрупп значений. */
+  /** Пустой срез — убираем ИИ-разметку (при новом «Построить» сброс делается в runAnalysis). */
   useEffect(() => {
+    if (analyticRows.length) return;
     setAiSectionLayout(null);
     setAiSectionsHint(null);
     setFacetGroupsByKey({});
     setFacetGroupsHint(null);
-  }, [analyticRows]);
+  }, [analyticRows.length]);
+
+  useEffect(() => {
+    setMetricDrill(null);
+  }, [metricPickIndex]);
 
   /** Смена среза — сбрасываем записи для директора (нужно сформировать заново). */
   useEffect(() => {
@@ -618,82 +970,179 @@ export default function ExcelAnalyticsPage() {
     setDirectorDossierMeta(null);
   }, [analyticRows, filterSelection]);
 
-  const fetchAiFilterSections = useCallback(async () => {
-    if (!analyticRows.length || !filterKeys.length) return;
-    setAiSectionsBusy(true);
-    setAiSectionsHint(null);
-    try {
-      const columns = roles
-        .map((r, i) => ({ r, i }))
-        .filter(({ r }) => isFilterRole(r))
-        .map(({ r, i }) => {
-          const fk = filterKeyForRole(r, customLabels);
-          const base = applyFiltersExceptKey(analyticRows, filterSelection, fk);
-          return {
-            filterKey: fk,
-            role: r,
-            roleLabel: COLUMN_ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r,
-            header: headers[i] || fk,
-            samples: uniqueFilterValues(base, fk).slice(0, 14),
-          };
-        });
-      const res = await postExcelFilterSections({ filterKeys, columns });
-      if (res.source === 'llm' && res.sections?.length) {
-        setAiSectionLayout(res.sections);
-        setAiSectionsHint(null);
-      } else {
-        setAiSectionsHint(
-          res.hint?.trim() ||
-            'Модель не вернула разделы. Проверьте ключи LLM на Cloud Function (см. BACKEND_AND_API.md).',
-        );
-      }
-    } catch (e) {
-      setAiSectionsHint(e instanceof Error ? e.message : 'Не удалось запросить ИИ');
-    } finally {
-      setAiSectionsBusy(false);
-    }
-  }, [analyticRows, filterKeys, filterSelection, roles, customLabels, headers]);
-
-  const fetchAiValueGroups = useCallback(async () => {
-    if (!analyticRows.length || !filterKeys.length) return;
-    setFacetGroupsBusy(true);
-    setFacetGroupsHint(null);
-    const acc: Record<string, ExcelFilterValueGroup[]> = {};
-    const hints: string[] = [];
-    try {
-      let anyLong = false;
-      for (const key of filterKeys) {
-        const all = uniqueFilterValues(applyFiltersExceptKey(analyticRows, filterSelection, key), key);
-        if (all.length < 18) continue;
-        anyLong = true;
-        const res = await postExcelFilterValueGroups({
-          filterKey: key,
-          header: filterKeyDisplayLabel[key] ?? key,
-          values: all,
-        });
-        if (res.source === 'llm' && res.groups?.length) {
-          acc[key] = res.groups;
-        } else if (res.hint) {
-          hints.push(`${filterKeyDisplayLabel[key] ?? key}: ${res.hint}`);
+  const runAiFilterSectionsFor = useCallback(
+    async (rows: AnalyticRow[], rolesArg: ColumnRole[], sel: FilterSelection, keys: string[]) => {
+      if (!rows.length || !keys.length) return;
+      setAiSectionsBusy(true);
+      setAiSectionsHint(null);
+      try {
+        const columns = rolesArg
+          .map((r, i) => ({ r, i }))
+          .filter(({ r }) => isFilterRole(r))
+          .map(({ r, i }) => {
+            const fk = filterKeyForRole(r, customLabels);
+            const base = applyFiltersExceptKey(rows, sel, fk);
+            return {
+              filterKey: fk,
+              role: r,
+              roleLabel: COLUMN_ROLE_OPTIONS.find((o) => o.value === r)?.label ?? r,
+              header: headers[i] || fk,
+              samples: uniqueFilterValues(base, fk).slice(0, 14),
+            };
+          });
+        const res = await postExcelFilterSections({ filterKeys: keys, columns });
+        if (res.source === 'llm' && res.sections?.length) {
+          setAiSectionLayout(res.sections);
+          setAiSectionsHint(null);
+        } else {
+          setAiSectionsHint(
+            res.hint?.trim() ||
+              'Модель не вернула разделы. Проверьте ключи LLM на Cloud Function (см. BACKEND_AND_API.md).',
+          );
         }
+      } catch (e) {
+        setAiSectionsHint(e instanceof Error ? e.message : 'Не удалось запросить ИИ');
+      } finally {
+        setAiSectionsBusy(false);
       }
-      setFacetGroupsByKey(acc);
-      if (!anyLong) {
-        setFacetGroupsHint('При текущем срезе нет столбцов с 18+ вариантами — расширьте фильтры или загрузите другой фрагмент.');
-      } else if (hints.length) {
-        setFacetGroupsHint(hints.slice(0, 4).join(' · '));
-      } else if (Object.keys(acc).length === 0) {
-        setFacetGroupsHint('ИИ не вернул группы ни для одного столбца.');
-      } else {
-        setFacetGroupsHint(null);
+    },
+    [customLabels, headers],
+  );
+
+  const runAiValueGroupsFor = useCallback(
+    async (rows: AnalyticRow[], sel: FilterSelection, keys: string[], labels: Record<string, string>) => {
+      if (!rows.length || !keys.length) return;
+      setFacetGroupsBusy(true);
+      setFacetGroupsHint(null);
+      const acc: Record<string, ExcelFilterValueGroup[]> = {};
+      const hints: string[] = [];
+      try {
+        let anyLong = false;
+        for (const key of keys) {
+          const all = uniqueFilterValues(applyFiltersExceptKey(rows, sel, key), key);
+          if (all.length < 18) continue;
+          anyLong = true;
+          const res = await postExcelFilterValueGroups({
+            filterKey: key,
+            header: labels[key] ?? key,
+            values: all,
+          });
+          if (res.source === 'llm' && res.groups?.length) {
+            acc[key] = res.groups;
+          } else if (res.hint) {
+            hints.push(`${labels[key] ?? key}: ${res.hint}`);
+          }
+        }
+        setFacetGroupsByKey(acc);
+        if (!anyLong) {
+          setFacetGroupsHint(
+            'При текущем срезе нет столбцов с 18+ вариантами — расширьте фильтры или загрузите другой фрагмент.',
+          );
+        } else if (hints.length) {
+          setFacetGroupsHint(hints.slice(0, 4).join(' · '));
+        } else if (Object.keys(acc).length === 0) {
+          setFacetGroupsHint('ИИ не вернул группы ни для одного столбца.');
+        } else {
+          setFacetGroupsHint(null);
+        }
+      } catch (e) {
+        setFacetGroupsByKey({});
+        setFacetGroupsHint(e instanceof Error ? e.message : 'Ошибка запроса');
+      } finally {
+        setFacetGroupsBusy(false);
       }
-    } catch (e) {
-      setFacetGroupsByKey({});
-      setFacetGroupsHint(e instanceof Error ? e.message : 'Ошибка запроса');
-    } finally {
-      setFacetGroupsBusy(false);
+    },
+    [],
+  );
+
+  const fetchAiFilterSections = useCallback(() => {
+    void runAiFilterSectionsFor(analyticRows, roles, filterSelection, filterKeys);
+  }, [runAiFilterSectionsFor, analyticRows, roles, filterSelection, filterKeys]);
+
+  const fetchAiValueGroups = useCallback(() => {
+    void runAiValueGroupsFor(analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel);
+  }, [runAiValueGroupsFor, analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel]);
+
+  const runAnalysis = useCallback(() => {
+    const v = validateRoles(roles);
+    if (!v.ok) {
+      setErr(v.message ?? 'Проверьте маппинг');
+      return;
     }
-  }, [analyticRows, filterKeys, filterSelection, filterKeyDisplayLabel]);
+    const ordCol = roles.indexOf('metric_ordinal_text');
+    if (ordCol >= 0 && ordinalLevels.length === 0) {
+      setErr('Для текстовой шкалы задайте порядок уровней (или нажмите «Подставить из данных»).');
+      return;
+    }
+
+    const { roles: rolesForRun, strippedIndex } = applyServiceTimestampIgnore(headers, rawRows, roles);
+    const vRun = validateRoles(rolesForRun);
+    if (!vRun.ok) {
+      setErr(
+        vRun.message
+          ? `После автоотсечения служебной колонки: ${vRun.message}`
+          : 'Проверьте маппинг после автоотсечения служебной колонки.',
+      );
+      return;
+    }
+
+    setErr(null);
+    setAiSectionLayout(null);
+    setAiSectionsHint(null);
+    setFacetGroupsByKey({});
+    setFacetGroupsHint(null);
+    setMetricDrill(null);
+    setExcelFactsOpen(false);
+
+    if (strippedIndex != null) {
+      setServiceStripNote(
+        `Столбец «${headers[strippedIndex] || strippedIndex + 1}» распознан как служебная метка времени (например, момент голосования) и исключён из анализа. Роли колонок обновлены.`,
+      );
+    } else {
+      setServiceStripNote(null);
+    }
+
+    if (rolesForRun.some((r, i) => r !== roles[i])) {
+      setRoles(rolesForRun);
+    }
+
+    let built = buildAnalyticRows(headers, rawRows, rolesForRun, customLabels, ordinalLevels);
+    built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
+    built = augmentRowsWithDerivedParallel(built, rolesForRun, customLabels);
+    setAnalyticRows(built);
+
+    const sel: FilterSelection = {};
+    const keys = new Set<string>();
+    rolesForRun.forEach((r) => {
+      if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
+    });
+    if (rolesForRun.includes('filter_class') && !rolesForRun.includes('filter_parallel')) {
+      keys.add(PULSE_PARALLEL_AUTO_KEY);
+    }
+    keys.forEach((k) => {
+      sel[k] = null;
+    });
+    setFilterSelection(sel);
+
+    const firstMetric =
+      rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
+    setMetricPickIndex(firstMetric);
+
+    const keysArr = [...keys];
+    const labelsM = buildFilterKeyLabels(rolesForRun, headers, customLabels);
+    void (async () => {
+      await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr);
+      await runAiValueGroupsFor(built, sel, keysArr, labelsM);
+    })();
+  }, [
+    roles,
+    ordinalLevels,
+    headers,
+    rawRows,
+    customLabels,
+    runAiFilterSectionsFor,
+    runAiValueGroupsFor,
+  ]);
 
   const fetchDirectorDossier = useCallback(async () => {
     if (!teacherFilterKey) {
@@ -799,7 +1248,7 @@ export default function ExcelAnalyticsPage() {
         );
       }
       const chip = (val: string) => {
-        const checked = sel === null || (sel?.includes(val) ?? false);
+        const checked = Array.isArray(sel) && sel.includes(val);
         return (
           <label key={val} className="excel-analytics-chip">
             <input
@@ -808,16 +1257,20 @@ export default function ExcelAnalyticsPage() {
               onChange={() => {
                 setFilterSelection((prev) => {
                   const cur = prev[key];
-                  if (cur === null) {
-                    const next = all.filter((x) => x !== val);
-                    return { ...prev, [key]: next };
+                  let nextVal: string[] | null;
+                  if (cur == null) {
+                    nextVal = [val];
+                  } else {
+                    const set = new Set(cur);
+                    if (set.has(val)) set.delete(val);
+                    else set.add(val);
+                    const arr = [...set];
+                    if (arr.length === 0) nextVal = null;
+                    else if (arr.length === all.length) nextVal = null;
+                    else nextVal = arr;
                   }
-                  const set = new Set(cur);
-                  if (set.has(val)) set.delete(val);
-                  else set.add(val);
-                  const next = [...set];
-                  if (next.length === all.length) return { ...prev, [key]: null };
-                  return { ...prev, [key]: next };
+                  const updated = { ...prev, [key]: nextVal };
+                  return pruneFilterSelection(analyticRows, updated, filterKeys);
                 });
               }}
             />
@@ -841,7 +1294,7 @@ export default function ExcelAnalyticsPage() {
       }
       return <div className="excel-analytics-filter-chips">{all.map(chip)}</div>;
     },
-    [filterSelection, facetGroupsByKey],
+    [filterSelection, facetGroupsByKey, analyticRows, filterKeys],
   );
 
   useEffect(() => {
@@ -888,7 +1341,9 @@ export default function ExcelAnalyticsPage() {
         if (!cancelled) {
           setSummaryNarrative(null);
           setSummaryNarrativeWords(null);
-          setSummaryNarrativeApiHint(null);
+          setSummaryNarrativeApiHint(
+            'Запрос к API не выполнен (сеть, API Gateway, таймаут или HTTP-ошибка). Если ключи LLM уже заданы на функции — проверьте шлюз и логи; иначе см. BACKEND_AND_API.md (OpenRouter: OPENAI_API_KEY + OPENAI_BASE_URL).',
+          );
         }
       })
       .finally(() => {
@@ -983,8 +1438,8 @@ export default function ExcelAnalyticsPage() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <p className="admin-dash-kicker">Пульс · аналитика</p>
-          <h1 className="admin-dash-title">Наблюдения из Excel</h1>
+          <p className="admin-dash-kicker">Модуль аналитики · Excel</p>
+          <h1 className="admin-dash-title">Наблюдения из таблицы</h1>
           <p className="muted admin-dash-lead">
             Загрузите таблицу, укажите лист и строку заголовков, сопоставьте колонки с ролями. Если в той же книге на
             другом листе есть расшифровка шифра в ФИО (столбцы вроде «ШИФР» и «ФИО»), она автоматически подмешивается в
@@ -1004,6 +1459,16 @@ export default function ExcelAnalyticsPage() {
             />
           </label>
           {fileName && <p className="muted excel-analytics-filename">{fileName}</p>}
+          {fileName && (
+            <label className="excel-analytics-check excel-analytics-file-lang-check">
+              <input
+                type="checkbox"
+                checked={showEnglishExcelLabels}
+                onChange={(e) => setShowEnglishExcelLabels(e.target.checked)}
+              />
+              Показывать английские подписи из таблицы (часть после «//»)
+            </label>
+          )}
         </section>
 
         {buffer && (
@@ -1213,422 +1678,560 @@ export default function ExcelAnalyticsPage() {
         )}
 
         {analyticRows.length > 0 && (
-          <div className="excel-dashboard">
-            <div className="excel-dashboard-workspace">
-              <aside className="excel-dashboard-sidebar" aria-label="Фильтры и выборка">
-                <div className="card glass-surface excel-dashboard-sidebar-card">
-                  <div className="excel-dashboard-sidebar-head">
-                    <p className="excel-dashboard-sidebar-kicker">Срез данных</p>
-                    <h2 className="excel-dashboard-sidebar-title">Выборка</h2>
-                    <p className="muted excel-dashboard-sidebar-lead">
-                      Отметьте значения — справа обновятся графики, ПУЛЬС и таблица.
-                    </p>
-                    <div className="excel-dashboard-kpis excel-dashboard-kpis--sidebar">
-                      <div className="excel-dashboard-kpi">
-                        <span className="excel-dashboard-kpi-value">{filteredRows.length}</span>
-                        <span className="excel-dashboard-kpi-label">точек</span>
-                      </div>
-                      <div className="excel-dashboard-kpi">
-                        <span className="excel-dashboard-kpi-value">{kpiLessons}</span>
-                        <span className="excel-dashboard-kpi-label">уроков</span>
-                      </div>
-                      {teacherFilterKey != null && (
-                        <div className="excel-dashboard-kpi">
-                          <span className="excel-dashboard-kpi-value">{kpiMentors}</span>
-                          <span className="excel-dashboard-kpi-label">наставников</span>
-                        </div>
-                      )}
+          <div className="excel-dashboard excel-dashboard--stacked">
+            <div className="card glass-surface excel-dashboard-slice-strip" aria-label="Срез по всем параметрам наблюдения">
+              <div className="excel-dashboard-slice-top">
+                <div className="excel-dashboard-slice-intro">
+                  <p className="excel-dashboard-slice-kicker">Срез выборки</p>
+                  <h2 className="excel-dashboard-slice-title">Все параметры из маппинга</h2>
+                  <p className="muted excel-dashboard-slice-lead">
+                    Каждая колонка-фильтр — измерение; каскад оставляет только совместимые значения. Сначала настройте
+                    срез, затем смотрите графики и ПУЛЬС ниже.
+                  </p>
+                </div>
+                <div className="excel-dashboard-slice-toolbar">
+                  <div className="excel-dashboard-kpis excel-dashboard-kpis--slice">
+                    <div className="excel-dashboard-kpi">
+                      <span className="excel-dashboard-kpi-value">{filteredRows.length}</span>
+                      <span className="excel-dashboard-kpi-label">точек</span>
                     </div>
+                    <div className="excel-dashboard-kpi">
+                      <span className="excel-dashboard-kpi-value">{kpiLessons}</span>
+                      <span className="excel-dashboard-kpi-label">уроков</span>
+                    </div>
+                    {teacherFilterKey != null && (
+                      <div className="excel-dashboard-kpi">
+                        <span className="excel-dashboard-kpi-value">{kpiMentors}</span>
+                        <span className="excel-dashboard-kpi-label">наставников</span>
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" className="btn primary excel-dashboard-reset" onClick={resetAllFilters}>
+                    Сбросить все фильтры
+                  </button>
+                  <label className="excel-analytics-check excel-dashboard-lang-toggle">
+                    <input
+                      type="checkbox"
+                      checked={showEnglishExcelLabels}
+                      onChange={(e) => setShowEnglishExcelLabels(e.target.checked)}
+                    />
+                    Подписи после «//» (EN)
+                  </label>
+                </div>
+              </div>
+
+              <div className="excel-dashboard-slice-ai">
+                <p className="muted excel-dashboard-slice-ai-lead">
+                  После «Построить анализ» разделы среза и группы в длинных списках запрашиваются у модели автоматически
+                  (тот же API, что у ПУЛЬС). Кнопки ниже — повторить запрос при смене данных или если ответ не пришёл.
+                </p>
+                <div className="excel-dashboard-filter-ai-actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!analyticRows.length || aiSectionsBusy}
+                    onClick={() => void fetchAiFilterSections()}
+                  >
+                    {aiSectionsBusy ? 'ИИ: разделы…' : 'Обновить разделы (ИИ)'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={!analyticRows.length || facetGroupsBusy}
+                    onClick={() => void fetchAiValueGroups()}
+                  >
+                    {facetGroupsBusy ? 'ИИ: группы…' : 'Обновить группы в списках (ИИ)'}
+                  </button>
+                  {(aiSectionLayout != null || Object.keys(facetGroupsByKey).length > 0) && (
                     <button
                       type="button"
-                      className="btn primary excel-dashboard-reset excel-dashboard-reset--block"
-                      onClick={resetAllFilters}
+                      className="btn"
+                      onClick={() => {
+                        setAiSectionLayout(null);
+                        setFacetGroupsByKey({});
+                        setAiSectionsHint(null);
+                        setFacetGroupsHint(null);
+                      }}
                     >
-                      Сбросить все фильтры
+                      Сбросить ИИ
                     </button>
-                  </div>
-                  <div className="excel-dashboard-sidebar-filters">
-                    <h3 className="excel-dashboard-filters-heading">Фильтры</h3>
-                    <p className="muted excel-dashboard-filter-ai-note">
-                      Разделы и списки сначала строятся автоматически (роли, заголовки, каскад по выбранным фильтрам).
-                      Кнопки ниже — опционально ИИ (тот же API, что у ПУЛЬС): перегруппировать блоки боковой панели или сложить
-                      длинные «сырые» списки (классы, метки) в смысловые подгруппы. Цепочка среза по-прежнему соблюдается:
-                      варианты только совместимые с остальным выбором.
-                    </p>
-                    <div className="excel-dashboard-filter-ai-actions">
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={!analyticRows.length || aiSectionsBusy}
-                        onClick={() => void fetchAiFilterSections()}
-                      >
-                        {aiSectionsBusy ? 'ИИ: разделы…' : 'ИИ: разделы панели'}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        disabled={!analyticRows.length || facetGroupsBusy}
-                        onClick={() => void fetchAiValueGroups()}
-                      >
-                        {facetGroupsBusy ? 'ИИ: группы…' : 'ИИ: группы в длинных списках'}
-                      </button>
-                      {(aiSectionLayout != null || Object.keys(facetGroupsByKey).length > 0) && (
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => {
-                            setAiSectionLayout(null);
-                            setFacetGroupsByKey({});
-                            setAiSectionsHint(null);
-                            setFacetGroupsHint(null);
-                          }}
-                        >
-                          Сбросить ИИ
-                        </button>
-                      )}
-                    </div>
-                    {(aiSectionsHint || facetGroupsHint) && (
-                      <p className="muted excel-dashboard-filter-ai-hint-msg">{aiSectionsHint || facetGroupsHint}</p>
-                    )}
-                    <p className="muted excel-dashboard-filter-hint">
-                      Значения в одной ячейке через запятую (как в Google Forms) дают отдельные варианты. «Снять все» в
-                      столбце исключает его из среза; «Все значения» снимает ограничение по этому столбцу. Если срез стал
-                      пустым, расширьте фильтры слева.
-                    </p>
-                    <div className="excel-analytics-filters">
-                      {filterSections.map((section) => (
-                        <div key={section.id} className="excel-dashboard-filter-section">
-                          <h4 className="excel-dashboard-filter-section-title">{section.title}</h4>
-                          {section.keys.map((key) => {
-                            const all = uniqueFilterValues(
-                              applyFiltersExceptKey(analyticRows, filterSelection, key),
-                              key,
-                            );
-                            return (
-                              <div key={key} className="excel-analytics-filter-block">
-                                <div className="excel-analytics-filter-title">{filterKeyDisplayLabel[key] ?? key}</div>
+                  )}
+                </div>
+                {(aiSectionsHint || facetGroupsHint) && (
+                  <p className="muted excel-dashboard-filter-ai-hint-msg">{aiSectionsHint || facetGroupsHint}</p>
+                )}
+              </div>
+
+              <p className="muted excel-dashboard-filter-hint excel-dashboard-slice-hint">
+                Снятые галочки по измерению значат «не сужать по этому полю». Отметьте нужные значения — срез сузится.
+                Несколько значений в ячейке фильтра через запятую дают отдельные варианты. Колонка «Список через запятую»
+                (пойнты) в фильтры не попадает — она в графиках и ИИ. Есть только «Класс» без «Параллель» — появится
+                измерение «Параллель (из класса)» для среза по 7А/7B/7… → параллель 7 и сравнения наставников.
+              </p>
+
+              <div className="excel-dashboard-slice-sections">
+                {filterSections.length === 0 ? (
+                  <p className="muted excel-dashboard-slice-empty">
+                    В маппинге нет колонок с ролью фильтра — срез по измерениям не строится. Назначьте хотя бы одну
+                    колонку ролью «Параллель», «Класс», «Предмет», «Формат» или доп. фильтр.
+                  </p>
+                ) : (
+                  filterSections.map((section) => (
+                    <section key={section.id} className="excel-slice-section">
+                      <h3 className="excel-slice-section-title">{section.title}</h3>
+                      <div className="excel-dashboard-slice-filters-grid excel-dashboard-slice-filters-grid--wide">
+                        {section.keys.map((key) => {
+                          const all = uniqueFilterValues(applyFiltersExceptKey(analyticRows, filterSelection, key), key);
+                          return (
+                            <div key={key} className="excel-slice-dimension card glass-surface">
+                              <div className="excel-slice-dimension-head">
+                                <span className="excel-slice-dimension-label">{filterKeyDisplayLabelUi[key] ?? key}</span>
+                              </div>
+                              <div className="excel-slice-dimension-body">
                                 {renderFilterChipsForKey(key, all)}
                                 <div className="excel-analytics-filter-actions">
                                   <button
                                     type="button"
                                     className="btn"
-                                    onClick={() => setFilterSelection((p) => ({ ...p, [key]: null }))}
+                                    onClick={() =>
+                                      setFilterSelection((p) =>
+                                        pruneFilterSelection(analyticRows, { ...p, [key]: null }, filterKeys),
+                                      )
+                                    }
                                   >
-                                    Все значения
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn"
-                                    onClick={() => setFilterSelection((p) => ({ ...p, [key]: [] }))}
-                                  >
-                                    Снять все
+                                    Сбросить измерение
                                   </button>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </aside>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))
+                )}
+              </div>
+            </div>
 
-              <div className="excel-dashboard-main">
+            <div className="excel-dashboard-main">
                 <header className="excel-dashboard-main-head card glass-surface">
                   <div className="excel-dashboard-main-head-text">
                     <p className="excel-dashboard-main-kicker">Панель анализа</p>
                     <h2 className="excel-dashboard-main-title">Графики, выводы и детализация</h2>
                     <p className="muted excel-dashboard-main-lead">
-                      Любой .xlsx с вашими ролями колонок: слева — срез, здесь — таблицы сводки, графики и развёрнутый отчёт ИИ
-                      (не копипаст из Excel, а интерпретация для руководителя). Ниже — ассистент ПУЛЬС для уточняющих вопросов.
+                      Ниже — графики по текущему срезу, краткая сводка, затем ПУЛЬС: чат и отчёты ИИ в одном блоке. Фильтры
+                      остаются вверху страницы.
                     </p>
                   </div>
                 </header>
 
-                <div className="excel-dash-board-panels">
-                  <div className="excel-dash-panel-row excel-dash-panel-row--two">
-                    <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
-                      <h3 className="excel-dash-card-title">Сводка выборки</h3>
-                      <p className="muted excel-dash-card-sub">Показатели пересчитываются при любых фильтрах и любом новом файле.</p>
-                      <div className="excel-dash-table-scroll">
-                        <table className="excel-dash-data-table">
-                          <tbody>
-                            {fileName && (
-                              <tr>
-                                <th scope="row">Файл</th>
-                                <td>{fileName}</td>
-                              </tr>
-                            )}
-                            {sheet && (
-                              <tr>
-                                <th scope="row">Лист</th>
-                                <td>{sheet}</td>
-                              </tr>
-                            )}
-                            <tr>
-                              <th scope="row">Строк в разборе</th>
-                              <td>{analyticRows.length}</td>
-                            </tr>
-                            <tr>
-                              <th scope="row">Точек в текущем срезе</th>
-                              <td>{filteredRows.length}</td>
-                            </tr>
-                            <tr>
-                              <th scope="row">Уроков по смыслу (в срезе)</th>
-                              <td>
-                                {kpiLessons}
-                                <span className="muted excel-dash-table-hint">
-                                  {' '}
-                                  дата + подпись строки + фильтры, кроме наставника; дубликаты строк Excel схлопываются
-                                </span>
-                              </td>
-                            </tr>
-                            <tr>
-                              <th scope="row">Строк импорта в срезе</th>
-                              <td>{kpiImportRowsFiltered}</td>
-                            </tr>
-                            <tr>
-                              <th scope="row">Уроков по смыслу (весь файл)</th>
-                              <td>
-                                {uniqueLessonCount}{' '}
-                                <span className="muted">({kpiImportRowsTotal} строк импорта)</span>
-                              </td>
-                            </tr>
-                            {teacherFilterKey != null && (
-                              <tr>
-                                <th scope="row">Педагогов в срезе</th>
-                                <td>{kpiMentors}</td>
-                              </tr>
-                            )}
-                            <tr>
-                              <th scope="row">Период по дате</th>
-                              <td>
-                                {dashboardDateRange
-                                  ? `${dashboardDateRange.from} — ${dashboardDateRange.to}`
-                                  : '—'}
-                              </td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </section>
-                    <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
-                      <h3 className="excel-dash-card-title">Активные фильтры</h3>
-                      <p className="muted excel-dash-card-sub">Каскад: варианты согласованы с остальным выбором.</p>
-                      <div className="excel-dash-table-scroll excel-dash-table-scroll--tall">
-                        <table className="excel-dash-data-table">
-                          <thead>
-                            <tr>
-                              <th>Поле</th>
-                              <th>Срез</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filterSnapshotRows.map((r) => (
-                              <tr key={r.label}>
-                                <td className="excel-dash-data-table-key">{r.label}</td>
-                                <td>{r.value}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </section>
-                  </div>
-                  {metricsTableRows.length > 0 && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--metrics-table">
-                      <h3 className="excel-dash-card-title">Числовые пункты в текущем срезе</h3>
-                      <p className="muted excel-dash-card-sub">
-                        Среднее, минимум и максимум по уникальным записям урока (строка Excel): при развёртке нескольких
-                        наставников или тегов в одной ячейке урок не учитывается несколько раз.
-                      </p>
-                      <div className="excel-dash-table-scroll">
-                        <table className="excel-dash-data-table excel-dash-data-table--dense">
-                          <thead>
-                            <tr>
-                              <th>Показатель</th>
-                              <th>Среднее</th>
-                              <th>Мин.</th>
-                              <th>Макс.</th>
-                              <th>Уроков с числом</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {metricsTableRows.map((row) => (
-                              <tr key={row.col}>
-                                <td className="excel-dash-data-table-metric-name">{row.name}</td>
-                                <td>{row.mean != null ? row.mean.toFixed(2) : '—'}</td>
-                                <td>{row.min != null ? row.min.toFixed(2) : '—'}</td>
-                                <td>{row.max != null ? row.max.toFixed(2) : '—'}</td>
-                                <td>{row.n}</td>
-                              </tr>
-                            ))}
-                            {metricNumericCols.length > 1 && sumStatsRow && (
-                              <tr className="excel-dash-data-table-total">
-                                <td className="excel-dash-data-table-metric-name">Σ пунктов по строке</td>
-                                <td>{sumStatsRow.mean.toFixed(2)}</td>
-                                <td>{sumStatsRow.min.toFixed(2)}</td>
-                                <td>{sumStatsRow.max.toFixed(2)}</td>
-                                <td>{sumStatsRow.n}</td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </section>
-                  )}
-                </div>
-
-                <section className="card glass-surface excel-dash-card excel-dash-card--ai-report">
-                  <div className="excel-dash-ai-report-head">
-                    <h3 className="excel-dash-card-title">Аналитический отчёт (ИИ)</h3>
-                    {summaryNarrativeWords != null && (
-                      <span className="excel-dash-ai-report-badge">≈ {summaryNarrativeWords} слов</span>
-                    )}
-                  </div>
-                  <p className="muted excel-dash-card-sub excel-summary-source-note">
-                    {summaryNarrativeLoading &&
-                      'Готовим развёрнутый текст для руководителя (ориентир от 500 слов на нормальной выборке). Пока ниже — машинная выгрузка фактов в свёрнутом блоке.'}
-                    {!summaryNarrativeLoading && summaryNarrative &&
-                      'Стиль — развёрнутый аналитический документ для руководителя (как комплексный отчёт по наблюдениям). Основа — расширенная выгрузка фактов и средних по педагогам; модель не должна придумывать новые цифры вне этого контекста.'}
-                    {!summaryNarrativeLoading && !summaryNarrative &&
-                      (summaryNarrativeApiHint ||
-                        'ИИ-отчёт недоступен: на Cloud Function задайте DEEPSEEK_API_KEY и LLM_PROVIDER=deepseek (рекомендуется из РФ), либо OPENAI_API_KEY / YANDEX_* — см. BACKEND_AND_API.md. Откройте блок «Исходные факты» для сырой выгрузки.')}
-                  </p>
-                  {summaryNarrative ? (
-                    <article className="excel-ai-report-prose">
-                      {splitNarrativeParagraphs(summaryNarrative).map((para, i) => (
-                        <p key={i}>{para}</p>
-                      ))}
-                    </article>
-                  ) : (
-                    <p className="muted excel-ai-report-placeholder">
-                      {summaryNarrativeLoading ? '…' : 'Здесь появится связный отчёт после ответа модели.'}
-                    </p>
-                  )}
-                  <details className="excel-ai-report-facts">
-                    <summary className="excel-ai-report-facts-summary">Исходные факты из выборки (машинная сводка)</summary>
-                    <pre className="excel-analytics-pre excel-dash-pre excel-ai-report-facts-pre">
-                      {workbookCodebookRu.trim()
-                        ? `${workbookCodebookRu.trim()}\n\n${richLlmContext || quickText}`
-                        : richLlmContext || quickText}
-                    </pre>
-                  </details>
-                </section>
-
-                <section className="card glass-surface excel-dash-card excel-dash-card--ai-report excel-dash-card--deep-report">
-                  <div className="excel-dash-ai-report-head">
-                    <h3 className="excel-dash-card-title">Полный разбор среза (глубокий режим)</h3>
-                    {deepWords != null && (
-                      <span className="excel-dash-ai-report-badge">≈ {deepWords} слов</span>
-                    )}
-                  </div>
-                  <p className="muted excel-dash-card-sub">
-                    Те же фильтры слева задают <strong>параметры выборки</strong>: сузили класс, предмет, формат — в отчёт
-                    попадёт только этот срез. Режим рассчитан на развёрнутый текст (ориентир от ~1000 слов на большой
-                    выборке), в духе «прогнать через сильную модель» (удобно с{' '}
-                    <span className="nowrap">DeepSeek</span>:{' '}
-                    <code className="excel-inline-code">DEEPSEEK_API_KEY</code> и{' '}
-                    <code className="excel-inline-code">LLM_PROVIDER=deepseek</code> на функции). Запрос выполняется по
-                    кнопке — отдельно от автоматического отчёта выше.
-                  </p>
-                  <label className="excel-deep-focus-label">
-                    <span className="muted">Дополнительный фокус (необязательно)</span>
-                    <textarea
-                      className="field excel-deep-focus-textarea"
-                      rows={3}
-                      value={deepUserFocus}
-                      onChange={(e) => setDeepUserFocus(e.target.value)}
-                      placeholder="Например: сравни очный и онлайн; акцент на младших классах; что не так с пунктом «…»"
-                      disabled={deepLoading || !richLlmContext.trim()}
-                    />
-                  </label>
-                  <div className="excel-deep-report-actions">
-                    <button
-                      type="button"
-                      className="btn primary"
-                      disabled={deepLoading || !richLlmContext.trim()}
-                      onClick={() => void fetchDeepDashboardAnalysis()}
-                    >
-                      {deepLoading ? 'Формируем полный отчёт…' : 'Сформировать полный отчёт по текущему срезу'}
-                    </button>
-                  </div>
-                  {deepHint && <p className="excel-director-dossier-hint">{deepHint}</p>}
-                  {deepNarrative ? (
-                    <article className="excel-ai-report-prose excel-ai-report-prose--deep">
-                      {splitNarrativeParagraphs(deepNarrative).map((para, i) => (
-                        <p key={i}>{para}</p>
-                      ))}
-                    </article>
-                  ) : (
-                    <p className="muted excel-ai-report-placeholder">
-                      {deepLoading
-                        ? '…'
-                        : 'Нажмите кнопку — модель соберёт расширенный документ по машинной сводке и вашим фильтрам.'}
-                    </p>
-                  )}
-                </section>
-
-                <PulseExcelChat
-                  facetOptions={pulseFacetOptions}
-                  facetLabels={pulseFacetLabels}
-                  currentFilters={filterSelection}
-                  numericSummary={richLlmContext || quickText || '(постройте анализ для сводки)'}
-                  extraContext={pulseLlmExtraBundle.trim() || undefined}
-                  onApplyFilters={applyPulseFilters}
-                />
-
                 <div className="excel-dashboard-main-charts">
-                  {teacherFilterKey && (
-                    <section className="card glass-surface excel-dash-card excel-dash-card--director-dossier">
-                      <h3 className="excel-dash-card-title">Записки для директора по педагогам</h3>
+                  <section className="card glass-surface excel-dash-card excel-dash-card--wide excel-dash-chart-catalog">
+                    <h3 className="excel-dash-card-title">Визуализации по текущему срезу</h3>
+                    <p className="muted excel-dash-card-sub">
+                      Доступно: распределение уроков по значению фильтра; сравнение средних всех числовых пунктов по
+                      месяцам; отдельная гистограмма под каждый пункт; динамика числа уроков и среднего по одному пункту;
+                      при текстовой шкале — столбчатое распределение и линия среднего ранга по месяцам; при колонке
+                      наставника — групповые столбцы и тепловая таблица средних; списки через запятую — справочник и топы.
+                    </p>
+                  </section>
+
+                  {multiMetricMonthRows.length >= 2 && metricNumericCols.length > 0 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                      <h3 className="excel-dash-card-title">Средние по всем числовым пунктам по месяцам</h3>
                       <p className="muted excel-dash-card-sub">
-                        По текущему срезу данных для каждого педагога собираются факты (цифры и выдержки из таблицы); модель
-                        превращает их в связный текст в духе аналитической записки. Если в маппинге есть колонка «Предмет /
-                        тема», отдельный блок создаётся для каждой пары педагог + предмет — как в развёрнутом отчёте по
-                        дисциплинам.
+                        Одна линия на каждый пункт из маппинга; по оси X — месяц из колонки «Дата». Пропуски, если в месяце
+                        не было чисел по пункту.
                       </p>
-                      <div className="excel-director-dossier-actions">
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={directorDossierBusy || !filteredRows.length}
-                          onClick={() => void fetchDirectorDossier()}
-                        >
-                          {directorDossierBusy ? 'Формируем…' : 'Сформировать записки (ИИ)'}
-                        </button>
-                        {directorDossierMeta && (
-                          <span className="muted excel-director-dossier-meta">
-                            Сегментов в отчёте: {directorDossier?.length ?? 0}
-                            {directorDossierMeta.truncated ? ` (всего в срезе: ${directorDossierMeta.totalGroups})` : ''}
-                          </span>
+                      <div className="excel-analytics-chart excel-analytics-chart--tall">
+                        <ResponsiveContainer width="100%" height={340}>
+                          <LineChart data={multiMetricMonthRows} margin={{ top: 8, right: 28, left: 4, bottom: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-16} textAnchor="end" height={48} />
+                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
+                            <Tooltip />
+                            <Legend wrapperStyle={{ paddingTop: 6 }} />
+                            {metricNumericCols.map((mi, i) => (
+                              <Line
+                                key={mi}
+                                type="monotone"
+                                dataKey={`m${mi}`}
+                                name={metricColLegendLabel(mi, `П.${mi + 1}`)}
+                                stroke={DASH_BAR_COLORS[i % DASH_BAR_COLORS.length]}
+                                strokeWidth={2}
+                                dot={{ r: 2 }}
+                                connectNulls
+                              />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </section>
+                  )}
+
+                  {ordinalTrendByMonthRows.length >= 2 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                      <h3 className="excel-dash-card-title">Динамика текстовой шкалы (средний ранг по месяцам)</h3>
+                      <p className="muted excel-dash-card-sub">
+                        Ранг соответствует порядку уровней, который вы задали при построении анализа (выше на графике —
+                        в сторону «лучшего» конца шкалы).
+                      </p>
+                      <div className="excel-analytics-chart">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={ordinalTrendByMonthRows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-14} textAnchor="end" height={46} />
+                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
+                            <Tooltip formatter={(v: number) => [v != null ? Number(v).toFixed(2) : '—', 'Средн. ранг']} />
+                            <Line
+                              type="monotone"
+                              dataKey="meanRank"
+                              stroke="#7c3aed"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              name="Средний ранг"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </section>
+                  )}
+
+                  {metricNumericCols.length > 1 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                      <h3 className="excel-dash-card-title">Гистограммы по каждому числовому пункту</h3>
+                      <p className="muted excel-dash-card-sub">
+                        Распределение значений по уникальным урокам в срезе.
+                        {teacherFilterKey
+                          ? ' Клик по столбцу — справа список педагогов в этом интервале; по педагогу — срез и сводка ниже.'
+                          : ' Назначьте колонке роль «Код/шифр педагога», чтобы по клику видеть список педагогов в интервале.'}
+                      </p>
+                      <div
+                        className={
+                          metricDrill && teacherFilterKey
+                            ? 'excel-histogram-multi-with-panel'
+                            : 'excel-histogram-multi-with-panel excel-histogram-multi-with-panel--solo'
+                        }
+                      >
+                        <div className="excel-histogram-multi-grid">
+                          {metricNumericCols.map((mi, idx) => {
+                            const histBins = histogramNumericBins(
+                              filteredRowsOnePerLesson,
+                              mi,
+                              METRIC_HIST_BINS,
+                            );
+                            if (histBins.length === 0) return null;
+                            const headerMini = metricColLegendLabel(mi, `Пункт ${mi + 1}`);
+                            const baseFill = DASH_BAR_COLORS[idx % DASH_BAR_COLORS.length];
+                            return (
+                              <div key={mi} className="excel-histogram-mini card glass-surface">
+                                <h4 className="excel-histogram-mini-title">{headerMini}</h4>
+                                <div className="excel-analytics-chart excel-histogram-mini-chart">
+                                  <ResponsiveContainer width="100%" height={200}>
+                                    <BarChart data={histBins} margin={{ top: 4, right: 8, left: 0, bottom: 32 }}>
+                                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                                      <XAxis
+                                        dataKey="label"
+                                        tick={{ fontSize: 9 }}
+                                        interval={0}
+                                        angle={-20}
+                                        textAnchor="end"
+                                        height={48}
+                                      />
+                                      <YAxis tick={{ fontSize: 10 }} width={32} />
+                                      <Tooltip />
+                                      <Bar dataKey="count" radius={[3, 3, 0, 0]}>
+                                        {histBins.map((entry, bi) => (
+                                          <Cell
+                                            key={`b-${mi}-${bi}`}
+                                            fill={baseFill}
+                                            cursor={teacherFilterKey ? 'pointer' : 'default'}
+                                            opacity={
+                                              metricDrill?.colIndex === mi && metricDrill?.bin.binIndex === entry.binIndex
+                                                ? 1
+                                                : 0.45
+                                            }
+                                            onClick={() => {
+                                              if (!teacherFilterKey) return;
+                                              onHistogramBinClick(mi, headerMini, histBins, entry);
+                                            }}
+                                          />
+                                        ))}
+                                      </Bar>
+                                    </BarChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {metricDrill && teacherFilterKey && (
+                          <aside className="excel-metric-drill-panel" aria-label="Педагоги в выбранном интервале метрики">
+                            <div className="excel-metric-drill-panel-head">
+                              <div>
+                                <div className="excel-metric-drill-panel-metric">{metricDrill.header}</div>
+                                <div className="excel-metric-drill-panel-bin">Интервал: {metricDrill.bin.label}</div>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn excel-metric-drill-close"
+                                aria-label="Закрыть панель"
+                                onClick={() => setMetricDrill(null)}
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <p className="muted excel-metric-drill-panel-hint">
+                              Уроки в выбранном диапазоне по этому пункту. Клик по ФИО — сузить дашборд, краткая сводка
+                              появится здесь, блок «Исходные факты» ниже раскроется автоматически.
+                            </p>
+                            {metricDrillTeachers.length === 0 ? (
+                              <p className="muted">В этом интервале нет строк с указанным педагогом.</p>
+                            ) : (
+                              <ul className="excel-metric-drill-teacher-list">
+                                {metricDrillTeachers.map((t) => (
+                                  <li key={t.teacher}>
+                                    <button
+                                      type="button"
+                                      className="excel-metric-drill-teacher-btn"
+                                      onClick={() => drillSelectTeacher(t.teacher)}
+                                    >
+                                      <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
+                                      <span className="muted">{t.lessons} ур.</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {singleTeacherFilterName && quickText ? (
+                              <ExcelDrillMiniSummary
+                                teacherName={singleTeacherFilterName}
+                                quickText={quickText}
+                                onOpenFacts={openExcelFactsAndScroll}
+                              />
+                            ) : null}
+                          </aside>
                         )}
                       </div>
-                      {directorDossierHint && <p className="excel-director-dossier-hint">{directorDossierHint}</p>}
-                      {directorDossier && directorDossier.length > 0 && (
-                        <div className="excel-director-dossier-list">
-                          {directorDossier.map((row) => (
-                            <details key={row.segmentId} className="excel-director-dossier-block" open>
-                              <summary className="excel-director-dossier-summary">
-                                <span className="excel-director-dossier-summary-name">{row.teacher}</span>
-                                {row.subject != null && row.subject !== '' && (
-                                  <span className="muted excel-director-dossier-summary-subj"> · {row.subject}</span>
-                                )}
-                              </summary>
-                              {row.narrative ? (
-                                <div className="excel-director-dossier-body">
-                                  {splitNarrativeParagraphs(row.narrative).map((para, i) => (
-                                    <p key={i}>{para}</p>
+                    </section>
+                  )}
+
+                  {filterKeys.length > 0 && filterBarChartDisplay.length > 0 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                      <h3 className="excel-dash-card-title">Распределение по фильтру (уникальные уроки)</h3>
+                      <p className="muted excel-dash-card-sub">
+                        По оси — сколько логических уроков в текущем срезе имеют каждое значение среза. Похожие написания
+                        объединяются. Выберите измерение:
+                      </p>
+                      <label className="excel-analytics-field">
+                        Фильтр
+                        <select
+                          className="excel-analytics-select"
+                          value={effectiveFilterChartKey ?? ''}
+                          onChange={(e) => setUserFilterChartKey(e.target.value || null)}
+                        >
+                          {filterKeys.map((k) => (
+                            <option key={k} value={k}>
+                              {filterKeyDisplayLabelUi[k] ?? k}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="excel-analytics-chart">
+                        <ResponsiveContainer
+                          width="100%"
+                          height={Math.min(480, 48 + filterBarChartDisplay.length * 30)}
+                        >
+                          <BarChart
+                            data={filterBarChartDisplay}
+                            layout="vertical"
+                            margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                            <XAxis type="number" tick={{ fontSize: 11 }} />
+                            <YAxis type="category" dataKey="short" width={200} tick={{ fontSize: 10 }} interval={0} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (!active || !payload?.length) return null;
+                                const p = payload[0].payload as { fullName: string; uniqueLessons: number };
+                                return (
+                                  <div
+                                    style={{
+                                      background: '#fff',
+                                      border: '1px solid var(--card-border)',
+                                      borderRadius: 8,
+                                      padding: '0.5rem 0.75rem',
+                                      fontSize: 12,
+                                      maxWidth: 320,
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 700, marginBottom: 4 }}>{p.fullName}</div>
+                                    <div>Уроков: {p.uniqueLessons}</div>
+                                  </div>
+                                );
+                              }}
+                            />
+                            <Bar dataKey="uniqueLessons" fill="#115e59" name="Уроков" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </section>
+                  )}
+
+                  {listFeatureChartsPrepared.length > 0 && (
+                    <details className="excel-dash-details-list-features">
+                      <summary className="excel-dash-details-list-features-summary">
+                        Списки через запятую: топ и сравнение «весь срез / педагог» (откройте после настройки фильтров)
+                      </summary>
+                      <div className="excel-list-features-details-body">
+                        {teacherFilterKey && listFeatureMentorOptions.length > 0 && (
+                          <div className="excel-list-feature-mentor-pick card glass-surface">
+                            <label className="excel-analytics-field excel-list-feature-mentor-pick-label">
+                              Педагог для сравнения на графике
+                              <select
+                                className="excel-analytics-select"
+                                value={listFeatureMentorEffective}
+                                onChange={(e) => setListFeatureMentorPick(e.target.value)}
+                              >
+                                {listFeatureMentorOptions.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        )}
+
+                        <div className="excel-dashboard-chart-row excel-dashboard-chart-row--list-features-wide">
+                          {listFeatureChartsPrepared.map((b) => (
+                            <section
+                              key={b.header}
+                              className="card glass-surface excel-dash-card excel-dash-card--wide excel-dash-card--list-features"
+                            >
+                              <h3 className="excel-dash-card-title">Список через запятую: {b.header}</h3>
+                              <p className="muted excel-dash-card-sub excel-dash-card-sub--tight">
+                                Уникальные уроки с отметкой по пункту. Два столбца: весь текущий срез и выбранный педагог
+                                (если задан код наставника).
+                              </p>
+
+                              <details className="excel-list-feature-universe-details">
+                                <summary className="excel-list-feature-universe-summary">
+                                  Все различные пункты в срезе ({b.universeDisplay.length})
+                                </summary>
+                                <ul className="excel-list-feature-universe">
+                                  {b.universeDisplay.map((u) => (
+                                    <li key={u.key}>{u.display}</li>
                                   ))}
+                                </ul>
+                              </details>
+
+                              {b.grouped.length > 0 && (
+                                <div className="excel-list-feature-chart-block">
+                                  <h4 className="excel-list-feature-chart-title">
+                                    Топ {b.grouped.length}: срез и педагог
+                                    {b.coverage && b.hasTeacher && b.coverage.total > 0 && (
+                                      <span className="muted excel-list-feature-coverage-hint">
+                                        {' '}
+                                        · в справочнике у педагога: {b.coverage.collected}/{b.coverage.total}
+                                      </span>
+                                    )}
+                                  </h4>
+                                  <div className="excel-analytics-chart">
+                                    <ResponsiveContainer
+                                      width="100%"
+                                      height={Math.min(520, 56 + b.grouped.length * 32)}
+                                    >
+                                      <BarChart
+                                        data={b.grouped}
+                                        layout="vertical"
+                                        margin={{ top: 8, right: 16, left: 4, bottom: 8 }}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                                        <XAxis type="number" tick={{ fontSize: 11 }} />
+                                        <YAxis
+                                          type="category"
+                                          dataKey="short"
+                                          width={220}
+                                          tick={{ fontSize: 10 }}
+                                          interval={0}
+                                        />
+                                        <Tooltip
+                                          content={({ active, payload }) => {
+                                            if (!active || !payload?.length) return null;
+                                            const p = payload[0].payload as {
+                                              fullName: string;
+                                              slice: number;
+                                              teacher: number;
+                                            };
+                                            return (
+                                              <div
+                                                style={{
+                                                  background: '#fff',
+                                                  border: '1px solid var(--card-border)',
+                                                  borderRadius: 8,
+                                                  padding: '0.5rem 0.75rem',
+                                                  fontSize: 12,
+                                                  maxWidth: 380,
+                                                }}
+                                              >
+                                                <div style={{ fontWeight: 700, marginBottom: 6 }}>{p.fullName}</div>
+                                                <div>Весь срез: {p.slice} уроков</div>
+                                                {b.hasTeacher && <div>Педагог: {p.teacher} уроков</div>}
+                                              </div>
+                                            );
+                                          }}
+                                        />
+                                        <Legend wrapperStyle={{ paddingTop: 4 }} />
+                                        <Bar dataKey="slice" fill="#0d9488" name="Весь срез" radius={[0, 4, 4, 0]} />
+                                        {b.hasTeacher ? (
+                                          <Bar
+                                            dataKey="teacher"
+                                            fill="#e30613"
+                                            name={`Педагог: ${b.mentorName}`}
+                                            radius={[0, 4, 4, 0]}
+                                          />
+                                        ) : null}
+                                      </BarChart>
+                                    </ResponsiveContainer>
+                                  </div>
                                 </div>
-                              ) : (
-                                <p className="muted excel-director-dossier-missing">Текст не получен для этого сегмента.</p>
                               )}
-                            </details>
+                            </section>
                           ))}
                         </div>
-                      )}
+                      </div>
+                    </details>
+                  )}
+
+                  {metricPickIndex != null && meanByMonthChartRows.length >= 2 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--wide">
+                      <h3 className="excel-dash-card-title">Динамика среднего по месяцам</h3>
+                      <p className="muted excel-dash-card-sub">
+                        По выбранному в блоке «Распределение по пункту» числовому пункту — среднее значение по уникальным
+                        урокам внутри каждого календарного месяца (колонка «Дата»).
+                      </p>
+                      <div className="excel-analytics-chart">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={meanByMonthChartRows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                            <XAxis dataKey="monthLabel" tick={{ fontSize: 10 }} interval={0} angle={-18} textAnchor="end" height={52} />
+                            <YAxis tick={{ fontSize: 11 }} domain={['auto', 'auto']} />
+                            <Tooltip
+                              formatter={(v: number) => [v != null ? Number(v).toFixed(2) : '—', 'Среднее']}
+                              labelFormatter={(label) => String(label)}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="mean"
+                              stroke="var(--brand-red)"
+                              strokeWidth={2}
+                              dot={{ r: 3 }}
+                              name={metricHeaderLabelUi}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
                     </section>
                   )}
 
@@ -1637,7 +2240,10 @@ export default function ExcelAnalyticsPage() {
                       <h3 className="excel-dash-card-title">По наставникам: средние по всем пунктам</h3>
                       <p className="muted excel-dash-card-sub">
                         Каждый столбец — числовой пункт из таблицы; по оси X — наставник. Один урок с несколькими ФИО в ячейке
-                        учтён как отдельные оценки для каждого.
+                        учтён как отдельные оценки для каждого. В таблице ниже — цветовая интенсивность по столбцу (светлее
+                        — ниже среднее по наставникам в этом пункте в срезе, насыщеннее — выше). Чтобы сравнить педагогов внутри
+                        одной параллели, вверху отметьте «Параллель (из класса)» или отдельную колонку «Параллель» — график
+                        пересчитается по текущему срезу.
                       </p>
                       <div className="excel-analytics-chart excel-dash-chart-tall">
                         <ResponsiveContainer
@@ -1664,7 +2270,7 @@ export default function ExcelAnalyticsPage() {
                               <Bar
                                 key={mi}
                                 dataKey={`m${mi}`}
-                                name={headers[mi] ?? `Пункт ${i + 1}`}
+                                name={metricColLegendLabel(mi, `П.${mi + 1}`)}
                                 fill={DASH_BAR_COLORS[i % DASH_BAR_COLORS.length]}
                                 radius={[2, 2, 0, 0]}
                               />
@@ -1678,7 +2284,7 @@ export default function ExcelAnalyticsPage() {
                             <tr>
                               <th>Педагог</th>
                               {metricNumericCols.map((mi) => (
-                                <th key={mi}>{headers[mi] ?? `П.${mi + 1}`}</th>
+                                <th key={mi}>{metricColLegendLabel(mi, `П.${mi + 1}`)}</th>
                               ))}
                             </tr>
                           </thead>
@@ -1688,8 +2294,16 @@ export default function ExcelAnalyticsPage() {
                                 <td className="excel-dash-data-table-key">{String(row.mentor)}</td>
                                 {metricNumericCols.map((mi) => {
                                   const v = row[`m${mi}`];
+                                  const range = mentorColRanges.find((x) => x.mi === mi);
+                                  const num = v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+                                  const bg =
+                                    num != null && range
+                                      ? mentorHeatColor(num, range.min, range.max)
+                                      : undefined;
                                   return (
-                                    <td key={mi}>{v != null && Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '—'}</td>
+                                    <td key={mi} className="excel-mentor-heatmap-cell" style={{ background: bg }}>
+                                      {num != null ? num.toFixed(2) : '—'}
+                                    </td>
                                   );
                                 })}
                               </tr>
@@ -1704,6 +2318,11 @@ export default function ExcelAnalyticsPage() {
                     {metricNumericCols.length > 0 && (
                       <section className="card glass-surface excel-dash-card excel-dash-card--in-row">
                         <h3 className="excel-dash-card-title">Распределение по пункту</h3>
+                        <p className="muted excel-dash-card-sub excel-metric-pick-hint">
+                          {teacherFilterKey
+                            ? 'Клик по столбцу — список педагогов справа; по ФИО — краткая сводка в панели и автоматически раскрываются «Исходные факты» ниже.'
+                            : 'Для списка педагогов по интервалу назначьте колонку «Код/шифр педагога».'}
+                        </p>
                         <label className="excel-analytics-field">
                           Пункт
                           <select
@@ -1713,34 +2332,117 @@ export default function ExcelAnalyticsPage() {
                           >
                             {metricNumericCols.map((mi) => (
                               <option key={mi} value={mi}>
-                                {headers[mi]}
+                                {metricColLegendLabel(mi, `П.${mi + 1}`)}
                               </option>
                             ))}
                           </select>
                         </label>
-                        {histogramData.length > 0 && (
-                          <div className="excel-analytics-chart">
-                            <ResponsiveContainer width="100%" height={260}>
-                              <BarChart data={histogramData} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
-                                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-22} textAnchor="end" height={56} />
-                                <YAxis tick={{ fontSize: 11 }} />
-                                <Tooltip />
-                                <Bar dataKey="count" fill="var(--chart-bar)" name="Кол-во" radius={[4, 4, 0, 0]} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                            <p className="muted">{metricHeaderLabel}</p>
+                        {histogramBinsForPick.length > 0 && metricPickIndex != null && (
+                          <div
+                            className={
+                              metricDrill && teacherFilterKey && metricDrill.colIndex === metricPickIndex
+                                ? 'excel-metric-drill-row'
+                                : 'excel-metric-drill-row excel-metric-drill-row--solo'
+                            }
+                          >
+                            <div className="excel-metric-drill-chart-wrap excel-analytics-chart">
+                              <ResponsiveContainer width="100%" height={260}>
+                                <BarChart data={histogramBinsForPick} margin={{ top: 8, right: 8, left: 0, bottom: 40 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                                  <XAxis
+                                    dataKey="label"
+                                    tick={{ fontSize: 10 }}
+                                    interval={0}
+                                    angle={-22}
+                                    textAnchor="end"
+                                    height={56}
+                                  />
+                                  <YAxis tick={{ fontSize: 11 }} />
+                                  <Tooltip />
+                                  <Bar dataKey="count" name="Кол-во" radius={[4, 4, 0, 0]}>
+                                    {histogramBinsForPick.map((entry, i) => (
+                                      <Cell
+                                        key={`pick-${i}`}
+                                        fill="var(--chart-bar)"
+                                        cursor={teacherFilterKey ? 'pointer' : 'default'}
+                                        opacity={
+                                          metricDrill?.colIndex === metricPickIndex &&
+                                          metricDrill?.bin.binIndex === entry.binIndex
+                                            ? 1
+                                            : 0.5
+                                        }
+                                        onClick={() => {
+                                          if (!teacherFilterKey) return;
+                                          onHistogramBinClick(
+                                            metricPickIndex,
+                                            metricHeaderLabel,
+                                            histogramBinsForPick,
+                                            entry,
+                                          );
+                                        }}
+                                      />
+                                    ))}
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                              <p className="muted">{metricHeaderLabel}</p>
+                            </div>
+                            {metricDrill &&
+                              teacherFilterKey &&
+                              metricDrill.colIndex === metricPickIndex && (
+                                <aside className="excel-metric-drill-panel" aria-label="Педагоги в интервале">
+                                  <div className="excel-metric-drill-panel-head">
+                                    <div>
+                                      <div className="excel-metric-drill-panel-metric">{metricDrill.header}</div>
+                                      <div className="excel-metric-drill-panel-bin">Интервал: {metricDrill.bin.label}</div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="btn excel-metric-drill-close"
+                                      aria-label="Закрыть"
+                                      onClick={() => setMetricDrill(null)}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                  {metricDrillTeachers.length === 0 ? (
+                                    <p className="muted">Нет педагогов в этом интервале.</p>
+                                  ) : (
+                                    <ul className="excel-metric-drill-teacher-list">
+                                      {metricDrillTeachers.map((t) => (
+                                        <li key={t.teacher}>
+                                          <button
+                                            type="button"
+                                            className="excel-metric-drill-teacher-btn"
+                                            onClick={() => drillSelectTeacher(t.teacher)}
+                                          >
+                                            <span className="excel-metric-drill-teacher-name">{t.teacher}</span>
+                                            <span className="muted">{t.lessons} ур.</span>
+                                          </button>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  {singleTeacherFilterName && quickText ? (
+                                    <ExcelDrillMiniSummary
+                                      teacherName={singleTeacherFilterName}
+                                      quickText={quickText}
+                                      onOpenFacts={openExcelFactsAndScroll}
+                                    />
+                                  ) : null}
+                                </aside>
+                              )}
                           </div>
                         )}
                       </section>
                     )}
 
-                    {meanChartRows.length > 0 && (
+                    {meanChartDisplay.length > 0 && (
                       <section className="card glass-surface excel-dash-card excel-dash-card--in-row">
                         <h3 className="excel-dash-card-title">Средние по критериям (общие)</h3>
                         <div className="excel-analytics-chart">
-                          <ResponsiveContainer width="100%" height={Math.min(400, 40 + meanChartRows.length * 32)}>
-                            <BarChart data={meanChartRows} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                          <ResponsiveContainer width="100%" height={Math.min(400, 40 + meanChartDisplay.length * 32)}>
+                            <BarChart data={meanChartDisplay} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                               <XAxis type="number" tick={{ fontSize: 11 }} />
                               <YAxis type="category" dataKey="short" width={180} tick={{ fontSize: 10 }} interval={0} />
@@ -1789,12 +2491,12 @@ export default function ExcelAnalyticsPage() {
                     )}
                   </div>
 
-                  {ordinalChartData.length > 0 && (
+                  {ordinalChartDisplay.length > 0 && (
                     <section className="card glass-surface excel-dash-card excel-dash-card--ordinal">
                       <h3 className="excel-dash-card-title">Текстовая шкала</h3>
                       <div className="excel-analytics-chart">
                         <ResponsiveContainer width="100%" height={280}>
-                          <BarChart data={ordinalChartData} layout="vertical" margin={{ top: 8, right: 8, left: 120, bottom: 0 }}>
+                          <BarChart data={ordinalChartDisplay} layout="vertical" margin={{ top: 8, right: 8, left: 120, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
                             <XAxis type="number" tick={{ fontSize: 11 }} />
                             <YAxis type="category" dataKey="level" width={110} tick={{ fontSize: 11 }} />
@@ -1803,29 +2505,315 @@ export default function ExcelAnalyticsPage() {
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
+                      <details className="excel-dash-details-more">
+                        <summary>Таблица по уровням</summary>
+                        <div className="excel-dash-table-scroll">
+                          <table className="excel-dash-data-table excel-dash-data-table--dense">
+                            <thead>
+                              <tr>
+                                <th>Уровень шкалы</th>
+                                <th>Количество</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {ordinalChartDisplay.map((r) => (
+                                <tr key={r.level}>
+                                  <td>{r.level}</td>
+                                  <td>{r.count}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    </section>
+                  )}
+                </div><div className="excel-dash-board-panels excel-dash-board-panels--compact">
+                  <div className="excel-dash-panel-row excel-dash-panel-row--two excel-dash-panel-row--compact-kpi">
+                    <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
+                      <h3 className="excel-dash-card-title">Сводка выборки</h3>
+                      <div className="excel-dash-kpi-compact-row" aria-label="Ключевые показатели">
+                        <div className="excel-dash-kpi-compact-item">
+                          <span className="excel-dash-kpi-compact-value">{kpiLessons}</span>
+                          <span className="excel-dash-kpi-compact-label">уроков в срезе</span>
+                        </div>
+                        <div className="excel-dash-kpi-compact-item">
+                          <span className="excel-dash-kpi-compact-value">{filteredRows.length}</span>
+                          <span className="excel-dash-kpi-compact-label">точек</span>
+                        </div>
+                        {teacherFilterKey != null && (
+                          <div className="excel-dash-kpi-compact-item">
+                            <span className="excel-dash-kpi-compact-value">{kpiMentors}</span>
+                            <span className="excel-dash-kpi-compact-label">педагогов</span>
+                          </div>
+                        )}
+                        <div className="excel-dash-kpi-compact-item excel-dash-kpi-compact-item--wide">
+                          <span className="excel-dash-kpi-compact-value excel-dash-kpi-compact-value--sm">
+                            {dashboardDateRange ? `${dashboardDateRange.from} — ${dashboardDateRange.to}` : '—'}
+                          </span>
+                          <span className="excel-dash-kpi-compact-label">период</span>
+                        </div>
+                      </div>
+                      <details className="excel-dash-details-more">
+                        <summary>Подробнее о подсчёте</summary>
+                        <div className="excel-dash-table-scroll">
+                          <table className="excel-dash-data-table excel-dash-data-table--dense">
+                            <tbody>
+                              {fileName && (
+                                <tr>
+                                  <th scope="row">Файл</th>
+                                  <td>{fileName}</td>
+                                </tr>
+                              )}
+                              {sheet && (
+                                <tr>
+                                  <th scope="row">Лист</th>
+                                  <td>{sheet}</td>
+                                </tr>
+                              )}
+                              <tr>
+                                <th scope="row">Строк в разборе</th>
+                                <td>{analyticRows.length}</td>
+                              </tr>
+                              <tr>
+                                <th scope="row">Строк импорта в срезе</th>
+                                <td>{kpiImportRowsFiltered}</td>
+                              </tr>
+                              <tr>
+                                <th scope="row">Уроков (весь файл)</th>
+                                <td>
+                                  {uniqueLessonCount}{' '}
+                                  <span className="muted">({kpiImportRowsTotal} имп.)</span>
+                                </td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    </section>
+                    <section className="card glass-surface excel-dash-card excel-dash-card--data-panel">
+                      <h3 className="excel-dash-card-title">Активные фильтры</h3>
+                      {filterSnapshotAllOpen ? (
+                        <p className="muted excel-dash-filter-compact-all">Все измерения: весь диапазон значений.</p>
+                      ) : (
+                        <div className="excel-dash-table-scroll excel-dash-table-scroll--tall">
+                          <table className="excel-dash-data-table excel-dash-data-table--dense">
+                            <thead>
+                              <tr>
+                                <th>Поле</th>
+                                <th>Срез</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filterSnapshotRows.map((r) => (
+                                <tr key={r.label}>
+                                  <td className="excel-dash-data-table-key">{r.label}</td>
+                                  <td>{r.value}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </section>
+                  </div>
+                  {metricsTableRows.length > 0 && (
+                    <section className="card glass-surface excel-dash-card excel-dash-card--metrics-table">
+                      <h3 className="excel-dash-card-title">Числовые пункты в текущем срезе</h3>
+                      <p className="muted excel-dash-card-sub">
+                        Среднее, минимум и максимум по уникальным записям урока (строка Excel): при развёртке нескольких
+                        наставников или тегов в одной ячейке урок не учитывается несколько раз.
+                      </p>
                       <div className="excel-dash-table-scroll">
                         <table className="excel-dash-data-table excel-dash-data-table--dense">
                           <thead>
                             <tr>
-                              <th>Уровень шкалы</th>
-                              <th>Количество</th>
+                              <th>Показатель</th>
+                              <th>Среднее</th>
+                              <th>Мин.</th>
+                              <th>Макс.</th>
+                              <th>Уроков с числом</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {ordinalChartData.map((r) => (
-                              <tr key={r.level}>
-                                <td>{r.level}</td>
-                                <td>{r.count}</td>
+                            {metricsTableRows.map((row) => (
+                              <tr key={row.col}>
+                                <td className="excel-dash-data-table-metric-name">
+                                  {formatBilingualCellLabel(row.name, showEnglishExcelLabels ? 'en' : 'ru')}
+                                </td>
+                                <td>{row.mean != null ? row.mean.toFixed(2) : '—'}</td>
+                                <td>{row.min != null ? row.min.toFixed(2) : '—'}</td>
+                                <td>{row.max != null ? row.max.toFixed(2) : '—'}</td>
+                                <td>{row.n}</td>
                               </tr>
                             ))}
+                            {metricNumericCols.length > 1 && sumStatsRow && (
+                              <tr className="excel-dash-data-table-total">
+                                <td className="excel-dash-data-table-metric-name">Σ пунктов по строке</td>
+                                <td>{sumStatsRow.mean.toFixed(2)}</td>
+                                <td>{sumStatsRow.min.toFixed(2)}</td>
+                                <td>{sumStatsRow.max.toFixed(2)}</td>
+                                <td>{sumStatsRow.n}</td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                       </div>
                     </section>
                   )}
                 </div>
+
+                <PulseExcelChat
+                  facetOptions={pulseFacetOptions}
+                  facetLabels={pulseFacetLabels}
+                  currentFilters={filterSelection}
+                  numericSummary={richLlmContext || quickText || '(постройте анализ для сводки)'}
+                  extraContext={pulseLlmExtraBundle.trim() || undefined}
+                  onApplyFilters={applyPulseFilters}
+                  embeddedPanel={
+                    <>
+                      <div className="pulse-excel-embed-stack" id="excel-drill-summary">
+                        <details className="pulse-excel-embed-details" open>
+                          <summary className="pulse-excel-embed-summary">
+                            <span>Аналитический отчёт (ИИ)</span>
+                            {summaryNarrativeWords != null && (
+                              <span className="excel-dash-ai-report-badge">≈ {summaryNarrativeWords} слов</span>
+                            )}
+                          </summary>
+                          <p className="muted excel-dash-card-sub excel-summary-source-note">
+                            {summaryNarrativeLoading &&
+                              'Готовим развёрнутый текст. Пока можно открыть «Исходные факты» ниже.'}
+                            {!summaryNarrativeLoading && summaryNarrative && 'Связный документ по текущему срезу и фактам из таблицы.'}
+                            {!summaryNarrativeLoading && !summaryNarrative &&
+                              (summaryNarrativeApiHint ||
+                                'ИИ-отчёт не сформирован: проверьте ключи LLM на Cloud Function и логи.')}
+                          </p>
+                          {summaryNarrative ? (
+                            <article className="excel-ai-report-prose">
+                              {splitNarrativeParagraphs(summaryNarrative).map((para, i) => (
+                                <p key={i}>{para}</p>
+                              ))}
+                            </article>
+                          ) : (
+                            <p className="muted excel-ai-report-placeholder">
+                              {summaryNarrativeLoading ? '…' : 'Отчёт появится после ответа модели.'}
+                            </p>
+                          )}
+                          <details
+                            className="excel-ai-report-facts"
+                            open={excelFactsOpen}
+                            onToggle={(e) => setExcelFactsOpen(e.currentTarget.open)}
+                          >
+                            <summary className="excel-ai-report-facts-summary">Исходные факты (машинная сводка)</summary>
+                            <pre className="excel-analytics-pre excel-dash-pre excel-ai-report-facts-pre">
+                              {workbookCodebookRu.trim()
+                                ? `${workbookCodebookRu.trim()}\n\n${richLlmContext || quickText}`
+                                : richLlmContext || quickText}
+                            </pre>
+                          </details>
+                        </details>
+
+                        <details className="pulse-excel-embed-details">
+                          <summary className="pulse-excel-embed-summary">
+                            <span>Полный разбор среза (глубокий режим)</span>
+                            {deepWords != null && (
+                              <span className="excel-dash-ai-report-badge">≈ {deepWords} слов</span>
+                            )}
+                          </summary>
+                          <p className="muted excel-dash-card-sub">
+                            Развёрнутый текст по текущим фильтрам. Выполняется по кнопке (отдельный запрос к модели на
+                            функции).
+                          </p>
+                          <label className="excel-deep-focus-label">
+                            <span className="muted">Дополнительный фокус (необязательно)</span>
+                            <textarea
+                              className="field excel-deep-focus-textarea"
+                              rows={3}
+                              value={deepUserFocus}
+                              onChange={(e) => setDeepUserFocus(e.target.value)}
+                              placeholder="Например: сравни очный и онлайн; акцент на младших классах"
+                              disabled={deepLoading || !richLlmContext.trim()}
+                            />
+                          </label>
+                          <div className="excel-deep-report-actions">
+                            <button
+                              type="button"
+                              className="btn primary"
+                              disabled={deepLoading || !richLlmContext.trim()}
+                              onClick={() => void fetchDeepDashboardAnalysis()}
+                            >
+                              {deepLoading ? 'Формируем…' : 'Сформировать полный отчёт'}
+                            </button>
+                          </div>
+                          {deepHint && <p className="excel-director-dossier-hint">{deepHint}</p>}
+                          {deepNarrative ? (
+                            <article className="excel-ai-report-prose excel-ai-report-prose--deep">
+                              {splitNarrativeParagraphs(deepNarrative).map((para, i) => (
+                                <p key={i}>{para}</p>
+                              ))}
+                            </article>
+                          ) : (
+                            <p className="muted excel-ai-report-placeholder">
+                              {deepLoading ? '…' : 'Нажмите кнопку выше.'}
+                            </p>
+                          )}
+                        </details>
+
+                        {teacherFilterKey && (
+                          <details className="pulse-excel-embed-details">
+                            <summary className="pulse-excel-embed-summary">Записки для директора по педагогам</summary>
+                            <p className="muted excel-dash-card-sub">
+                              По срезу — блоки по педагогам (и предмету, если задан в маппинге).
+                            </p>
+                            <div className="excel-director-dossier-actions">
+                              <button
+                                type="button"
+                                className="btn primary"
+                                disabled={directorDossierBusy || !filteredRows.length}
+                                onClick={() => void fetchDirectorDossier()}
+                              >
+                                {directorDossierBusy ? 'Формируем…' : 'Сформировать записки (ИИ)'}
+                              </button>
+                              {directorDossierMeta && (
+                                <span className="muted excel-director-dossier-meta">
+                                  Сегментов: {directorDossier?.length ?? 0}
+                                  {directorDossierMeta.truncated ? ` (всего: ${directorDossierMeta.totalGroups})` : ''}
+                                </span>
+                              )}
+                            </div>
+                            {directorDossierHint && <p className="excel-director-dossier-hint">{directorDossierHint}</p>}
+                            {directorDossier && directorDossier.length > 0 && (
+                              <div className="excel-director-dossier-list">
+                                {directorDossier.map((row) => (
+                                  <details key={row.segmentId} className="excel-director-dossier-block" open>
+                                    <summary className="excel-director-dossier-summary">
+                                      <span className="excel-director-dossier-summary-name">{row.teacher}</span>
+                                      {row.subject != null && row.subject !== '' && (
+                                        <span className="muted excel-director-dossier-summary-subj"> · {row.subject}</span>
+                                      )}
+                                    </summary>
+                                    {row.narrative ? (
+                                      <div className="excel-director-dossier-body">
+                                        {splitNarrativeParagraphs(row.narrative).map((para, i) => (
+                                          <p key={i}>{para}</p>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <p className="muted excel-director-dossier-missing">Текст не получен.</p>
+                                    )}
+                                  </details>
+                                ))}
+                              </div>
+                            )}
+                          </details>
+                        )}
+                      </div>
+                    </>
+                  }
+                />
+
+                
               </div>
-            </div>
 
             <section className="card glass-surface excel-analytics-section excel-dashboard-table-section">
               <h2 className="admin-dash-h2">Детализация: первые 50 строк текущей выборки</h2>
@@ -1841,7 +2829,9 @@ export default function ExcelAnalyticsPage() {
                       <th>Дата</th>
                       <th>Подпись</th>
                       {metricNumericCols.map((mi) => (
-                        <th key={mi}>{headers[mi]}</th>
+                        <th key={mi}>
+                          {formatBilingualCellLabel(headers[mi] ?? '', showEnglishExcelLabels ? 'en' : 'ru')}
+                        </th>
                       ))}
                       {metricNumericCols.length > 1 && <th>Σ пунктов</th>}
                       {roles.includes('metric_ordinal_text') && <th>Шкала</th>}
@@ -1871,7 +2861,10 @@ export default function ExcelAnalyticsPage() {
                           {roles.includes('metric_ordinal_text') && (
                             <td>
                               {r.metricOrdinal != null
-                                ? ordinalLevels[r.metricOrdinal - 1] ?? r.metricOrdinal
+                                ? formatBilingualCellLabel(
+                                    String(ordinalLevels[r.metricOrdinal - 1] ?? r.metricOrdinal),
+                                    showEnglishExcelLabels ? 'en' : 'ru',
+                                  )
                                 : '—'}
                             </td>
                           )}

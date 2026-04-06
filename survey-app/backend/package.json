@@ -6,6 +6,7 @@
   "scripts": {
     "install-func": "npm install --prefix functions",
     "seed": "node ../scripts/seed-db.js",
+    "copy-survey": "node ../scripts/copy-survey-to-new-database.js",
     "serve": "node functions/local-server.js"
   }
 }

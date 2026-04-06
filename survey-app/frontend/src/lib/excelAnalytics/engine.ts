@@ -1,5 +1,10 @@
 import type { CellPrimitive } from './parse';
 import type { ColumnRole, CustomFilterLabels } from './types';
+import { inferParallelFromClassLabel } from './parallelFromClass';
+import { resolveListFeatureToken, splitListFeatureParts } from './listFeatureTokens';
+
+/** Производное измерение «параллель», если в файле есть класс, но нет отдельной колонки параллели */
+export const PULSE_PARALLEL_AUTO_KEY = '__pulse_parallel_auto';
 
 function excelSerialToIsoDate(n: number): string | null {
   if (!Number.isFinite(n)) return null;
@@ -149,6 +154,31 @@ export function buildAnalyticRows(
   });
 
   return out;
+}
+
+/**
+ * Если задан только «Класс» (7А, 7B…), без колонки «Параллель» — добавляет filterValues[PULSE_PARALLEL_AUTO_KEY].
+ * Методист может сузить срез до параллели «7» и смотреть график «По наставникам» только по этой параллели.
+ */
+export function augmentRowsWithDerivedParallel(
+  rows: AnalyticRow[],
+  roles: ColumnRole[],
+  customLabels: CustomFilterLabels,
+): AnalyticRow[] {
+  if (roles.includes('filter_parallel')) return rows;
+  if (!roles.includes('filter_class')) return rows;
+  const classKey = filterKeyForRole('filter_class', customLabels);
+  return rows.map((r) => {
+    const raw = r.filterValues[classKey] ?? '';
+    const p = inferParallelFromClassLabel(raw);
+    return {
+      ...r,
+      filterValues: {
+        ...r.filterValues,
+        [PULSE_PARALLEL_AUTO_KEY]: p ?? '(не указано)',
+      },
+    };
+  });
 }
 
 /** Разделители в ячейке с несколькими наставниками / ФИО */
@@ -303,13 +333,59 @@ export function histogramNumeric(
   colIndex: number,
   bins: number,
 ): { label: string; count: number }[] {
+  return histogramNumericBins(rows, colIndex, bins).map(({ label, count }) => ({ label, count }));
+}
+
+export type HistogramBinDetail = {
+  label: string;
+  count: number;
+  binIndex: number;
+  /** Границы бина в тех же единицах, что значение в строке (для клика по столбцу) */
+  minInclusive: number;
+  maxInclusive: number;
+};
+
+/** Номер бина (как при подсчёте гистограммы), согласован с histogramNumericBins */
+export function numericValueBinIndex(v: number, min: number, max: number, bins: number): number {
+  if (!Number.isFinite(v) || bins < 1) return 0;
+  if (min === max) return 0;
+  const step = (max - min) / bins;
+  let i = Math.floor((v - min) / step);
+  if (i >= bins) i = bins - 1;
+  if (i < 0) i = 0;
+  return i;
+}
+
+function rowNumericAt(row: AnalyticRow, colIndex: number): number | null {
+  const v = row.metricsNumeric.find((m) => m.colIndex === colIndex)?.value;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Гистограмма с границами бинов — для интерактива «кто в этом диапазоне».
+ */
+export function histogramNumericBins(
+  rows: AnalyticRow[],
+  colIndex: number,
+  bins: number,
+): HistogramBinDetail[] {
   const vals = rows
-    .map((r) => r.metricsNumeric.find((m) => m.colIndex === colIndex)?.value)
-    .filter((v): v is number => v != null && Number.isFinite(v));
+    .map((r) => rowNumericAt(r, colIndex))
+    .filter((v): v is number => v != null);
   if (vals.length === 0) return [];
   const min = Math.min(...vals);
   const max = Math.max(...vals);
-  if (min === max) return [{ label: String(min.toFixed(2)), count: vals.length }];
+  if (min === max) {
+    return [
+      {
+        label: String(min.toFixed(2)),
+        count: vals.length,
+        binIndex: 0,
+        minInclusive: min,
+        maxInclusive: max,
+      },
+    ];
+  }
   const step = (max - min) / bins;
   const counts = new Array(bins).fill(0);
   for (const v of vals) {
@@ -319,10 +395,39 @@ export function histogramNumeric(
     counts[i]++;
   }
   return counts.map((count, i) => {
-    const a = min + i * step;
-    const b = min + (i + 1) * step;
-    return { label: `${a.toFixed(1)}–${b.toFixed(1)}`, count };
+    const lo = min + i * step;
+    const hi = i === bins - 1 ? max : min + (i + 1) * step;
+    const label = `${lo.toFixed(1)}–${hi.toFixed(1)}`;
+    return { label, count, binIndex: i, minInclusive: lo, maxInclusive: hi };
   });
+}
+
+/**
+ * Педагоги, у которых хотя бы один урок (по dedupe idx) попал в бин метрики.
+ */
+export function teachersInMetricBin(
+  rowsOnePerLesson: AnalyticRow[],
+  colIndex: number,
+  bin: HistogramBinDetail,
+  allMin: number,
+  allMax: number,
+  bins: number,
+  teacherFilterKey: string,
+): { teacher: string; lessons: number }[] {
+  const m = new Map<string, number>();
+  const isSingle = allMin === allMax;
+  for (const row of rowsOnePerLesson) {
+    const v = rowNumericAt(row, colIndex);
+    if (v == null) continue;
+    const bi = isSingle ? 0 : numericValueBinIndex(v, allMin, allMax, bins);
+    if (bi !== bin.binIndex) continue;
+    const t = row.filterValues[teacherFilterKey];
+    if (!t || t === '(не указано)') continue;
+    m.set(t, (m.get(t) ?? 0) + 1);
+  }
+  return [...m.entries()]
+    .map(([teacher, lessons]) => ({ teacher, lessons }))
+    .sort((a, b) => b.lessons - a.lessons || a.teacher.localeCompare(b.teacher, 'ru'));
 }
 
 export function countsByMonth(rows: AnalyticRow[]): { month: string; count: number }[] {
@@ -527,6 +632,209 @@ export function topFilterBucketsByUniqueLesson(
     .slice(0, topN);
 }
 
+/** Частоты отдельных формулировок в колонке «список через запятую»: одна строка импорта = один урок; каждый тег в ячейке считается не более одного раза на урок. topN: null — без обрезки. */
+export function listFeatureTagCounts(
+  rowsOnePerLesson: AnalyticRow[],
+  columnHeader: string,
+  topN: number | null = 28,
+): { display: string; uniqueLessons: number }[] {
+  const m = new Map<string, { display: string; lessonIds: Set<number> }>();
+  for (const row of rowsOnePerLesson) {
+    const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
+    if (!entry?.text?.trim()) continue;
+    const parts = splitListFeatureParts(entry.text);
+    const seenInRow = new Set<string>();
+    for (const raw of parts) {
+      const resolved = resolveListFeatureToken(raw);
+      if (!resolved) continue;
+      const k = resolved.aggregateKey;
+      if (seenInRow.has(k)) continue;
+      seenInRow.add(k);
+      const cur = m.get(k);
+      if (!cur) {
+        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([row.idx]) });
+      } else {
+        cur.lessonIds.add(row.idx);
+        if (resolved.displayLabel.length > cur.display.length) cur.display = resolved.displayLabel;
+      }
+    }
+  }
+  const out = [...m.values()]
+    .map((v) => ({ display: v.display, uniqueLessons: v.lessonIds.size }))
+    .sort((a, b) => b.uniqueLessons - a.uniqueLessons || a.display.localeCompare(b.display, 'ru'));
+  if (topN == null || out.length <= topN) return out;
+  return out.slice(0, topN);
+}
+
+/** Все различные пункты колонки «список через запятую» в выборке (объединение по всем строкам). */
+export function listFeatureTagUniverse(
+  rowsOnePerLesson: AnalyticRow[],
+  columnHeader: string,
+): { key: string; display: string }[] {
+  const m = new Map<string, string>();
+  for (const row of rowsOnePerLesson) {
+    const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
+    if (!entry?.text?.trim()) continue;
+    const parts = splitListFeatureParts(entry.text);
+    const seenInRow = new Set<string>();
+    for (const raw of parts) {
+      const resolved = resolveListFeatureToken(raw);
+      if (!resolved) continue;
+      const k = resolved.aggregateKey;
+      if (seenInRow.has(k)) continue;
+      seenInRow.add(k);
+      const prev = m.get(k);
+      if (prev == null) m.set(k, resolved.displayLabel);
+      else if (resolved.displayLabel.length > prev.length) m.set(k, resolved.displayLabel);
+    }
+  }
+  return [...m.entries()]
+    .map(([key, display]) => ({ key, display }))
+    .sort((a, b) => a.display.localeCompare(b.display, 'ru'));
+}
+
+/**
+ * По развёрнутым строкам (после мультинаставников): для выбранного педагога — сколько уроков (idx),
+ * где в ячейке встретился пункт. topN: null — без обрезки.
+ */
+export function listFeatureTagFrequencyByTeacher(
+  rowsExpanded: AnalyticRow[],
+  teacherFilterKey: string,
+  teacherValue: string,
+  columnHeader: string,
+  topN: number | null = 32,
+): { display: string; lessonCount: number }[] {
+  const m = new Map<string, { display: string; lessonIds: Set<number> }>();
+  for (const row of rowsExpanded) {
+    if (row.filterValues[teacherFilterKey] !== teacherValue) continue;
+    const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
+    if (!entry?.text?.trim()) continue;
+    const parts = splitListFeatureParts(entry.text);
+    const seenInRow = new Set<string>();
+    for (const raw of parts) {
+      const resolved = resolveListFeatureToken(raw);
+      if (!resolved) continue;
+      const k = resolved.aggregateKey;
+      if (seenInRow.has(k)) continue;
+      seenInRow.add(k);
+      const cur = m.get(k);
+      if (!cur) {
+        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([row.idx]) });
+      } else {
+        cur.lessonIds.add(row.idx);
+        if (resolved.displayLabel.length > cur.display.length) cur.display = resolved.displayLabel;
+      }
+    }
+  }
+  const out = [...m.values()]
+    .map((v) => ({ display: v.display, lessonCount: v.lessonIds.size }))
+    .sort((a, b) => b.lessonCount - a.lessonCount || a.display.localeCompare(b.display, 'ru'));
+  if (topN == null || out.length <= topN) return out;
+  return out.slice(0, topN);
+}
+
+/** Сколько различных пунктов из справочника среза встретилось у педагога хотя бы в одном уроке. */
+export function teacherListFeatureCoverage(
+  rowsExpanded: AnalyticRow[],
+  teacherFilterKey: string,
+  teacherValue: string,
+  columnHeader: string,
+  universeNormKeys: Set<string>,
+): { collectedUnique: number; totalUniverse: number } {
+  const teacherKeys = new Set<string>();
+  for (const row of rowsExpanded) {
+    if (row.filterValues[teacherFilterKey] !== teacherValue) continue;
+    const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
+    if (!entry?.text?.trim()) continue;
+    for (const raw of splitListFeatureParts(entry.text)) {
+      const resolved = resolveListFeatureToken(raw);
+      if (!resolved) continue;
+      teacherKeys.add(resolved.aggregateKey);
+    }
+  }
+  let collected = 0;
+  for (const k of teacherKeys) {
+    if (universeNormKeys.has(k)) collected += 1;
+  }
+  return { collectedUnique: collected, totalUniverse: universeNormKeys.size };
+}
+
+/** Среднее значение числового пункта по календарным месяцам (YYYY-MM из даты строки). */
+export function meanNumericByMonth(
+  rowsOnePerLesson: AnalyticRow[],
+  colIndex: number,
+): { month: string; mean: number; n: number }[] {
+  const buckets = new Map<string, { sum: number; n: number }>();
+  for (const r of rowsOnePerLesson) {
+    const d = r.date;
+    if (!d || d.length < 7) continue;
+    const month = d.slice(0, 7);
+    const v = r.metricsNumeric.find((m) => m.colIndex === colIndex)?.value;
+    if (v == null || !Number.isFinite(v)) continue;
+    const cur = buckets.get(month) ?? { sum: 0, n: 0 };
+    cur.sum += v;
+    cur.n += 1;
+    buckets.set(month, cur);
+  }
+  return [...buckets.entries()]
+    .map(([month, { sum, n }]) => ({ month, mean: n > 0 ? sum / n : 0, n }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/** По каждому месяцу — среднее по каждому числовому столбцу (одна линия на метрику). */
+export function meanNumericByMonthAllMetrics(
+  rowsOnePerLesson: AnalyticRow[],
+  metricColIndices: number[],
+): { month: string; means: Record<number, number | null> }[] {
+  const monthBuckets = new Map<string, Map<number, { sum: number; n: number }>>();
+  for (const r of rowsOnePerLesson) {
+    const d = r.date;
+    if (!d || d.length < 7) continue;
+    const month = d.slice(0, 7);
+    let colMap = monthBuckets.get(month);
+    if (!colMap) {
+      colMap = new Map();
+      monthBuckets.set(month, colMap);
+    }
+    for (const mi of metricColIndices) {
+      const v = r.metricsNumeric.find((m) => m.colIndex === mi)?.value;
+      if (v == null || !Number.isFinite(v)) continue;
+      const cur = colMap.get(mi) ?? { sum: 0, n: 0 };
+      cur.sum += v;
+      cur.n += 1;
+      colMap.set(mi, cur);
+    }
+  }
+  return [...monthBuckets.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, colMap]) => {
+      const means: Record<number, number | null> = {};
+      for (const mi of metricColIndices) {
+        const cur = colMap.get(mi);
+        means[mi] = cur && cur.n > 0 ? cur.sum / cur.n : null;
+      }
+      return { month, means };
+    });
+}
+
+/** Средний ранг текстовой шкалы (1…N) по месяцам — динамика «качества» по времени. */
+export function meanOrdinalRankByMonth(rowsOnePerLesson: AnalyticRow[]): { month: string; meanRank: number; n: number }[] {
+  const buckets = new Map<string, { sum: number; n: number }>();
+  for (const r of rowsOnePerLesson) {
+    const d = r.date;
+    if (!d || d.length < 7) continue;
+    if (r.metricOrdinal == null || !Number.isFinite(r.metricOrdinal)) continue;
+    const month = d.slice(0, 7);
+    const cur = buckets.get(month) ?? { sum: 0, n: 0 };
+    cur.sum += r.metricOrdinal;
+    cur.n += 1;
+    buckets.set(month, cur);
+  }
+  return [...buckets.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([month, { sum, n }]) => ({ month, meanRank: n > 0 ? sum / n : 0, n }));
+}
+
 function formatFilterBucketLine(b: FilterBucketCounts): string {
   if (b.expandedRows === b.uniqueLessons) {
     return `  • ${b.display}: ${b.uniqueLessons}`;
@@ -566,6 +874,9 @@ export function buildRichLlmContextRu(
   );
   lines.push(
     'Средние по числам и доли по шкале ниже — по одной строке импорта на вес (idx), без раздувания от развёртки. Срезы по фильтрам: первое число — логические уроки с этим значением; в скобках — строки развёртки при необходимости.',
+  );
+  lines.push(
+    'Если в ячейке фильтра несколько значений через запятую — дашборд разворачивает их в отдельные аналитические строки (каждое значение участвует в фильтрах и в графике «по наставникам» как отдельная оценка). Колонки «Список через запятую» (технологии, методики, отмеченные на уроке формулировки): в ячейке перечислены аспекты, за которые на наблюдении поставили «пойнт»/отметку; ниже — частоты по уникальным урокам.',
   );
 
   if (opts.dateLabel) {
@@ -643,6 +954,25 @@ export function buildRichLlmContextRu(
     const withO = filteredOneLesson.filter((r) => r.metricOrdinal != null).length;
     lines.push('');
     lines.push(`Текстовая шкала: заполнено в ${withO} уроках (порядок уровней в интерфейсе не передан).`);
+  }
+
+  const listFeatureHeaders = new Set<string>();
+  for (const row of filteredOneLesson) {
+    for (const { kind, header } of row.texts) {
+      if (kind === 'text_list_features') listFeatureHeaders.add(header);
+    }
+  }
+  for (const h of [...listFeatureHeaders].sort((a, b) => a.localeCompare(b, 'ru'))) {
+    const uni = listFeatureTagUniverse(filteredOneLesson, h);
+    const tagCounts = listFeatureTagCounts(filteredOneLesson, h, 32);
+    if (tagCounts.length === 0 && uni.length === 0) continue;
+    lines.push('');
+    lines.push(
+      `Колонка «${h}» (список через запятую): в справочнике среза ${uni.length} различных пунктов (объединены дубликаты ru/en и обрывки вроде etc. по правилам модуля); частоты — сколько уникальных уроков содержат отметку (топ 32).`,
+    );
+    for (const { display, uniqueLessons } of tagCounts) {
+      lines.push(`  • ${display}: ${uniqueLessons} уроков`);
+    }
   }
 
   const textByHeader = new Map<string, { kind: ColumnRole; snippets: string[] }>();

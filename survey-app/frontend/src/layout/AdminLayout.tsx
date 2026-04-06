@@ -9,9 +9,9 @@ export default function AdminLayout() {
   /** Полный путь + query: при смене опроса/шаблона дочерние экраны гарантированно перемонтируются */
   const layoutKey = `${location.pathname}${location.search}`;
   const resultsWideLayout = /\/results\/?$/.test(location.pathname);
-  const excelWideLayout = /\/analytics-excel\/?$/.test(location.pathname);
+  const analyticsExcelWideLayout = /\/analytics\/excel\/?$/.test(location.pathname);
   const photoWallWideLayout = /\/photo-wall\/results\/?$/.test(location.pathname);
-  const wideDashboardLayout = resultsWideLayout || excelWideLayout || photoWallWideLayout;
+  const wideDashboardLayout = resultsWideLayout || analyticsExcelWideLayout || photoWallWideLayout;
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
@@ -19,7 +19,7 @@ export default function AdminLayout() {
 
   return (
     <div
-      className={`app-admin${wideDashboardLayout ? ' app-admin--results-wide' : ''}${excelWideLayout ? ' app-admin--excel-canvas' : ''}${photoWallWideLayout ? ' app-admin--photo-wall-wide' : ''}`}
+      className={`app-admin${wideDashboardLayout ? ' app-admin--results-wide' : ''}${analyticsExcelWideLayout ? ' app-admin--excel-canvas' : ''}${photoWallWideLayout ? ' app-admin--photo-wall-wide' : ''}`}
     >
       <header className="admin-header glass-header">
         <div className="admin-header-inner">
@@ -51,10 +51,18 @@ export default function AdminLayout() {
               Написать письмо для гостей
             </NavLink>
             <NavLink
-              to="/analytics-excel"
+              to="/analytics/excel"
+              className={() =>
+                `admin-nav-link${location.pathname.startsWith('/analytics') ? ' admin-nav-link--active' : ''}`
+              }
+            >
+              Модуль аналитики
+            </NavLink>
+            <NavLink
+              to="/surveys/groups"
               className={({ isActive }) => `admin-nav-link${isActive ? ' admin-nav-link--active' : ''}`}
             >
-              Наблюдения Excel
+              Разделы опросов
             </NavLink>
             <NavLink
               to="/photo-wall/results"
@@ -66,7 +74,7 @@ export default function AdminLayout() {
         </div>
       </header>
       <main
-        className={`admin-main${wideDashboardLayout ? ' admin-main--results-wide' : ''}${excelWideLayout ? ' admin-main--excel-canvas' : ''}${photoWallWideLayout ? ' admin-main--photo-wall-wide' : ''}`}
+        className={`admin-main${wideDashboardLayout ? ' admin-main--results-wide' : ''}${analyticsExcelWideLayout ? ' admin-main--excel-canvas' : ''}${photoWallWideLayout ? ' admin-main--photo-wall-wide' : ''}`}
       >
         {/*
           Без AnimatePresence mode="wait": при переходах между маршрутами exit иногда не завершался,

@@ -39,7 +39,11 @@ export const COLUMN_ROLE_OPTIONS: { value: ColumnRole; label: string; group: str
   { value: 'metric_ordinal_text', label: 'Текстовая шкала', group: 'Метрики' },
   { value: 'text_ai_summary', label: 'Текст: выводы / резюме', group: 'Тексты' },
   { value: 'text_ai_recommendations', label: 'Текст: рекомендации', group: 'Тексты' },
-  { value: 'text_list_features', label: 'Список через запятую', group: 'Тексты' },
+  {
+    value: 'text_list_features',
+    label: 'Список через запятую (отмеченные на уроке аспекты / «пойнты»)',
+    group: 'Тексты',
+  },
 ];
 
 export function roleAllowsDuplicate(role: ColumnRole): boolean {

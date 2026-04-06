@@ -2,10 +2,8 @@ import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useState } from 'react';
 import { requestAiInsights, requestDirectorAiInsights } from '../api/client';
 import AnimatedNumber from './AnimatedNumber';
-import { springCard, staggerContainer, staggerItem } from '../motion/resultsMotion';
-import { questionTypeLabelRu } from '../lib/labels';
+import { staggerContainer, staggerItem } from '../motion/resultsMotion';
 import type { AiInsightsPayload, AnalyticsFilter, InsightBlock, InsightTone } from '../types';
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 type Props = {
   surveyId: number;
@@ -77,20 +75,8 @@ function formatNarrative(text: string): string[] {
     .filter(Boolean);
 }
 
-function trimOneLine(s: string, n: number) {
-  const t = String(s || '').replace(/\s+/g, ' ').trim();
-  if (t.length <= n) return t;
-  return `${t.slice(0, n - 1)}…`;
-}
-
-export default function InsightsPanel({
-  surveyId,
-  directorToken,
-  onDrillDown,
-  filters,
-  autoRun = false,
-}: Props) {
-  const [loading, setLoading] = useState(false);
+export default function InsightsPanel({ surveyId, directorToken, filters, autoRun = true }: Props) {
+  const [loading, setLoading] = useState(autoRun);
   const [payload, setPayload] = useState<AiInsightsPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -100,8 +86,8 @@ export default function InsightsPanel({
   useEffect(() => {
     setPayload(null);
     setErr(null);
-    setLoading(false);
-  }, [surveyId, filterKey, directorToken]);
+    setLoading(autoRun);
+  }, [surveyId, filterKey, directorToken, autoRun]);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -125,37 +111,6 @@ export default function InsightsPanel({
   }, [surveyId, filterKey, directorToken, autoRun, run]);
 
   const d = payload?.dashboard;
-  const orderById = new Map<number, number>();
-  for (const q of (payload?.survey?.questions || []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))) {
-    orderById.set(q.id, orderById.size + 1);
-  }
-  const showQ = (id: number) => orderById.get(id) ?? id;
-  const showQTitle = (qid: number, title: string) => `#${showQ(qid)} · ${trimOneLine(title, 34)}`;
-
-  const topByResponses =
-    d?.questions
-      ?.slice()
-      .sort((a, b) => (b.response_count || 0) - (a.response_count || 0))
-      .slice(0, 10)
-      .map((q) => ({
-        name: showQTitle(q.question_id, q.title),
-        value: q.response_count || 0,
-        question_id: q.question_id,
-      })) || [];
-
-  const scaleAverages =
-    d?.questions
-      ?.filter((q) => (q.type === 'scale' || q.type === 'rating') && typeof q.avg === 'number')
-      .slice()
-      .sort((a, b) => (b.avg || 0) - (a.avg || 0))
-      .slice(0, 10)
-      .map((q) => ({
-        name: showQTitle(q.question_id, q.title),
-        avg: q.avg ?? 0,
-        min: q.min ?? null,
-        max: q.max ?? null,
-        question_id: q.question_id,
-      })) || [];
 
   return (
     <MotionConfig reducedMotion="user">
@@ -171,31 +126,16 @@ export default function InsightsPanel({
           <div>
             <p className="ai-insights-kicker">Пульс · показатели</p>
             <h2 id="ai-insights-heading" className="ai-insights-title">
-              Умная аналитика и автосводка
+              Умная аналитика
             </h2>
             <p className="muted ai-insights-sub">
-              <strong>Как это устроено.</strong> Сначала сервер сам считает показатели по вашим ответам: сколько анкет,
-              охват вопросов, короткие выводы по каждому полю и мини-диаграммы — всё на русском, без внешних сервисов.
-              Если в настройках функции задан ключ к нейросети (переменная окружения на стороне Яндекс Облака), к этой
-              сводке добавляется <em>дополнительная текстовая записка</em>, сгенерированная моделью по тем же цифрам.
-              Ключ никогда не попадает в браузер и не хранится во фронтенде.               Ответы, в том числе импортированные из
-              Excel, попадают в те же расчёты; для записки модель получает сжатые фрагменты длинных текстов и выносит
-              темы и формулировки без полного пересказа каждой ячейки. По каждому текстовому вопросу отдельно можно
-              открыть <strong>«Сводка и вывод по ответам»</strong> на странице результатов — там своя компиляция и блок
-              нейросети по всем ответам только на этот вопрос.
+              <strong>Как это устроено.</strong> Сервер считает показатели по ответам (включая импорт из Excel). Связный
+              текст строится по заголовкам вопросов и распределению ответов (шкалы, варианты, средние) даже без
+              свободных текстов; при настроенной нейросети записка усиливается моделью. Ключ не попадает в браузер. По
+              текстовым вопросам на странице результатов — отдельные сводки.
             </p>
           </div>
           <div className="ai-insights-header-actions">
-            <motion.button
-              type="button"
-              className="btn primary"
-              disabled={loading}
-              onClick={() => void run()}
-              whileHover={!loading ? { scale: 1.05 } : undefined}
-              whileTap={!loading ? { scale: 0.96 } : undefined}
-            >
-              {loading ? 'Считаем…' : 'Сформировать аналитику'}
-            </motion.button>
             <AnimatePresence mode="wait">
               {loading && (
                 <motion.div
@@ -212,14 +152,14 @@ export default function InsightsPanel({
                   }}
                 />
               )}
-              {payload && !loading && (
+              {payload && !loading && payload.narrative?.trim() && (
                 <motion.span
                   key="src"
-                  className={`ai-insights-source ai-insights-source--${payload.source}`}
+                  className={`ai-insights-source ai-insights-source--${payload.source === 'llm_hybrid' ? 'llm_hybrid' : 'heuristic'}`}
                   initial={{ opacity: 0, x: 8 }}
                   animate={{ opacity: 1, x: 0 }}
                 >
-                  {payload.source === 'llm_hybrid' ? 'Сводка + текст нейросети' : 'Только автосводка'}
+                  {payload.source === 'llm_hybrid' ? 'Текст нейросети' : 'Автотекст по вопросам'}
                 </motion.span>
               )}
             </AnimatePresence>
@@ -262,14 +202,14 @@ export default function InsightsPanel({
               </motion.div>
 
               <h3 className="ai-insights-section-title ai-insights-section-title--spaced">Дашборд</h3>
-              {payload.narrative && (
-                <motion.div
-                  className="ai-insights-narrative"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.08 }}
-                >
-                  <h3 className="ai-insights-section-title">ИИ-аналитика по опросу</h3>
+              <motion.div
+                className="ai-insights-narrative"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08 }}
+              >
+                <h3 className="ai-insights-section-title">ИИ-аналитика по опросу</h3>
+                {payload.narrative?.trim() ? (
                   <div className="ai-insights-narrative-inner">
                     {formatNarrative(payload.narrative).map((para, i) => (
                       <motion.p
@@ -283,113 +223,13 @@ export default function InsightsPanel({
                       </motion.p>
                     ))}
                   </div>
-                </motion.div>
-              )}
-              <div className="ai-insights-charts">
-                <div className="ai-insights-chart-card">
-                  <h4 className="ai-insights-chart-title">Ответов по вопросам (топ)</h4>
-                  <div className="ai-insights-chart-wrap">
-                    {topByResponses.length === 0 ? (
-                      <p className="muted">Пока нет данных.</p>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%" minHeight={220}>
-                        <BarChart
-                          data={topByResponses}
-                          layout="vertical"
-                          margin={{ top: 6, right: 16, left: 4, bottom: 0 }}
-                        >
-                          <CartesianGrid stroke="rgba(17,24,39,0.08)" strokeDasharray="3 3" />
-                          <XAxis type="number" tick={{ fill: 'rgba(17,24,39,0.55)', fontSize: 11 }} width={36} />
-                          <YAxis
-                            type="category"
-                            dataKey="name"
-                            tick={{ fill: 'rgba(17,24,39,0.65)', fontSize: 11 }}
-                            width={170}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              background: 'rgba(255,255,255,0.98)',
-                              border: '1px solid rgba(17,24,39,0.12)',
-                              borderRadius: 12,
-                              boxShadow: '0 18px 50px rgba(17,24,39,0.18)',
-                              padding: '10px 14px',
-                            }}
-                            labelStyle={{ color: '#111827', fontWeight: 800 }}
-                            itemStyle={{ color: '#111827' }}
-                            formatter={(v: number) => [`${v} ответов`, '']}
-                          />
-                          <Bar
-                            dataKey="value"
-                            name="Ответов"
-                            fill="rgba(227,6,19,0.72)"
-                            radius={[8, 8, 8, 8]}
-                            onClick={(d) => {
-                              const qid = (d as { question_id?: number }).question_id;
-                              if (qid != null) onDrillDown?.(qid);
-                            }}
-                            style={{ cursor: onDrillDown ? 'pointer' : undefined }}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-
-                <div className="ai-insights-chart-card">
-                  <h4 className="ai-insights-chart-title">Средние оценки (шкалы/рейтинг)</h4>
-                  <div className="ai-insights-chart-wrap">
-                    {scaleAverages.length === 0 ? (
-                      <p className="muted">Нет шкал/рейтингов с данными.</p>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%" minHeight={220}>
-                        <BarChart
-                          data={scaleAverages}
-                          layout="vertical"
-                          margin={{ top: 6, right: 16, left: 4, bottom: 0 }}
-                        >
-                          <CartesianGrid stroke="rgba(17,24,39,0.08)" strokeDasharray="3 3" />
-                          <XAxis type="number" tick={{ fill: 'rgba(17,24,39,0.55)', fontSize: 11 }} width={36} />
-                          <YAxis
-                            type="category"
-                            dataKey="name"
-                            tick={{ fill: 'rgba(17,24,39,0.65)', fontSize: 11 }}
-                            width={170}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              background: 'rgba(255,255,255,0.98)',
-                              border: '1px solid rgba(17,24,39,0.12)',
-                              borderRadius: 12,
-                              boxShadow: '0 18px 50px rgba(17,24,39,0.18)',
-                              padding: '10px 14px',
-                            }}
-                            labelStyle={{ color: '#111827', fontWeight: 800 }}
-                            itemStyle={{ color: '#111827' }}
-                            formatter={(v: number, _name: string, ctx) => {
-                              const row = (ctx as { payload?: { min?: number | null; max?: number | null } }).payload;
-                              const range =
-                                row && row.min != null && row.max != null ? ` (диапазон ${row.min}…${row.max})` : '';
-                              return [`${Number(v).toFixed(2)}${range}`, 'Среднее'];
-                            }}
-                          />
-                          <Legend wrapperStyle={{ fontSize: 12, color: '#6b7280' }} />
-                          <Bar
-                            dataKey="avg"
-                            name="Среднее"
-                            fill="rgba(17,94,89,0.70)"
-                            radius={[8, 8, 8, 8]}
-                            onClick={(d) => {
-                              const qid = (d as { question_id?: number }).question_id;
-                              if (qid != null) onDrillDown?.(qid);
-                            }}
-                            style={{ cursor: onDrillDown ? 'pointer' : undefined }}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-                  </div>
-                </div>
-              </div>
+                ) : (
+                  <p className="muted ai-insights-narrative-p">
+                    Нет текста сводки. Ниже — карточки выводов по цифрам. Чтобы добавить формулировку нейросети, настройте
+                    LLM на Cloud Function (см. BACKEND_AND_API.md).
+                  </p>
+                )}
+              </motion.div>
 
               <div className="ai-insights-split">
                 <div className="ai-insights-col">
@@ -413,42 +253,18 @@ export default function InsightsPanel({
                   </motion.div>
                 </div>
               </div>
-
-              <h3 className="ai-insights-section-title ai-insights-section-title--spaced">По вопросам опроса</h3>
-              <motion.div
-                className="ai-insights-q-grid"
-                variants={staggerContainer}
-                initial="hidden"
-                animate="show"
-              >
-                {d.questions.map((q) => (
-                  <motion.article key={q.question_id} className="ai-insights-q-card" variants={staggerItem}>
-                    <motion.div initial="rest" whileHover="hover" whileTap="tap" variants={springCard}>
-                      <div className="ai-insights-q-top">
-                        <span className="ai-insights-q-badge">#{showQ(q.question_id)}</span>
-                        <span className="ai-insights-q-type">{questionTypeLabelRu(q.type)}</span>
-                        <span className="ai-insights-q-n">
-                          ответов: <AnimatedNumber value={q.response_count} duration={0.8} />
-                        </span>
-                      </div>
-                      <h4 className="ai-insights-q-title">{q.title}</h4>
-                      <p className="ai-insights-q-detail">{q.detail}</p>
-                    </motion.div>
-                  </motion.article>
-                ))}
-              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {!payload && !loading && !err && (
+        {!payload && !loading && !err && !autoRun && (
           <motion.p
             className="muted ai-insights-hint"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
           >
-            Нажмите «Сформировать аналитику», чтобы построить сводку по текущим ответам.
+            Включите автозагрузку или обновите страницу, чтобы получить сводку.
           </motion.p>
         )}
       </motion.section>

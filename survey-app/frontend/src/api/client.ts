@@ -8,11 +8,13 @@ import type {
   ExcelFilterValueGroupsResponse,
   ExcelNarrativeSummaryResponse,
   ExcelDirectorDossierResponse,
+  MultiSurveyAnalyticsPayload,
   TextQuestionInsightsPayload,
   AnswerSubmit,
   CommentRow,
   ResultsPayload,
   Survey,
+  SurveyGroup,
   SurveyInviteRow,
   SurveyInviteTemplate,
   SurveyExportRowsPayload,
@@ -55,8 +57,11 @@ function adminHeaders(): HeadersInit {
 async function parseJson<T>(res: Response): Promise<T> {
   let text = await res.text();
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  if (!text) return {} as T;
   const t = text.trim();
+  /** Пустое тело: не вызывать JSON.parse('') — иначе SyntaxError «Unexpected end of JSON input». Часто при 502/504 от шлюза. */
+  if (!t) {
+    return {} as T;
+  }
   const lead = t.trimStart().slice(0, 1);
   if (lead === '<') {
     throw new Error(
@@ -70,12 +75,13 @@ async function parseJson<T>(res: Response): Promise<T> {
   } catch (e) {
     const preview = t.replace(/\s+/g, ' ').slice(0, 220);
     const base = API_BASE || '(VITE_API_BASE не задан при сборке)';
+    const syntaxDetail = e instanceof SyntaxError && e.message ? ` (${e.message})` : '';
     const hint =
       e instanceof SyntaxError
         ? ' Похоже на обрезанный ответ, HTML вместо JSON или неверный URL (не вставляйте адрес API в консоль без fetch/кавычек).'
         : '';
     throw new Error(
-      `Ответ не JSON (HTTP ${res.status}).${hint} ` +
+      `Ответ не JSON (HTTP ${res.status}).${hint}${syntaxDetail} ` +
         (preview ? `Начало ответа: ${preview}` : 'Пустой или битый ответ') +
         `. Ожидался JSON с ${base}/api/… Проверьте адрес API в сборке, маршруты шлюза и CORS_ORIGIN на функции.`,
     );
@@ -87,6 +93,13 @@ export async function listSurveys(): Promise<Survey[]> {
   const data = await parseJson<{ surveys: Survey[] }>(res);
   if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
   return data.surveys || [];
+}
+
+export async function getSurveyGroups(): Promise<SurveyGroup[]> {
+  const res = await apiFetch(`${API_BASE}/api/survey-groups`, { headers: adminHeaders() });
+  const data = await parseJson<{ groups: SurveyGroup[] }>(res);
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
+  return data.groups || [];
 }
 
 export async function getSurvey(id: number): Promise<Survey> {
@@ -331,6 +344,43 @@ export async function getSurveyTextAnswers(
   const res = await apiFetch(`${API_BASE}/api/surveys/${surveyId}/text-answers?${qs}`, { headers: adminHeaders() });
   const data = await parseJson<TextAnswersPage & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+/** Несколько опросов: сводка, темы, выбранные диаграммы + связный текст (LLM: DeepSeek / OpenAI / Yandex — см. окружение функции). */
+export async function postMultiSurveyAnalytics(surveyIds: number[]): Promise<MultiSurveyAnalyticsPayload> {
+  const res = await apiFetch(`${API_BASE}/api/surveys/batch-analytics`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ survey_ids: surveyIds }),
+  });
+  const data = await parseJson<
+    MultiSurveyAnalyticsPayload & {
+      error?: string;
+      message?: string;
+      path?: string;
+      method?: string;
+      segments?: string[];
+    }
+  >(res);
+  if (!res.ok) {
+    const hint =
+      data.path != null
+        ? ` Сервер: path=${data.path}${data.method ? ` method=${data.method}` : ''}${data.segments?.length ? ` (${data.segments.join('/')})` : ''}`
+        : '';
+    const statusLabel =
+      res.status === 504 || res.status === 502
+        ? `Таймаут или недоступность бэкенда (HTTP ${res.status}). Для сводки по нескольким опросам уменьшите число волн, на функции увеличьте execution-timeout (например 120–180 с), в API Gateway — таймаут интеграции ≥ таймаута функции.`
+        : '';
+    const bodyMsg = (data.message || data.error || '').trim();
+    const fallback = bodyMsg || res.statusText || `HTTP ${res.status}`;
+    throw new Error((statusLabel || fallback) + hint);
+  }
+  if (!data || typeof data !== 'object' || !('source' in data)) {
+    throw new Error(
+      'Сервер вернул пустой или неполный ответ при сводке по опросам (часто таймаут). Попробуйте меньше опросов за один запрос или увеличьте таймауты функции и шлюза.',
+    );
+  }
   return data;
 }
 

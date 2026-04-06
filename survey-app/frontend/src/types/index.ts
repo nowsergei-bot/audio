@@ -1,6 +1,15 @@
 export type SurveyStatus = 'draft' | 'published' | 'closed';
 export type QuestionType = 'radio' | 'checkbox' | 'scale' | 'text' | 'rating' | 'date';
 
+/** Раздел (группа) опросов в админке — для методистов и сводной аналитики */
+export interface SurveyGroup {
+  id: number;
+  slug: string;
+  name: string;
+  curator_name: string;
+  sort_order: number;
+}
+
 export interface Question {
   id: number;
   survey_id: number;
@@ -23,6 +32,8 @@ export interface Survey {
   director_token?: string | null;
   media?: { photos?: { src: string; name?: string }[] };
   questions?: Question[];
+  survey_group_id?: number | null;
+  survey_group?: SurveyGroup | null;
 }
 
 export interface SurveyInviteRow {
@@ -267,6 +278,55 @@ export interface AiInsightsPayload {
   narrative: string | null;
   survey: Pick<Survey, 'id' | 'title' | 'status' | 'access_link' | 'questions'>;
   total_responses: number;
+}
+
+/** Секция связного текста мультисводки (нейросеть). */
+export interface MultiSurveyNarrativeSection {
+  heading: string;
+  body: string;
+}
+
+/** Объединённые моделью схожие вопросы из разных волн опроса. */
+export interface MultiSurveyMergedTheme {
+  theme_title: string;
+  refs: string[];
+  synthesis: string;
+  takeaway: string;
+}
+
+/** Вопрос с данными для диаграммы — выбран моделью или эвристикой. */
+export interface MultiSurveyHighlight {
+  survey_id: number;
+  survey_title: string;
+  question: ResultQuestion;
+  /** Зачем показан этот график (от ИИ). */
+  chart_rationale?: string;
+}
+
+/** Почему вместо LLM показана эвристика (только при source heuristic_multi). */
+export interface MultiSurveyLlmFallback {
+  code: string;
+  hint_ru: string;
+}
+
+/** Сводка и текстовая аналитика сразу по нескольким опросам (админка). */
+export interface MultiSurveyAnalyticsPayload {
+  source: 'llm_multi' | 'llm_multi_partial' | 'heuristic_multi' | string;
+  narrative: string | null;
+  /** Структурированный текст при ответе нейросети. */
+  narrative_sections?: MultiSurveyNarrativeSection[];
+  merged_themes?: MultiSurveyMergedTheme[];
+  highlight_questions?: MultiSurveyHighlight[];
+  /** Уточнение, если сработала автосводка вместо нейросети. */
+  llm_fallback?: MultiSurveyLlmFallback | null;
+  surveys: {
+    id: number;
+    title: string;
+    status: SurveyStatus;
+    total_responses: number;
+    question_count: number;
+  }[];
+  grand_total_responses: number;
 }
 
 /** Сводка по одному текстовому вопросу: эвристика + опционально нейросеть. */

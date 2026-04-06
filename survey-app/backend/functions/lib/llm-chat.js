@@ -96,6 +96,18 @@ function openAiBaseUrl() {
   return raw.endsWith('/v1') ? raw : `${raw}/v1`;
 }
 
+/** OpenRouter рекомендует HTTP-Referer и X-Title для статистики (необязательно). */
+function openRouterExtraHeaders() {
+  const base = String(process.env.OPENAI_BASE_URL || '').toLowerCase();
+  if (!base.includes('openrouter.ai')) return {};
+  const out = {};
+  const referer = String(process.env.OPENROUTER_HTTP_REFERER || process.env.PUBLIC_APP_BASE || '').trim();
+  if (referer) out['HTTP-Referer'] = referer;
+  const title = String(process.env.OPENROUTER_TITLE || process.env.OPENROUTER_APP_NAME || 'Pulse').trim();
+  if (title) out['X-Title'] = title;
+  return out;
+}
+
 /**
  * Человекочитаемое пояснение при геоблоке OpenAI.
  */
@@ -137,6 +149,7 @@ async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonOb
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
+      ...openRouterExtraHeaders(),
     },
     body: JSON.stringify(body),
   });

@@ -406,6 +406,46 @@ export default function SurveyAnalytics() {
           )}
         </motion.section>
 
+        {data && (data.text_word_cloud?.words.length || hasTextResponses) && (
+          <div className="results-text-analytics-block results-text-analytics-block--prominent">
+            {data.text_word_cloud && data.text_word_cloud.words.length > 0 && (
+              <CommentsWordCloud
+                words={data.text_word_cloud.words}
+                onSelectWord={(w) => setTextModal({ open: true, q: w, question_id: undefined })}
+              />
+            )}
+            <p className="muted analytics-slice-note">
+              Облако слов и карточки вопросов ниже — по текущей выборке. В отдельном окне списка текстов поиск выполняется по
+              всем ответам опроса (как в разделе «Все результаты»).
+            </p>
+            {textQuestionOptions.length > 0 && hasTextResponses && (
+              <motion.div
+                className="card results-text-all-btn-wrap glass-surface"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <p className="results-text-all-btn-lead muted">Свободные ответы в выборке</p>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => setTextModal({ open: true, q: undefined, question_id: undefined })}
+                >
+                  Открыть список комментариев
+                </button>
+              </motion.div>
+            )}
+          </div>
+        )}
+
+        {data && !loading && (
+          <InsightsPanel
+            surveyId={surveyId}
+            onDrillDown={drillToQuestion}
+            filters={appliedFilters}
+            autoRun
+          />
+        )}
+
         {data && data.questions.length === 0 && (
           <motion.div
             className="card results-empty-survey glass-surface"
@@ -432,37 +472,6 @@ export default function SurveyAnalytics() {
             />
           ))}
         </motion.div>
-
-        {data && (data.text_word_cloud?.words.length || hasTextResponses) && (
-          <div className="results-text-analytics-block">
-            {data.text_word_cloud && data.text_word_cloud.words.length > 0 && (
-              <CommentsWordCloud
-                words={data.text_word_cloud.words}
-                onSelectWord={(w) => setTextModal({ open: true, q: w, question_id: undefined })}
-              />
-            )}
-            <p className="muted analytics-slice-note">
-              Облако слов и карточки вопросов — по текущей выборке. В отдельном окне списка текстов поиск выполняется по
-              всем ответам опроса (как в разделе «Все результаты»).
-            </p>
-            {textQuestionOptions.length > 0 && hasTextResponses && (
-              <motion.div
-                className="card results-text-all-btn-wrap glass-surface"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <p className="results-text-all-btn-lead muted">Свободные ответы в выборке</p>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => setTextModal({ open: true, q: undefined, question_id: undefined })}
-                >
-                  Открыть список комментариев
-                </button>
-              </motion.div>
-            )}
-          </div>
-        )}
 
         {data && data.questions.length > 0 && (
           <motion.section
@@ -512,13 +521,6 @@ export default function SurveyAnalytics() {
             )}
           </motion.section>
         )}
-
-        <InsightsPanel
-          surveyId={surveyId}
-          onDrillDown={drillToQuestion}
-          filters={appliedFilters}
-          autoRun
-        />
 
         {!legacySliceApi ? (
           <AnalyticsAnalystChat surveyId={surveyId} filters={appliedFilters} />

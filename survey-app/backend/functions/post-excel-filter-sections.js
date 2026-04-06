@@ -133,7 +133,7 @@ async function handlePostExcelFilterSections(_pool, event) {
     sections: null,
     hint:
       llm.kind === 'no_key'
-        ? 'Нет ключей LLM — используйте стандартную группировку на клиенте или задайте DeepSeek / OpenAI / YandexGPT (см. BACKEND_AND_API.md).'
+        ? 'Нет ключей LLM в среде функции — задайте OPENAI_API_KEY + при OpenRouter OPENAI_BASE_URL=https://openrouter.ai/api/v1, или DEEPSEEK_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY; создайте новую версию. Иначе — стандартная группировка на клиенте. См. BACKEND_AND_API.md.'
         : truncate(llm.detail, 1200),
   });
 }

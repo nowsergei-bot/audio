@@ -59,6 +59,26 @@ CREATE INDEX IF NOT EXISTS idx_surveys_access_link ON surveys (access_link);
 CREATE INDEX IF NOT EXISTS idx_surveys_director_token ON surveys (director_token) WHERE director_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_surveys_owner ON surveys (owner_user_id);
 
+-- Разделы (группы) опросов для методистов: стажировки, отделения и т.д.
+CREATE TABLE IF NOT EXISTS survey_groups (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  curator_name TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_groups_sort ON survey_groups (sort_order, id);
+
+ALTER TABLE surveys ADD COLUMN IF NOT EXISTS survey_group_id INTEGER REFERENCES survey_groups (id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_surveys_survey_group ON surveys (survey_group_id);
+
+INSERT INTO survey_groups (slug, name, curator_name, sort_order) VALUES
+  ('internships', 'Стажировки', 'Ирина Крулыкова', 1),
+  ('school_department', 'Школьное отделение', 'Виталий Басовский', 2),
+  ('extra_education', 'Доп.образование', 'Мария Бусарова', 3)
+ON CONFLICT (slug) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS questions (
     id SERIAL PRIMARY KEY,
     survey_id INTEGER NOT NULL REFERENCES surveys (id) ON DELETE CASCADE,

@@ -48,6 +48,21 @@ fi
 find "$DIST" -type f | head -15
 [[ "$NFILES" -gt 15 ]] && echo ">>> ... и ещё $((NFILES - 15)) файлов"
 
+# aws s3 sync --delete иначе сотрёт объекты в бакете, которых нет в dist (например ZIP для CF).
+# Если в бакете есть объекты под префиксом — подтягиваем их в dist (пустую папку не создаём: иначе ZIP всё равно сотрётся).
+# Список через запятую; отключить: YC_S3_SYNC_PRESERVE_PREFIXES=
+IFS=',' read -ra _PRESERVE <<< "${YC_S3_SYNC_PRESERVE_PREFIXES-function-packages}"
+for _prefix in "${_PRESERVE[@]}"; do
+  _p="${_prefix//[[:space:]]/}"
+  [[ -z "$_p" ]] && continue
+  _p="${_p%/}"
+  if aws s3 ls "s3://$YC_BUCKET/$_p/" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION" 2>/dev/null | head -1 | grep -q .; then
+    echo ">>> Перед sync: s3://$YC_BUCKET/$_p/ → $DIST/$_p/ (чтобы --delete не стёр префикс)" >&2
+    mkdir -p "$DIST/$_p"
+    aws s3 sync "s3://$YC_BUCKET/$_p" "$DIST/$_p" --endpoint-url "$ENDPOINT" --region "$AWS_DEFAULT_REGION"
+  fi
+done
+
 echo ">>> Синхронизация → s3://$YC_BUCKET/ (endpoint $ENDPOINT)"
 # Для публичного сайта часто нужен ACL на объекты; в консоли можно вместо этого задать политику бакета.
 SYNC_FLAGS=(--delete)

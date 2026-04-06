@@ -8,6 +8,9 @@ import SurveyAnalytics from './pages/SurveyAnalytics';
 import PublicForm from './pages/PublicForm';
 import ImportWorkbookPage from './pages/ImportWorkbookPage';
 import ExcelAnalyticsPage from './pages/ExcelAnalyticsPage';
+import MultiSurveyAnalyticsPage from './pages/MultiSurveyAnalyticsPage';
+import AnalyticsModuleLayout from './pages/AnalyticsModuleLayout';
+import SurveyGroupsAdminPage from './pages/SurveyGroupsAdminPage';
 import ImportOldSurveyDataPage from './pages/ImportOldSurveyDataPage';
 import AuthPage from './pages/AuthPage';
 import QuickSurveyWizard from './pages/QuickSurveyWizard';
@@ -34,7 +37,14 @@ export default function App() {
         <Route path="/surveys/:id/results" element={<SurveyResults />} />
         <Route path="/surveys/:id/analytics" element={<SurveyAnalytics />} />
         <Route path="/import-workbook" element={<ImportWorkbookPage />} />
-        <Route path="/analytics-excel" element={<ExcelAnalyticsPage />} />
+        <Route path="/analytics-excel" element={<Navigate to="/analytics/excel" replace />} />
+        <Route path="/analytics-multi-surveys" element={<Navigate to="/analytics/surveys" replace />} />
+        <Route path="/analytics" element={<AnalyticsModuleLayout />}>
+          <Route index element={<Navigate to="excel" replace />} />
+          <Route path="excel" element={<ExcelAnalyticsPage />} />
+          <Route path="surveys" element={<MultiSurveyAnalyticsPage />} />
+        </Route>
+        <Route path="/surveys/groups" element={<SurveyGroupsAdminPage />} />
         <Route path="/import-old-surveys" element={<ImportOldSurveyDataPage />} />
         <Route path="/photo-wall/results" element={<PhotoWallResultsPage />} />
       </Route>

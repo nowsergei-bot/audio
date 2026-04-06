@@ -1,8 +1,7 @@
-/**
- * Стоп-слова (RU + короткие «шумовые») для облака по свободным ответам.
- * Синхронизируйте с frontend/src/lib/wordCloudDisplay.ts (refineWordCloudForDisplay).
- */
-function normalizeWordCloudToken(s) {
+import type { TextWordCloudWord } from '../types';
+
+/** Как в backend/functions/lib/text-word-cloud.js — одинаковая нормализация и стоп-лист. */
+function normalizeWordCloudToken(s: string): string {
   return String(s || '')
     .normalize('NFKC')
     .toLowerCase()
@@ -17,7 +16,8 @@ const STOP = new Set(
   или быть был него до вас ни уж вам сколько они тут где есть над ней для мы те вы
   какая между себя это тот та те этот эта эти том той тем тому той тоже опять вновь
   весь всю всего всем всеми чем чему чём под при про над без раз уж будто вроде
-  разве либо хоть кто кого кому чей чья чьё чьи
+  разве либо хоть кто кого кому чей чья чьё чьи очень более менее просто
+  ли бывает типа типу короче типо
   которые которой которого которым которую который которая которое которых которыми
   много многое многие многим многими мало несколько немного
   своего своей своих своим своими свою свой своя своё свои своём
@@ -28,7 +28,7 @@ const STOP = new Set(
   такой такая такое такие таких таким такими такую
   здесь туда сюда оттуда отсюда
   снова
-  очень крайне вполне довольно чуть
+  крайне вполне довольно чуть
   этому этими этих
   собой собою
   хочется хотелось
@@ -44,34 +44,13 @@ const STOP = new Set(
 );
 
 /**
- * @param {string} s
- * @returns {string[]}
+ * Оставляет только значимые слова и топ по count (для UI независимо от версии бэкенда).
  */
-function tokenizeLine(s) {
-  const t = String(s || '').toLowerCase();
-  const words = t.match(/[\p{L}\p{N}]+/gu);
-  if (!words) return [];
-  return words
-    .map((w) => normalizeWordCloudToken(w))
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+export function refineWordCloudForDisplay(words: TextWordCloudWord[], maxWords = 22): TextWordCloudWord[] {
+  const filtered = words.filter((w) => {
+    const t = normalizeWordCloudToken(String(w.text || ''));
+    if (t.length < 3) return false;
+    return !STOP.has(t);
+  });
+  return [...filtered].sort((a, b) => b.count - a.count).slice(0, maxWords);
 }
-
-/**
- * @param {string[]} texts
- * @param {number} maxWords
- * @returns {{ text: string, count: number }[]}
- */
-function buildWordCloudFromTexts(texts, maxWords = 22) {
-  const freq = new Map();
-  for (const raw of texts) {
-    for (const w of tokenizeLine(raw)) {
-      freq.set(w, (freq.get(w) || 0) + 1);
-    }
-  }
-  return [...freq.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, maxWords)
-    .map(([text, count]) => ({ text, count }));
-}
-
-module.exports = { buildWordCloudFromTexts, tokenizeLine, normalizeWordCloudToken };

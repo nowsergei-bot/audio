@@ -156,7 +156,7 @@ async function handlePostExcelNarrativeSummary(_pool, event) {
     narrative: null,
     hint:
       llm.kind === 'no_key'
-        ? 'Нет ключей LLM: задайте DEEPSEEK_API_KEY + LLM_PROVIDER=deepseek, или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY (см. BACKEND_AND_API.md).'
+        ? 'Нет ключей LLM на функции: OPENAI_API_KEY + для OpenRouter OPENAI_BASE_URL=https://openrouter.ai/api/v1 (и LLM_PROVIDER=openai), либо DEEPSEEK_API_KEY, либо YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. После правок — новая версия функции. См. BACKEND_AND_API.md.'
         : truncate(llm.detail, 1200),
   });
 }

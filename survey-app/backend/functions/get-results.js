@@ -1,6 +1,6 @@
 const { json } = require('./lib/http');
 const { loadSurveyWithQuestions } = require('./get-survey');
-const { fetchChartAggregates } = require('./lib/results-charts');
+const { fetchChartAggregates, fillDailySeries } = require('./lib/results-charts');
 const { buildWordCloudFromTexts } = require('./lib/text-word-cloud');
 const { parseJsonbText } = require('./lib/fetch-text-answers');
 
@@ -122,12 +122,15 @@ function aggregateForQuestion(question, rows) {
 /**
  * @param {import('pg').Pool} pool
  * @param {number} surveyId
- * @param {{ forPublicApi?: boolean; responseIds?: Set<number> | null }} [opts]
+ * @param {{ forPublicApi?: boolean; responseIds?: Set<number> | null; skipCharts?: boolean; skipWordCloud?: boolean }} [opts]
  * responseIds: null/undefined — все ответы; пустой Set — нет строк; непустой Set — только эти response id
+ * skipCharts/skipWordCloud — ускорение для пакетных обработчиков (мульти-сводка), где графики и облако не используются
  */
 async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
   const forPublicApi = opts.forPublicApi !== false;
   const responseIds = opts.responseIds;
+  const skipCharts = Boolean(opts.skipCharts);
+  const skipWordCloud = Boolean(opts.skipWordCloud);
 
   const survey = await loadSurveyWithQuestions(pool, surveyId);
   if (!survey) return null;
@@ -187,15 +190,23 @@ async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
   );
 
   const textCorpus = [];
-  for (const q of perQuestion) {
-    if (q.type === 'text' && Array.isArray(q.samples)) {
-      textCorpus.push(...q.samples);
+  if (!skipWordCloud) {
+    for (const q of perQuestion) {
+      if (q.type === 'text' && Array.isArray(q.samples)) {
+        textCorpus.push(...q.samples);
+      }
     }
   }
-  const wcWords = buildWordCloudFromTexts(textCorpus);
-  const text_word_cloud = wcWords.length ? { words: wcWords } : undefined;
+  const wcWords = skipWordCloud ? [] : buildWordCloudFromTexts(textCorpus);
+  const text_word_cloud = !skipWordCloud && wcWords.length ? { words: wcWords } : undefined;
 
-  const charts = await fetchChartAggregates(pool, surveyId, perQuestion, responseIds || null);
+  const charts = skipCharts
+    ? {
+        daily: fillDailySeries([], 30),
+        top_questions_timeseries: [],
+        dow_stacked: [],
+      }
+    : await fetchChartAggregates(pool, surveyId, perQuestion, responseIds || null);
 
   const questionsOut = forPublicApi
     ? perQuestion.map((p) => {

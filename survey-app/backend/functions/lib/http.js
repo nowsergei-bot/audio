@@ -126,7 +126,12 @@ function normalizePath(event) {
     path = '/' + parts.slice(apiAt).join('/');
   }
 
-  return path.replace(/\/$/, '') || '/';
+  path = path.replace(/\/$/, '') || '/';
+  // Клиент: VITE_API_BASE уже …/api + URL `/api/surveys/…` → шлюз отдаёт /api/api/… — иначе ни один маршрут не совпадает
+  while (path.includes('/api/api')) {
+    path = path.replace(/\/api\/api/g, '/api');
+  }
+  return path;
 }
 
 function getMethod(event) {
@@ -135,8 +140,10 @@ function getMethod(event) {
     event.requestContext?.httpMethod ||
     event.requestContext?.http?.method ||
     event.requestContext?.requestContext?.httpMethod ||
+    event.requestContext?.requestContext?.http?.method ||
     'GET';
-  return String(m).toUpperCase();
+  // Без trim «POST » / перенос строки от шлюза ломает сравнение method === 'POST'
+  return String(m).trim().toUpperCase();
 }
 
 module.exports = { json, parseBody, parseQuery, normalizePath, getMethod, CORS_HEADERS };

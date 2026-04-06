@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { postPulseExcelChat } from '../api/client';
 import type { AnalyticsChatMessage } from '../types';
@@ -13,6 +14,8 @@ type Props = {
   extraContext?: string;
   onApplyFilters: (update: (prev: FilterSelection) => FilterSelection) => void;
   disabled?: boolean;
+  /** Блоки ИИ (отчёты, глубокий режим и т.д.) — над лентой чата */
+  embeddedPanel?: ReactNode;
 };
 
 function mergeSuggestedFilters(
@@ -42,6 +45,7 @@ export default function PulseExcelChat({
   extraContext,
   onApplyFilters,
   disabled,
+  embeddedPanel,
 }: Props) {
   const [messages, setMessages] = useState<AnalyticsChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -117,6 +121,7 @@ export default function PulseExcelChat({
           строится по текущим данным дашборда; при необходимости фильтры подставятся автоматически.
         </p>
       </div>
+      {embeddedPanel != null ? <div className="pulse-excel-embedded-panel">{embeddedPanel}</div> : null}
       <div className="pulse-excel-chat-log" role="log">
         {messages.length === 0 && !loading && (
           <p className="muted pulse-excel-chat-placeholder">

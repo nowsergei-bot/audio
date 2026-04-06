@@ -132,11 +132,23 @@ export default function AdminDashboard() {
               </span>
             </div>
           </div>
-          <Link to="/analytics-excel" className="admin-dash-tile">
-            <span className="admin-dash-tile-kicker">Данные</span>
-            <h3 className="admin-dash-tile-title">Наблюдения из Excel</h3>
-            <p className="admin-dash-tile-desc">Дашборд по выгрузке: фильтры, графики и текстовые выводы.</p>
+          <Link to="/analytics/excel" className="admin-dash-tile">
+            <span className="admin-dash-tile-kicker">Аналитика</span>
+            <h3 className="admin-dash-tile-title">Модуль аналитики</h3>
+            <p className="admin-dash-tile-desc">
+              Наблюдения из Excel и сводка по нескольким действующим опросам: фильтры по разделам, графики и выводы (в том числе
+              с нейросетью при настроенном API).
+            </p>
             <span className="admin-dash-tile-action">Открыть →</span>
+          </Link>
+          <Link to="/surveys/groups" className="admin-dash-tile">
+            <span className="admin-dash-tile-kicker">Структура</span>
+            <h3 className="admin-dash-tile-title">Разделы опросов</h3>
+            <p className="admin-dash-tile-desc">
+              Распределите опросы по группам (стажировки, школьное отделение, доп.образование и др.) — удобнее для методистов и
+              фильтра в аналитике.
+            </p>
+            <span className="admin-dash-tile-action">Назначить разделы →</span>
           </Link>
           <Link to="/surveys/quick" className="admin-dash-tile">
             <span className="admin-dash-tile-kicker">Коммуникации</span>

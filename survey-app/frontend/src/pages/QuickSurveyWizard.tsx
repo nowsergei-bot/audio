@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { createSurvey, putSurveyInviteTemplate } from '../api/client';
+import { createSurvey, getSurveyGroups, putSurveyInviteTemplate } from '../api/client';
+import type { SurveyGroup } from '../types';
 
 function escapeHtml(s: string): string {
   return String(s || '')
@@ -58,6 +59,23 @@ export default function QuickSurveyWizard() {
   const [subject, setSubject] = useState('Приглашение: {{title}}');
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [surveyGroupId, setSurveyGroupId] = useState<number | ''>('');
+  const [surveyGroups, setSurveyGroups] = useState<SurveyGroup[]>([]);
+
+  useEffect(() => {
+    let c = false;
+    (async () => {
+      try {
+        const g = await getSurveyGroups();
+        if (!c) setSurveyGroups(g);
+      } catch {
+        if (!c) setSurveyGroups([]);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, []);
 
   const normLink = useMemo(() => normalizeAccessLink(accessLink), [accessLink]);
   const html = useMemo(() => buildInviteHtml({ title, letterText }), [title, letterText]);
@@ -72,6 +90,7 @@ export default function QuickSurveyWizard() {
         status: 'draft',
         access_link: normLink || undefined,
         questions: [],
+        survey_group_id: surveyGroupId === '' ? null : surveyGroupId,
       });
       await putSurveyInviteTemplate(s.id, { subject, html });
       nav(`/surveys/${s.id}/edit`, { replace: true });
@@ -114,6 +133,21 @@ export default function QuickSurveyWizard() {
             onChange={(e) => setAccessLink(e.target.value)}
             placeholder="Например: april-event-2026"
           />
+        </label>
+        <label style={{ display: 'block', marginTop: '0.75rem' }}>
+          Раздел (группа)
+          <select
+            value={surveyGroupId === '' ? '' : String(surveyGroupId)}
+            onChange={(e) => setSurveyGroupId(e.target.value === '' ? '' : Number(e.target.value))}
+          >
+            <option value="">Не выбран</option>
+            {surveyGroups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+                {g.curator_name ? ` (${g.curator_name})` : ''}
+              </option>
+            ))}
+          </select>
         </label>
         {accessLink && normLink !== accessLink.trim() && (
           <p className="muted" style={{ marginTop: '0.5rem' }}>

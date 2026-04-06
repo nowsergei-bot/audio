@@ -2,6 +2,7 @@ const { getPool } = require('./lib/pool');
 const { json, normalizePath, getMethod, parseBody, CORS_HEADERS } = require('./lib/http');
 const { requireUser } = require('./lib/session-auth');
 const { handleGetSurveys } = require('./get-surveys');
+const { handleGetSurveyGroups } = require('./get-survey-groups');
 const { handleCreateSurvey } = require('./create-survey');
 const { handleGetSurvey } = require('./get-survey');
 const { handleUpdateSurvey } = require('./update-survey');
@@ -18,6 +19,7 @@ const { handlePostExcelFilterSections } = require('./post-excel-filter-sections'
 const { handlePostExcelFilterValueGroups } = require('./post-excel-filter-value-groups');
 const { handlePostExcelNarrativeSummary } = require('./post-excel-narrative-summary');
 const { handlePostExcelDirectorDossier } = require('./post-excel-director-dossier');
+const { handlePostMultiSurveyAnalytics } = require('./post-multi-survey-analytics');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
 const { handlePostWorkbook } = require('./post-workbook');
@@ -50,6 +52,10 @@ const {
   handleGetPublicDirectorResults,
   handlePostPublicDirectorAiInsights,
 } = require('./get-public-director');
+
+/** Смените при выкладке — по GET /api/ping видно, что в облаке свежий bundle */
+const DEPLOY_STAMP = '2026-04-06-survey-groups-schema-fallback';
+
 function segmentsFromPath(path) {
   return path
     .split('/')
@@ -75,7 +81,7 @@ async function handlerImpl(event) {
 
   // Без БД и без ключа — чтобы отличить «шлюз + рантайм ок» от ошибок Postgres/таймаута
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'ping' && segs.length === 2) {
-    return json(200, { ok: true, service: 'survey-api' });
+    return json(200, { ok: true, service: 'survey-api', deploy_stamp: DEPLOY_STAMP });
   }
 
   // Публичные маршруты (без API-ключа)
@@ -172,8 +178,28 @@ async function handlerImpl(event) {
     return Number(r.rows[0].owner_user_id || 0) === Number(user.id || -1);
   }
 
+  // Сводка по нескольким опросам — только POST; грубая проверка по подстрокам (устойчиво к шлюзу и регистру)
+  const pLower = String(path).toLowerCase();
+  const segLower = (s) => String(s).toLowerCase().replace(/\u2011|\u2010|\u2012|\u2013|\u2014/g, '-');
+  const hasSeg = (name) => segs.some((s) => segLower(s) === name);
+  const hitBatch =
+    method === 'POST' &&
+    (pLower.includes('batch-analytics') || segs.some((s) => segLower(s).includes('batch-analytics')));
+  const hitMulti =
+    method === 'POST' &&
+    (pLower.includes('multi-survey') || segs.some((s) => segLower(s).includes('multi-survey')));
+  if (hitBatch && (pLower.includes('surveys') || hasSeg('surveys'))) {
+    return handlePostMultiSurveyAnalytics(pool, event, canAccessSurvey);
+  }
+  if (hitMulti && (pLower.includes('analytics') || hasSeg('analytics'))) {
+    return handlePostMultiSurveyAnalytics(pool, event, canAccessSurvey);
+  }
+
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleGetSurveys(pool, user);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'survey-groups' && segs.length === 2) {
+    return handleGetSurveyGroups(pool);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'photo-wall' && segs[2] === 'photos' && segs.length === 3) {
     return handleGetPhotoWallPhotos(pool);
@@ -490,6 +516,7 @@ async function handlerImpl(event) {
     path,
     method,
     segments: segs,
+    deploy_stamp: DEPLOY_STAMP,
   });
 }
 

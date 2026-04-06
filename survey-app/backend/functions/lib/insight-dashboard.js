@@ -85,6 +85,20 @@ function buildHeuristicDashboard(snapshot) {
         tone: 'attention',
       });
     }
+
+    const textWithAnswers = qs.filter(
+      (q) =>
+        q.type === 'text' &&
+        ((q.response_count || 0) > 0 || (q.samples_total || 0) > 0 || (Array.isArray(q.samples) && q.samples.length > 0)),
+    );
+    if (textWithAnswers.length > 0) {
+      alerts.push({
+        title: 'Сигналы, риски и точки роста (тексты)',
+        body:
+          'По опросу есть свободные ответы — в них чаще всего звучат конкретные проблемы и ожидания (риски), а также благодарность и идеи улучшений (точки роста). Откройте облако тем, цитаты и полные тексты к вопросам; в блоке «ИИ-аналитика» ниже должен быть отдельный раздел с разбором рисков и возможностей.',
+        tone: 'attention',
+      });
+    }
   }
 
   const questions = qs.map((q) => {

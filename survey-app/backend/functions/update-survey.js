@@ -13,26 +13,45 @@ async function handleUpdateSurvey(pool, id, event, user) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-  const title = body.title != null ? String(body.title).trim() : existing.title;
-  const description = body.description != null ? String(body.description).trim() : existing.description;
-  const allowedStatus = new Set(['draft', 'published', 'closed']);
-  const status =
-    body.status != null && allowedStatus.has(body.status) ? body.status : existing.status;
+    const title = body.title != null ? String(body.title).trim() : existing.title;
+    const description = body.description != null ? String(body.description).trim() : existing.description;
+    const allowedStatus = new Set(['draft', 'published', 'closed']);
+    const status =
+      body.status != null && allowedStatus.has(body.status) ? body.status : existing.status;
     const access_link =
       body.access_link != null ? String(body.access_link).trim() : existing.access_link;
     const media = body.media && typeof body.media === 'object' ? body.media : null;
 
+    let nextGroupId = existing.survey_group_id != null ? existing.survey_group_id : null;
+    if (body.survey_group_id !== undefined) {
+      if (body.survey_group_id === null) {
+        nextGroupId = null;
+      } else {
+        const gid = Number(body.survey_group_id);
+        if (!Number.isFinite(gid) || gid < 1) {
+          await client.query('ROLLBACK');
+          return json(400, { error: 'Invalid survey_group_id' });
+        }
+        const gr = await client.query('SELECT id FROM survey_groups WHERE id = $1', [gid]);
+        if (!gr.rows.length) {
+          await client.query('ROLLBACK');
+          return json(400, { error: 'Unknown survey group' });
+        }
+        nextGroupId = gid;
+      }
+    }
+
     if (media) {
       await client.query(
         `UPDATE surveys
-         SET title = $1, description = $2, status = $3::survey_status, access_link = $4, media = $5::jsonb
-         WHERE id = $6`,
-        [title, description, status, access_link, JSON.stringify(media), id]
+         SET title = $1, description = $2, status = $3::survey_status, access_link = $4, media = $5::jsonb, survey_group_id = $6
+         WHERE id = $7`,
+        [title, description, status, access_link, JSON.stringify(media), nextGroupId, id],
       );
     } else {
       await client.query(
-        `UPDATE surveys SET title = $1, description = $2, status = $3::survey_status, access_link = $4 WHERE id = $5`,
-        [title, description, status, access_link, id]
+        `UPDATE surveys SET title = $1, description = $2, status = $3::survey_status, access_link = $4, survey_group_id = $5 WHERE id = $6`,
+        [title, description, status, access_link, nextGroupId, id],
       );
     }
 
@@ -52,7 +71,7 @@ async function handleUpdateSurvey(pool, id, event, user) {
         await client.query(
           `INSERT INTO questions (survey_id, text, type, options, sort_order, required)
            VALUES ($1, $2, $3::question_type, $4::jsonb, $5, $6)`,
-          [id, text, type, JSON.stringify(options), sort_order, required]
+          [id, text, type, JSON.stringify(options), sort_order, required],
         );
       }
     }

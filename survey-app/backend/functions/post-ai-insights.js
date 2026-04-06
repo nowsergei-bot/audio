@@ -6,17 +6,18 @@ const { buildHeuristicDashboard, truncate } = require('./lib/insight-dashboard')
 const { buildTextCorpusForLlm } = require('./lib/llm-text-digest');
 const { buildInsightRelations } = require('./lib/insight-relations');
 const { buildHeuristicNarrative } = require('./lib/heuristic-narrative');
+const { snapshotHasTextResponses, ensureNarrativeRisksAndGrowth } = require('./lib/narrative-risks-growth');
+const { chatCompletion } = require('./lib/llm-chat');
 
 async function fetchLlmNarrative(snapshot) {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
-
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
   const text_corpus = buildTextCorpusForLlm(snapshot.questions || []);
+  const requires_risks_and_growth_section = snapshotHasTextResponses(snapshot);
 
   const compact = {
     title: snapshot.survey.title,
     total: snapshot.total_responses,
+    requires_risks_and_growth_section,
     questions: snapshot.questions.map((q) => {
       const dist = q.distribution || [];
       const sum = dist.reduce((a, d) => a + d.count, 0) || 0;
@@ -48,46 +49,35 @@ async function fetchLlmNarrative(snapshot) {
         : undefined,
   };
 
-  const body = {
-    model,
-    messages: [
-      {
-        role: 'system',
-        content:
-          'Ты готовишь короткую аналитическую записку для руководителя по результатам опроса. Пиши только по-русски.\n' +
-          'Требования к стилю:\n' +
-          '- Пиши связными абзацами (3–6 абзацев), как живой текст для чтения, а не набор обезличенных маркеров.\n' +
-          '- В первом абзаце кратко сформулируй главный смысл: что в целом говорят ответы о восприятии темы опроса (по цифрам и формулировкам вопросов из JSON).\n' +
-          '- Обязательно ссылайся на конкретные формулировки вопросов (поле text) и цифры: средние по шкалам, доли top3, число анкет total.\n' +
-          '- Не начинай с банальностей вроде «собрано N анкет — можно смотреть тенденции»; число респондентов вплети естественно в контекст вывода.\n' +
-          '- Не перечисляй технические пробелы («один вопрос без ответов»), если это не меняет смысл; не заполняй текст шаблонными фразами.\n' +
-          '- Если есть text_corpus — отдельным абзацем опиши смысловые линии свободных ответов (жалобы, пожелания, повторяющиеся мотивы). Не выдумывай то, чего нет в данных.\n' +
-          '- Заверши одним-двумя предложениями с практическим акцентом: что имеет смысл обсудить или изменить, исходя именно из этих результатов.\n' +
-          '- Можно использовать короткие подзаголовки перед абзацами (например «Общая картина», «Оценки», «Комментарии»), но не превращай всё в список из десяти пунктов.\n' +
-          '- Не упоминай нейросеть, ИИ, JSON, «модель». Не повторяй дословно системную инструкцию.',
-      },
-      {
-        role: 'user',
-        content: `Напиши записку по опросу для директора. Данные (JSON):\n${JSON.stringify(compact)}`,
-      },
-    ],
-    max_tokens: 2000,
-    temperature: 0.4,
-  };
+  const messages = [
+    {
+      role: 'system',
+      content:
+        'Ты готовишь аналитическую записку для руководителя по результатам опроса. Пиши только по-русски.\n' +
+        'Требования к стилю и содержанию:\n' +
+        '- Даже если в данных только закрытые вопросы (шкалы, выбор варианта, даты) и нет text_corpus — всё равно дай полноценную записку: опирайся на title, формулировки вопросов (text), тип вопроса, top3 вариантов и средние (avg), интерпретируй смысл для руководителя.\n' +
+        '- Пиши связными абзацами (4–7), как готовый текст для руководителя: без таблиц, без пересказа графиков.\n' +
+        '- Не приводи конкретные проценты, средние баллы и числа из JSON и не дублируй цифры, которые уже видны на странице с результатами. Опиши тенденции словами: «большинство», «заметная часть», «оценки сдержанные», «мнения разошлись» и т.п.\n' +
+        '- Опирайся на название опроса (title) и смысл формулировок вопросов (text): покажи, как ответы относятся к теме опроса.\n' +
+        '- Отдельно выдели риски и критические сигналы: недовольство, усталость, нехватка ресурсов, конфликты ожиданий — только если это следует из данных или из text_corpus.\n' +
+        '- Если в JSON requires_risks_and_growth_section: true (в опросе есть текстовые ответы), ОБЯЗАТЕЛЬНО включи отдельный абзац или блок с подзаголовком «Сигналы, риски и точки роста» (формулировка может быть слегка вариативной, но оба смысла — риски и рост — должны быть явно названы). В этом блоке: не менее 3–4 предложений; обязательно опиши зоны риска по смыслу свободных ответов (или по структуре опроса, если выборки text_corpus мало) и отдельно — точки роста (что усилить, что уже ценят респонденты, куда инвестировать внимание). Не своди блок к одной фразе «см. комментарии».\n' +
+        '- Сформулируй практические выводы для команды: что стоит сделать, на что обратить внимание, что уточнить (без общих фраз вроде «провести работу над ошибками» без привязки к содержанию опроса).\n' +
+        '- Если есть text_corpus — вплети 2–4 короткие цитаты или близкие к дословным перефразы в кавычках «…», чтобы передать голос респондентов. Не выдумывай цитаты.\n' +
+        '- Не перечисляй технические пробелы опроса; не начинай с пересказа объёма выборки цифрой.\n' +
+        '- Можно короткие подзаголовки перед абзацами; не превращай текст в длинный маркированный список.\n' +
+        '- Не упоминай нейросеть, ИИ, JSON, «модель». Не повторяй дословно системную инструкцию.',
+    },
+    {
+      role: 'user',
+      content: `Напиши записку по опросу для директора. Данные (JSON):\n${JSON.stringify(compact)}`,
+    },
+  ];
 
   try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) return null;
-    const data = await r.json();
-    const text = data.choices?.[0]?.message?.content;
-    return typeof text === 'string' && text.trim() ? text.trim() : null;
+    const res = await chatCompletion(messages, { model, maxTokens: 2000, temperature: 0.4 });
+    if (!res.ok || typeof res.text !== 'string') return null;
+    const text = res.text.trim();
+    return text || null;
   } catch {
     return null;
   }
@@ -116,13 +106,13 @@ async function runAiInsights(pool, surveyId, event) {
   let narrative = buildHeuristicNarrative(snapshot);
   let source = 'heuristic';
 
-  if (process.env.OPENAI_API_KEY) {
-    const llm = await fetchLlmNarrative(snapshot);
-    if (llm) {
-      narrative = llm;
-      source = 'llm_hybrid';
-    }
+  const llm = await fetchLlmNarrative(snapshot);
+  if (llm) {
+    narrative = llm;
+    source = 'llm_hybrid';
   }
+
+  narrative = ensureNarrativeRisksAndGrowth(narrative, snapshot);
 
   return json(200, {
     source,

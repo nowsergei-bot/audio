@@ -12,9 +12,17 @@ type Props = {
   onOpenTextAnswers?: (ctx: { question_id: number }) => void;
   /** Сводка и вывод по всем текстовым ответам на этот вопрос (отдельное окно). */
   onOpenTextInsight?: (questionId: number) => void;
+  /** Вся область с выборкой ответов открывает полный список (удобно на тач-экране). */
+  tapTextBlockOpensAnswers?: boolean;
 };
 
-export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpenTextInsight }: Props) {
+export default function ResultQuestionCard({
+  q,
+  index,
+  onOpenTextAnswers,
+  onOpenTextInsight,
+  tapTextBlockOpensAnswers,
+}: Props) {
   const typeLabel = QUESTION_TYPE_LABEL_RU[q.type];
   const [chartsOpen, setChartsOpen] = useState(true);
   const hasChart =
@@ -192,35 +200,73 @@ export default function ResultQuestionCard({ q, index, onOpenTextAnswers, onOpen
                 </p>
               ) : (
                 <>
-                  <p className="muted results-text-highlight-kicker">Самые содержательные ответы</p>
-                  {(q.samples_highlight || []).length === 0 ? (
-                    <p className="muted results-empty">Краткая выборка пуста — откройте полный список комментариев.</p>
-                  ) : (
-                    <motion.ul
-                      className="results-text-list"
-                      variants={staggerContainer}
-                      initial="hidden"
-                      animate="show"
+                  {tapTextBlockOpensAnswers && onOpenTextAnswers ? (
+                    <button
+                      type="button"
+                      className="results-text-tap-block"
+                      onClick={() => onOpenTextAnswers({ question_id: q.question_id })}
+                      aria-label={`Открыть все текстовые ответы на этот вопрос, всего ${q.samples_total ?? q.response_count}`}
                     >
-                      {(q.samples_highlight || []).map((s, i) => (
-                        <motion.li
-                          key={i}
-                          className="results-text-item results-text-item--featured"
-                          variants={staggerItem}
-                          layout
+                      <p className="muted results-text-highlight-kicker">Самые содержательные ответы</p>
+                      <p className="muted results-text-tap-hint">
+                        Нажмите, чтобы прокрутить все ответы ({q.samples_total ?? q.response_count})
+                      </p>
+                      {(q.samples_highlight || []).length === 0 ? (
+                        <p className="muted results-empty">Краткая выборка пуста — откроется полный список.</p>
+                      ) : (
+                        <motion.ul
+                          className="results-text-list"
+                          variants={staggerContainer}
+                          initial="hidden"
+                          animate="show"
                         >
-                          <span className="results-text-bull" aria-hidden />
-                          <blockquote className="results-text-quote">{s || '—'}</blockquote>
-                        </motion.li>
-                      ))}
-                    </motion.ul>
+                          {(q.samples_highlight || []).map((s, i) => (
+                            <motion.li
+                              key={i}
+                              className="results-text-item results-text-item--featured"
+                              variants={staggerItem}
+                              layout
+                            >
+                              <span className="results-text-bull" aria-hidden />
+                              <blockquote className="results-text-quote">{s || '—'}</blockquote>
+                            </motion.li>
+                          ))}
+                        </motion.ul>
+                      )}
+                    </button>
+                  ) : (
+                    <>
+                      <p className="muted results-text-highlight-kicker">Самые содержательные ответы</p>
+                      {(q.samples_highlight || []).length === 0 ? (
+                        <p className="muted results-empty">Краткая выборка пуста — откройте полный список комментариев.</p>
+                      ) : (
+                        <motion.ul
+                          className="results-text-list"
+                          variants={staggerContainer}
+                          initial="hidden"
+                          animate="show"
+                        >
+                          {(q.samples_highlight || []).map((s, i) => (
+                            <motion.li
+                              key={i}
+                              className="results-text-item results-text-item--featured"
+                              variants={staggerItem}
+                              layout
+                            >
+                              <span className="results-text-bull" aria-hidden />
+                              <blockquote className="results-text-quote">{s || '—'}</blockquote>
+                            </motion.li>
+                          ))}
+                        </motion.ul>
+                      )}
+                    </>
                   )}
                 </>
               )}
-              {(onOpenTextAnswers || onOpenTextInsight) &&
+              {((onOpenTextAnswers && !tapTextBlockOpensAnswers) || onOpenTextInsight) &&
                 ((q.response_count ?? 0) > 0 || (q.samples_total ?? 0) > 0) && (
                 <div className="results-text-actions results-text-actions--row">
-                  {onOpenTextAnswers && (
+                  {onOpenTextAnswers && !tapTextBlockOpensAnswers && (
                     <button
                       type="button"
                       className="btn primary"
