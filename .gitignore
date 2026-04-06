@@ -35,3 +35,4 @@ survey-app/frontend/.env.*
 # Локальные URL бакета / API (не в публичный репозиторий)
 survey-app/deploy.config.json
 survey-app/.youware.json
+survey-app/.env.cloud-function

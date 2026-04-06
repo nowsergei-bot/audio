@@ -30,6 +30,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Секреты не в репозитории: создайте survey-app/.env.cloud-function с PG_CONNECTION_STRING, ADMIN_API_KEY, CORS_ORIGIN
+# или задайте их в shell до запуска. Иначе: YC_FUNCTION_ENV_FILE=/path/to/file
+_ENV_CF="${YC_FUNCTION_ENV_FILE:-$ROOT/.env.cloud-function}"
+if [[ -f "$_ENV_CF" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$_ENV_CF"
+  set +a
+  echo ">>> Переменные окружения: загружен $_ENV_CF" >&2
+fi
 ZIP="${ZIP_PATH:-$ROOT/backend/function-bundle.zip}"
 NAME="${YC_FUNCTION_NAME:-survey-api}"
 FUNC_ID="${YC_FUNCTION_ID:-}"
