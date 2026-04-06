@@ -5491,6 +5491,39 @@ body {
   color: var(--page-fg);
 }
 
+.excel-analytics-post-load {
+  margin-top: 1rem;
+}
+
+.excel-analytics-automap-done {
+  margin: 0 0 0.75rem;
+}
+
+.excel-analytics-advanced-mapping {
+  border: 1px solid var(--brand-red-dim);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 1rem;
+  background: rgba(227, 6, 19, 0.03);
+}
+
+.excel-analytics-advanced-summary {
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--page-fg);
+  list-style: none;
+}
+
+.excel-analytics-advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.excel-analytics-advanced-body {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(227, 6, 19, 0.15);
+}
+
 .excel-analytics-auto-row {
   display: flex;
   flex-wrap: wrap;

@@ -228,8 +228,6 @@ export default function ExcelAnalyticsPage() {
   } | null>(null);
   /** Раскрытие блока «Исходные факты» (в т.ч. после выбора педагога из дрилла) */
   const [excelFactsOpen, setExcelFactsOpen] = useState(false);
-  /** При загрузке листа сразу подбирать роли по заголовкам и данным */
-  const [autoMapOnLoad, setAutoMapOnLoad] = useState(false);
   /** Подписи из ячеек: по умолчанию только часть до «//» (рус.), иначе часть после «//». */
   const [showEnglishExcelLabels, setShowEnglishExcelLabels] = useState(false);
   /** Сообщение, если при анализе отсечена служебная колонка времени */
@@ -299,38 +297,6 @@ export default function ExcelAnalyticsPage() {
       setErr(ex instanceof Error ? ex.message : 'Не удалось прочитать файл');
     }
   }, []);
-
-  const applySuggestedRoles = useCallback((h: string[], rows: CellPrimitive[][]) => {
-    const suggested = suggestColumnRoles(h, rows);
-    setRoles(suggested);
-    const oc = suggested.indexOf('metric_ordinal_text');
-    if (oc >= 0) setOrdinalLevels(collectOrdinalValues(rows, oc));
-    else setOrdinalLevels([]);
-  }, []);
-
-  const onApplySheet = () => {
-    if (!buffer || !sheet) return;
-    setErr(null);
-    try {
-      const matrix = getSheetMatrix(buffer, sheet);
-      const { headers: h, rows } = extractHeadersAndRows(matrix, headerRow1Based, MAX_ROWS);
-      setHeaders(h);
-      setRawRows(rows);
-      setAnalyticRows([]);
-      setFilterSelection({});
-      setServiceStripNote(null);
-      setSummaryNarrative(null);
-      setSummaryNarrativeLoading(false);
-      setMetricPickIndex(null);
-      if (autoMapOnLoad) applySuggestedRoles(h, rows);
-      else {
-        setRoles(h.map(() => 'ignore'));
-        setOrdinalLevels([]);
-      }
-    } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Ошибка разбора листа');
-    }
-  };
 
   const setRoleAt = (colIndex: number, role: ColumnRole) => {
     setRoles((prev) => {
@@ -1063,86 +1029,131 @@ export default function ExcelAnalyticsPage() {
     void runAiValueGroupsFor(analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel);
   }, [runAiValueGroupsFor, analyticRows, filterSelection, filterKeys, filterKeyDisplayLabel]);
 
+  const executeAnalysis = useCallback(
+    (
+      h: string[],
+      matrixRows: CellPrimitive[][],
+      rolesInput: ColumnRole[],
+      ordinalInput: string[],
+    ) => {
+      const v = validateRoles(rolesInput);
+      if (!v.ok) {
+        setErr(v.message ?? 'Проверьте маппинг');
+        return;
+      }
+      const ordCol = rolesInput.indexOf('metric_ordinal_text');
+      if (ordCol >= 0 && ordinalInput.length === 0) {
+        setErr('Для текстовой шкалы задайте порядок уровней (или нажмите «Подставить из данных»).');
+        return;
+      }
+
+      const { roles: rolesForRun, strippedIndex } = applyServiceTimestampIgnore(h, matrixRows, rolesInput);
+      const vRun = validateRoles(rolesForRun);
+      if (!vRun.ok) {
+        setErr(
+          vRun.message
+            ? `После автоотсечения служебной колонки: ${vRun.message}`
+            : 'Проверьте маппинг после автоотсечения служебной колонки.',
+        );
+        return;
+      }
+
+      setErr(null);
+      setAiSectionLayout(null);
+      setAiSectionsHint(null);
+      setFacetGroupsByKey({});
+      setFacetGroupsHint(null);
+      setMetricDrill(null);
+      setExcelFactsOpen(false);
+
+      if (strippedIndex != null) {
+        setServiceStripNote(
+          `Столбец «${h[strippedIndex] || strippedIndex + 1}» распознан как служебная метка времени (например, момент голосования) и исключён из анализа. Роли колонок обновлены.`,
+        );
+      } else {
+        setServiceStripNote(null);
+      }
+
+      if (rolesForRun.some((r, i) => r !== rolesInput[i])) {
+        setRoles(rolesForRun);
+      }
+
+      let built = buildAnalyticRows(h, matrixRows, rolesForRun, customLabels, ordinalInput);
+      built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
+      built = augmentRowsWithDerivedParallel(built, rolesForRun, customLabels);
+      setAnalyticRows(built);
+
+      const sel: FilterSelection = {};
+      const keys = new Set<string>();
+      rolesForRun.forEach((r) => {
+        if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
+      });
+      if (rolesForRun.includes('filter_class') && !rolesForRun.includes('filter_parallel')) {
+        keys.add(PULSE_PARALLEL_AUTO_KEY);
+      }
+      keys.forEach((k) => {
+        sel[k] = null;
+      });
+      setFilterSelection(sel);
+
+      const firstMetric =
+        rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
+      setMetricPickIndex(firstMetric);
+
+      const keysArr = [...keys];
+      const labelsM = buildFilterKeyLabels(rolesForRun, h, customLabels);
+      void (async () => {
+        await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr);
+        await runAiValueGroupsFor(built, sel, keysArr, labelsM);
+      })();
+    },
+    [customLabels, runAiFilterSectionsFor, runAiValueGroupsFor],
+  );
+
   const runAnalysis = useCallback(() => {
-    const v = validateRoles(roles);
-    if (!v.ok) {
-      setErr(v.message ?? 'Проверьте маппинг');
-      return;
-    }
-    const ordCol = roles.indexOf('metric_ordinal_text');
-    if (ordCol >= 0 && ordinalLevels.length === 0) {
-      setErr('Для текстовой шкалы задайте порядок уровней (или нажмите «Подставить из данных»).');
-      return;
-    }
+    executeAnalysis(headers, rawRows, roles, ordinalLevels);
+  }, [executeAnalysis, headers, rawRows, roles, ordinalLevels]);
 
-    const { roles: rolesForRun, strippedIndex } = applyServiceTimestampIgnore(headers, rawRows, roles);
-    const vRun = validateRoles(rolesForRun);
-    if (!vRun.ok) {
-      setErr(
-        vRun.message
-          ? `После автоотсечения служебной колонки: ${vRun.message}`
-          : 'Проверьте маппинг после автоотсечения служебной колонки.',
-      );
-      return;
-    }
+  const reSuggestAndRun = useCallback(() => {
+    if (!headers.length) return;
+    const s = suggestColumnRoles(headers, rawRows);
+    const oc = s.indexOf('metric_ordinal_text');
+    const ord = oc >= 0 ? collectOrdinalValues(rawRows, oc) : [];
+    setRoles(s);
+    setOrdinalLevels(ord);
+    executeAnalysis(headers, rawRows, s, ord);
+  }, [headers, rawRows, executeAnalysis]);
 
+  const onApplySheet = () => {
+    if (!buffer || !sheet) return;
     setErr(null);
-    setAiSectionLayout(null);
-    setAiSectionsHint(null);
-    setFacetGroupsByKey({});
-    setFacetGroupsHint(null);
-    setMetricDrill(null);
-    setExcelFactsOpen(false);
-
-    if (strippedIndex != null) {
-      setServiceStripNote(
-        `Столбец «${headers[strippedIndex] || strippedIndex + 1}» распознан как служебная метка времени (например, момент голосования) и исключён из анализа. Роли колонок обновлены.`,
-      );
-    } else {
+    try {
+      const matrix = getSheetMatrix(buffer, sheet);
+      const { headers: h, rows } = extractHeadersAndRows(matrix, headerRow1Based, MAX_ROWS);
+      setHeaders(h);
+      setRawRows(rows);
+      setAnalyticRows([]);
+      setFilterSelection({});
       setServiceStripNote(null);
+      setSummaryNarrative(null);
+      setSummaryNarrativeLoading(false);
+      setMetricPickIndex(null);
+      setAiSectionLayout(null);
+      setAiSectionsHint(null);
+      setFacetGroupsByKey({});
+      setFacetGroupsHint(null);
+      setMetricDrill(null);
+      setExcelFactsOpen(false);
+      const suggested = suggestColumnRoles(h, rows);
+      const oc = suggested.indexOf('metric_ordinal_text');
+      const ord = oc >= 0 ? collectOrdinalValues(rows, oc) : [];
+      setRoles(suggested);
+      setOrdinalLevels(ord);
+      executeAnalysis(h, rows, suggested, ord);
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Ошибка разбора листа');
     }
-
-    if (rolesForRun.some((r, i) => r !== roles[i])) {
-      setRoles(rolesForRun);
-    }
-
-    let built = buildAnalyticRows(headers, rawRows, rolesForRun, customLabels, ordinalLevels);
-    built = expandRowsForMultiValueFilterColumns(built, rolesForRun, customLabels);
-    built = augmentRowsWithDerivedParallel(built, rolesForRun, customLabels);
-    setAnalyticRows(built);
-
-    const sel: FilterSelection = {};
-    const keys = new Set<string>();
-    rolesForRun.forEach((r) => {
-      if (isFilterRole(r)) keys.add(filterKeyForRole(r, customLabels));
-    });
-    if (rolesForRun.includes('filter_class') && !rolesForRun.includes('filter_parallel')) {
-      keys.add(PULSE_PARALLEL_AUTO_KEY);
-    }
-    keys.forEach((k) => {
-      sel[k] = null;
-    });
-    setFilterSelection(sel);
-
-    const firstMetric =
-      rolesForRun.map((r, i) => (r === 'metric_numeric' ? i : -1)).find((i) => i >= 0) ?? null;
-    setMetricPickIndex(firstMetric);
-
-    const keysArr = [...keys];
-    const labelsM = buildFilterKeyLabels(rolesForRun, headers, customLabels);
-    void (async () => {
-      await runAiFilterSectionsFor(built, rolesForRun, sel, keysArr);
-      await runAiValueGroupsFor(built, sel, keysArr, labelsM);
-    })();
-  }, [
-    roles,
-    ordinalLevels,
-    headers,
-    rawRows,
-    customLabels,
-    runAiFilterSectionsFor,
-    runAiValueGroupsFor,
-  ]);
+  };
 
   const fetchDirectorDossier = useCallback(async () => {
     if (!teacherFilterKey) {
@@ -1424,10 +1435,12 @@ export default function ExcelAnalyticsPage() {
   const applyTemplate = (t: SavedMappingTemplate) => {
     if (!headers.length) return;
     const nextRoles = headers.map((h) => t.headerMap[normalizeHeader(h)] ?? 'ignore');
-    setRoles(nextRoles);
     setCustomLabels({ ...t.customLabels });
     const ordCol = nextRoles.indexOf('metric_ordinal_text');
-    if (ordCol >= 0) setOrdinalLevels(collectOrdinalValues(rawRows, ordCol));
+    const ord = ordCol >= 0 ? collectOrdinalValues(rawRows, ordCol) : [];
+    setRoles(nextRoles);
+    setOrdinalLevels(ord);
+    executeAnalysis(headers, rawRows, nextRoles, ord);
   };
 
   return (
@@ -1441,9 +1454,10 @@ export default function ExcelAnalyticsPage() {
           <p className="admin-dash-kicker">Модуль аналитики · Excel</p>
           <h1 className="admin-dash-title">Наблюдения из таблицы</h1>
           <p className="muted admin-dash-lead">
-            Загрузите таблицу, укажите лист и строку заголовков, сопоставьте колонки с ролями. Если в той же книге на
-            другом листе есть расшифровка шифра в ФИО (столбцы вроде «ШИФР» и «ФИО»), она автоматически подмешивается в
-            контекст для ИИ. Данные обрабатываются в браузере; шаблоны маппинга хранятся локально на этом устройстве.
+            Загрузите таблицу, укажите лист и строку заголовков и нажмите «Загрузить лист» — роли колонок подбираются
+            автоматически, дашборд строится сам. Ручная правка и шаблоны — в блоке «Настройка столбцов» ниже. Если в той же
+            книге на другом листе есть расшифровка шифра в ФИО (столбцы вроде «ШИФР» и «ФИО»), она подмешивается в контекст
+            для ИИ. Данные обрабатываются в браузере; шаблоны хранятся локально на этом устройстве.
           </p>
         </motion.header>
 
@@ -1496,176 +1510,155 @@ export default function ExcelAnalyticsPage() {
                 />
               </label>
               <button type="button" className="btn primary" onClick={onApplySheet}>
-                Загрузить лист
+                Загрузить лист и построить дашборд
               </button>
             </div>
-          </section>
-        )}
-
-        {headers.length > 0 && (
-          <section className="card glass-surface excel-analytics-section">
-            <h2 className="admin-dash-h2">3. Как столбец участвует в дашборде</h2>
-            <p className="excel-analytics-lead">
-              Это <strong>не «выбросить данные»</strong>, а только тип поля для графиков, фильтров и ИИ: число — в средние и
-              диаграммы, длинный текст — в выводы, класс/предмет — в срезы. Все столбцы наблюдений после кнопки ниже по
-              возможности подключаются сами (включая несколько критериев-оценок и несколько текстовых полей). Колонку{' '}
-              <strong>«Формат»</strong> (очно / онлайн) система ищет по заголовку и по значениям; «Дата посещения» не
-              путается с «Форматом проведения». Проверьте список и при необходимости смените роль в строке.
-            </p>
-            <div className="excel-analytics-auto-row">
-              <button
-                type="button"
-                className="btn primary excel-analytics-auto-btn"
-                onClick={() => {
-                  applySuggestedRoles(headers, rawRows);
-                  setErr(null);
-                }}
-              >
-                Подключить все столбцы автоматически
-              </button>
-              <label className="excel-analytics-check">
-                <input
-                  type="checkbox"
-                  checked={autoMapOnLoad}
-                  onChange={(e) => setAutoMapOnLoad(e.target.checked)}
-                />
-                Подбирать роли при каждой загрузке листа
-              </label>
-            </div>
-            {roleSummaryLines.length > 0 && (
-              <div className="excel-analytics-role-summary">
-                <div className="excel-analytics-role-summary-title">Сейчас выбрано (проверьте)</div>
-                <ul className="excel-analytics-role-summary-list">
-                  {roleSummaryLines.map((line, i) => (
-                    <li key={i}>{line}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p className="muted">
-              Несколько столбцов с ролью «числовой пункт» — отдельные критерии (чем больше набрано, тем лучше): все
-              попадут в таблицу, графики и текстовую сводку. Подробные названия ролей — в выпадающем списке в таблице
-              ниже.
-            </p>
-            <p className="muted">
-              Колонка <strong>«Код/шифр педагога»</strong> (наставники): если в одной ячейке несколько ФИО через запятую,
-              строка урока автоматически разворачивается — у каждого наставника будут свои точки на графиках и строки в
-              таблице (оценки урока те же, что в Excel).
-            </p>
-            <p className="muted">
-              Подписи доп. фильтров 1–3 (как в отчёте):{' '}
-              <input
-                className="excel-analytics-input excel-analytics-inline"
-                placeholder="Фильтр 1"
-                value={customLabels.filter_custom_1 ?? ''}
-                onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_1: e.target.value }))}
-              />{' '}
-              <input
-                className="excel-analytics-input excel-analytics-inline"
-                placeholder="Фильтр 2"
-                value={customLabels.filter_custom_2 ?? ''}
-                onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_2: e.target.value }))}
-              />{' '}
-              <input
-                className="excel-analytics-input excel-analytics-inline"
-                placeholder="Фильтр 3"
-                value={customLabels.filter_custom_3 ?? ''}
-                onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_3: e.target.value }))}
-              />
-            </p>
-
-            <div className="excel-analytics-templates">
-              <span className="muted">Шаблоны:</span>
-              <select
-                className="excel-analytics-select"
-                defaultValue=""
-                onChange={(e) => {
-                  const id = e.target.value;
-                  const t = templates.find((x) => x.id === id);
-                  if (t) applyTemplate(t);
-                  e.target.value = '';
-                }}
-              >
-                <option value="">Применить сохранённый…</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="excel-analytics-input"
-                placeholder="Имя нового шаблона"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-              />
-              <button type="button" className="btn primary" onClick={saveTemplate}>
-                Сохранить шаблон
-              </button>
-            </div>
-
-            <div className="excel-analytics-table-wrap">
-              <table className="excel-analytics-table">
-                <thead>
-                  <tr>
-                    <th>Колонка</th>
-                    <th>Роль</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {headers.map((h, i) => (
-                    <tr key={`${i}-${h}`}>
-                      <td>{h || `(${i + 1})`}</td>
-                      <td>
-                        <select
-                          className="excel-analytics-select excel-analytics-select-wide"
-                          value={roles[i] ?? 'ignore'}
-                          onChange={(e) => setRoleAt(i, e.target.value as ColumnRole)}
-                        >
-                          {COLUMN_ROLE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.group}: {o.label}
-                            </option>
+            {headers.length > 0 && (
+              <div className="excel-analytics-post-load">
+                <p className="muted excel-analytics-automap-done">
+                  Загружено столбцов: {headers.length}. Сопоставление с графиками и фильтрами выполнено автоматически; при
+                  ошибке или неточных графиках откройте настройки.
+                </p>
+                <details className="excel-analytics-advanced-mapping">
+                  <summary className="excel-analytics-advanced-summary">Настройка столбцов и шаблоны</summary>
+                  <div className="excel-analytics-advanced-body">
+                    <p className="muted">
+                      Роль задаёт, как поле попадает в средние, срезы и ИИ. Несколько числовых столбцов — отдельные критерии.
+                      Колонка «Код/шифр педагога»: несколько ФИО через запятую разворачиваются в отдельные строки для
+                      графиков. После правок нажмите «Применить и пересчитать».
+                    </p>
+                    <div className="excel-analytics-auto-row">
+                      <button type="button" className="btn primary excel-analytics-auto-btn" onClick={reSuggestAndRun}>
+                        Подобрать роли заново и пересчитать
+                      </button>
+                    </div>
+                    {roleSummaryLines.length > 0 && (
+                      <div className="excel-analytics-role-summary">
+                        <div className="excel-analytics-role-summary-title">Текущее сопоставление</div>
+                        <ul className="excel-analytics-role-summary-list">
+                          {roleSummaryLines.map((line, i) => (
+                            <li key={i}>{line}</li>
                           ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {roles.includes('metric_ordinal_text') && (
-              <div className="excel-analytics-ordinal">
-                <p className="muted">Порядок уровней текстовой шкалы (сверху к низу — от худшего к лучшему, или наоборот):</p>
-                <textarea
-                  className="excel-analytics-textarea"
-                  rows={6}
-                  value={ordinalLevels.join('\n')}
-                  onChange={(e) => setOrdinalLevels(e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))}
-                />
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => {
-                    const ordCol = roles.indexOf('metric_ordinal_text');
-                    if (ordCol >= 0) setOrdinalLevels(collectOrdinalValues(rawRows, ordCol));
-                  }}
-                >
-                  Подставить уникальные из данных
-                </button>
+                        </ul>
+                      </div>
+                    )}
+                    <p className="muted">
+                      Подписи доп. фильтров 1–3:{' '}
+                      <input
+                        className="excel-analytics-input excel-analytics-inline"
+                        placeholder="Фильтр 1"
+                        value={customLabels.filter_custom_1 ?? ''}
+                        onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_1: e.target.value }))}
+                      />{' '}
+                      <input
+                        className="excel-analytics-input excel-analytics-inline"
+                        placeholder="Фильтр 2"
+                        value={customLabels.filter_custom_2 ?? ''}
+                        onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_2: e.target.value }))}
+                      />{' '}
+                      <input
+                        className="excel-analytics-input excel-analytics-inline"
+                        placeholder="Фильтр 3"
+                        value={customLabels.filter_custom_3 ?? ''}
+                        onChange={(e) => setCustomLabels((s) => ({ ...s, filter_custom_3: e.target.value }))}
+                      />
+                    </p>
+                    <div className="excel-analytics-templates">
+                      <span className="muted">Шаблоны:</span>
+                      <select
+                        className="excel-analytics-select"
+                        defaultValue=""
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const t = templates.find((x) => x.id === id);
+                          if (t) applyTemplate(t);
+                          e.target.value = '';
+                        }}
+                      >
+                        <option value="">Применить сохранённый…</option>
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="excel-analytics-input"
+                        placeholder="Имя нового шаблона"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                      />
+                      <button type="button" className="btn primary" onClick={saveTemplate}>
+                        Сохранить шаблон
+                      </button>
+                    </div>
+                    <div className="excel-analytics-table-wrap">
+                      <table className="excel-analytics-table">
+                        <thead>
+                          <tr>
+                            <th>Колонка</th>
+                            <th>Роль</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {headers.map((h, i) => (
+                            <tr key={`${i}-${h}`}>
+                              <td>{h || `(${i + 1})`}</td>
+                              <td>
+                                <select
+                                  className="excel-analytics-select excel-analytics-select-wide"
+                                  value={roles[i] ?? 'ignore'}
+                                  onChange={(e) => setRoleAt(i, e.target.value as ColumnRole)}
+                                >
+                                  {COLUMN_ROLE_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.group}: {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {roles.includes('metric_ordinal_text') && (
+                      <div className="excel-analytics-ordinal">
+                        <p className="muted">
+                          Порядок уровней текстовой шкалы (сверху к низу — от худшего к лучшему, или наоборот):
+                        </p>
+                        <textarea
+                          className="excel-analytics-textarea"
+                          rows={6}
+                          value={ordinalLevels.join('\n')}
+                          onChange={(e) =>
+                            setOrdinalLevels(e.target.value.split('\n').map((x) => x.trim()).filter(Boolean))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => {
+                            const ordCol = roles.indexOf('metric_ordinal_text');
+                            if (ordCol >= 0) setOrdinalLevels(collectOrdinalValues(rawRows, ordCol));
+                          }}
+                        >
+                          Подставить уникальные из данных
+                        </button>
+                      </div>
+                    )}
+                    {datePreview.length > 0 && (
+                      <p className="muted excel-analytics-preview">
+                        Пример дат (первые распознанные): {datePreview.join(', ')}
+                      </p>
+                    )}
+                    <button type="button" className="btn primary excel-analytics-run" onClick={runAnalysis}>
+                      Применить и пересчитать
+                    </button>
+                  </div>
+                </details>
               </div>
             )}
-
-            {datePreview.length > 0 && (
-              <p className="muted excel-analytics-preview">
-                Пример дат (первые распознанные): {datePreview.join(', ')}
-              </p>
-            )}
-
-            <button type="button" className="btn primary excel-analytics-run" onClick={runAnalysis}>
-              Построить анализ
-            </button>
           </section>
         )}
 
