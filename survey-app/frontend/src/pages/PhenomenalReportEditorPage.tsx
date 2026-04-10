@@ -20,6 +20,7 @@ import {
   buildDraftFromTeacherRows,
   emptyBlock,
   emptyReviewLine,
+  phenomenalBlockHeadingTitle,
   PHENOMENAL_REPORT_AUTOSAVE_KEY,
   PHENOMENAL_REPORT_SEED_KEY,
   type PhenomenalReportBlockDraft,
@@ -484,7 +485,8 @@ export default function PhenomenalReportEditorPage() {
         </p>
         <h1 className="admin-dash-title">Редактор отчёта (как лист «Отзывы»)</h1>
         <p className="muted admin-dash-lead">
-          Слева в каждом блоке — поля урока; справа — диаграмма метрик. Ниже — выводы педагога и отзывы родителей. Выберите
+          В каждом блоке слева столбиком — данные урока; справа — компактная диаграмма метрик (~половина ширины). Заголовок
+          блока — предмет и класс/шифр. Ниже — выводы педагога и отзывы родителей. Выберите
           опрос на Пульсе: свободные ответы подставятся в строки отзывов автоматически (по шифру, классу и ФИО ведущих);
           правка текста строки снимает метку «Пульс».
         </p>
@@ -661,7 +663,7 @@ export default function PhenomenalReportEditorPage() {
               style={{ marginTop: '1rem' }}
             >
               <div className="phenomenal-report-block-head">
-                <h2 className="phenomenal-report-block-title">Урок {bi + 1}</h2>
+                <h2 className="phenomenal-report-block-title">{phenomenalBlockHeadingTitle(block, bi)}</h2>
                 <div className="phenomenal-report-block-actions">
                   <button type="button" className="btn btn-sm" disabled={bi === 0} onClick={() => moveBlock(bi, -1)}>
                     Блок ↑
@@ -703,7 +705,7 @@ export default function PhenomenalReportEditorPage() {
               <div className="phenomenal-report-block-top">
                 <div className="phenomenal-report-block-fields">
                   <label className="phenomenal-report-label">
-                    Шифр урока
+                    Шифр урока / класс
                     <input
                       type="text"
                       className="phenomenal-report-input"
@@ -750,7 +752,7 @@ export default function PhenomenalReportEditorPage() {
                   </label>
                 </div>
                 <div className="phenomenal-report-block-chart">
-                  <PhenomenalBlockCompetencyPanel source="block" block={block} variant="half" />
+                  <PhenomenalBlockCompetencyPanel source="block" block={block} variant="editorSidebar" />
                 </div>
               </div>
 

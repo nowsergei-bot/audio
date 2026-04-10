@@ -95,14 +95,83 @@ const CLASS_RES = [
 
 const CODE_RES = [
   /шифр\s*урок/i,
+  /шифр\s*открыт/i,
+  /шифр\s*занят/i,
+  /шифр\s*меропр/i,
   /шифр\s*[:(]/i,
   /lesson\s*code/i,
-  /код\s*урок/i,
-  /номер\s*урок/i,
+  /код\s*урок(а|у|е|ом|и)?/i,
+  /код\s*занят/i,
+  /код\s*меропр/i,
+  /номер\s*урок(а|у|е|ом|и)?/i,
+  /номер\s*открыт/i,
   /идентификатор.*урок/i,
+  /идентификатор.*занят/i,
+  /обозначени.*урок/i,
+  /символьн.*код.*урок/i,
+  /укажите\s+шифр/i,
+  /введите\s+шифр/i,
   /cipher/i,
-  /код\s+занят/i,
+  /№\s*урок/i,
 ];
+
+/**
+ * Поля вроде приглашения / доступа — не считаем шифром урока.
+ */
+function isLikelyInviteOrAccessCodeQuestion(text) {
+  return /приглас|инвайт|qr[\s-]*код|код\s+доступ|ссылк\w*\s+на\s+опрос|password|парол/i.test(
+    String(text || ''),
+  );
+}
+
+/**
+ * Оценка «похоже на вопрос про шифр/код урока» (если regex-список не сработал).
+ */
+function scoreLessonCodeQuestionLikeness(text) {
+  const t = String(text || '').trim();
+  if (!t || t.length > 220) return 0;
+  let s = 0;
+  if (/шифр/i.test(t)) s += 4;
+  if (/код.*урок|урок.*код|код.*занят|код.*открыт/i.test(t)) s += 4;
+  if (/номер.*урок|номер.*занят|номер.*открыт/i.test(t)) s += 3;
+  if (/идентификатор.*(урок|занят|открыт)/i.test(t)) s += 3;
+  if (/lesson.*code|code.*lesson/i.test(t)) s += 3;
+  if (/обозначени.*(урок|занят)/i.test(t)) s += 2;
+  if (/символьн.*(код|обознач)/i.test(t) && /урок|занят|открыт/i.test(t)) s += 2;
+  if (/^\s*шифр\s*[:.)]?\s*$/i.test(t) || /^\s*код\s*урок/i.test(t)) s += 2;
+  return s;
+}
+
+/**
+ * @param {{ id: number, text: string, sort_order?: number }[]} questions
+ * @param {Set<number>} excludeIds
+ */
+function bestLessonCodeQuestionByScore(questions, excludeIds) {
+  const sorted = [...questions].sort((a, b) => {
+    const so = (a.sort_order || 0) - (b.sort_order || 0);
+    if (so) return so;
+    return Number(a.id) - Number(b.id);
+  });
+  let bestId = null;
+  let bestScore = 0;
+  let bestLen = 9999;
+  for (const q of sorted) {
+    const id = Number(q.id);
+    if (excludeIds.has(id)) continue;
+    const text = String(q.text || '');
+    if (isVisitorParentQuestionText(text)) continue;
+    if (isLikelyInviteOrAccessCodeQuestion(text)) continue;
+    const sc = scoreLessonCodeQuestionLikeness(text);
+    if (sc < 3) continue;
+    const len = text.length;
+    if (sc > bestScore || (sc === bestScore && len < bestLen)) {
+      bestScore = sc;
+      bestLen = len;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
 
 /**
  * @param {{ id: number, text: string, sort_order?: number }[]} questions
@@ -162,9 +231,16 @@ function resolveDirectorLessonSplit(questions, media) {
 
   let codeId = firstMatchingQuestionId(questions, CODE_RES, {});
   if (!codeId) {
-    codeId = firstMatchingQuestionId(questions, [/шифр/i, /номер.*урок/i, /идентификатор/i], {
-      skipText: skipVisitor,
-    });
+    codeId = firstMatchingQuestionId(
+      questions,
+      [/шифр/i, /номер.*урок/i, /номер.*занят/i, /идентификатор/i, /код.*урок/i],
+      {
+        skipText: (text) => skipVisitor(text) || isLikelyInviteOrAccessCodeQuestion(text),
+      },
+    );
+  }
+  if (!codeId) {
+    codeId = bestLessonCodeQuestionByScore(questions, new Set());
   }
 
   const used = new Set();

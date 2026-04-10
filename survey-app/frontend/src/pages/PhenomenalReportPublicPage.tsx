@@ -3,7 +3,11 @@ import { useParams } from 'react-router-dom';
 import { getPublicPhenomenalReport, type PublicPhenomenalReportPayload } from '../api/client';
 import PhenomenalBlockCompetencyPanel from '../lib/phenomenalLessons/PhenomenalBlockCompetencyPanel';
 import PhenomenalCompetencyCharts from '../lib/phenomenalLessons/PhenomenalCompetencyCharts';
-import type { PhenomenalReportBlockDraft, PhenomenalReportDraft } from '../lib/phenomenalLessons/reportDraftTypes';
+import {
+  phenomenalBlockHeadingTitle,
+  type PhenomenalReportBlockDraft,
+  type PhenomenalReportDraft,
+} from '../lib/phenomenalLessons/reportDraftTypes';
 
 function toBlockDraft(b: PublicPhenomenalReportPayload['blocks'][number]): PhenomenalReportBlockDraft {
   return {
@@ -108,28 +112,34 @@ export default function PhenomenalReportPublicPage() {
         const bDraft = toBlockDraft(block);
         return (
           <article key={block.id} className="card glass-surface phenomenal-report-block" style={{ marginTop: '1rem' }}>
-            <h2 className="phenomenal-report-block-title">Урок {bi + 1}</h2>
-            <dl className="phenomenal-public-dl">
-              <div>
-                <dt>Шифр / класс</dt>
-                <dd>{block.lessonCode || '—'}</dd>
+            <h2 className="phenomenal-report-block-title">{phenomenalBlockHeadingTitle(bDraft, bi)}</h2>
+            <div className="phenomenal-report-block-top">
+              <div className="phenomenal-report-block-fields">
+                <dl className="phenomenal-public-dl">
+                  <div>
+                    <dt>Шифр / класс</dt>
+                    <dd>{block.lessonCode || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>ФИО ведущих</dt>
+                    <dd>{block.conductingTeachers || '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Предметы</dt>
+                    <dd>{block.subjects || '—'}</dd>
+                  </div>
+                  {block.parentClassLabel ? (
+                    <div>
+                      <dt>Класс (опрос родителей)</dt>
+                      <dd>{block.parentClassLabel}</dd>
+                    </div>
+                  ) : null}
+                </dl>
               </div>
-              <div>
-                <dt>ФИО ведущих</dt>
-                <dd>{block.conductingTeachers || '—'}</dd>
+              <div className="phenomenal-report-block-chart">
+                <PhenomenalBlockCompetencyPanel source="block" block={bDraft} variant="editorSidebar" />
               </div>
-              <div>
-                <dt>Предметы</dt>
-                <dd>{block.subjects || '—'}</dd>
-              </div>
-              {block.parentClassLabel ? (
-                <div>
-                  <dt>Класс (опрос родителей)</dt>
-                  <dd>{block.parentClassLabel}</dd>
-                </div>
-              ) : null}
-            </dl>
-            <PhenomenalBlockCompetencyPanel source="block" block={bDraft} />
+            </div>
             {block.teacherNotes ? (
               <div style={{ marginTop: '0.75rem' }}>
                 <h3 className="phenomenal-merge-subtitle">Выводы педагога</h3>

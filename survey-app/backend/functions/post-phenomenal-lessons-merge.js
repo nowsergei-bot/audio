@@ -311,6 +311,32 @@ function validatePairsAgainstParents(pairs, parentIndices, teacherCount) {
 }
 
 /**
+ * Если модель вернула JSON, но для части строк ti пустой — пробуем ту же эвристику, что при полном отказе LLM.
+ */
+function augmentNullPairsWithHeuristic(validated, parentRows, teacherRows) {
+  const weak = validated.filter((p) => p.ti == null || !(Number(p.confidence) > 0));
+  if (!weak.length) return { pairs: validated, usedAugment: false };
+  const indices = weak.map((p) => p.pi);
+  const hPairs = heuristicPairsForParentIndices(indices, parentRows, teacherRows);
+  const hByPi = new Map(hPairs.map((x) => [x.pi, x]));
+  let usedAugment = false;
+  const pairs = validated.map((p) => {
+    if (p.ti != null && Number(p.confidence) > 0) return p;
+    const h = hByPi.get(p.pi);
+    if (!h || h.ti == null || !(Number(h.confidence) > 0)) return p;
+    usedAugment = true;
+    const prev = p.reason ? String(p.reason).slice(0, 180) : '';
+    return {
+      ...p,
+      ti: h.ti,
+      confidence: h.confidence,
+      reason: prev ? `${h.reason} (вместо: ${prev})` : h.reason,
+    };
+  });
+  return { pairs, usedAugment };
+}
+
+/**
  * POST body: {
  *   teacher_rows: [...],
  *   confidence_threshold?: number,
@@ -417,7 +443,9 @@ async function handlePostPhenomenalLessonsMerge(pool, event, canAccessSurvey) {
     if (chunkRes.usedHeuristic) anyHeuristic = true;
     const indices = slice.map((p) => p.pi);
     const validated = validatePairsAgainstParents(chunkRes.pairs, indices, teacherRows.length);
-    allPairs.push(...validated);
+    const aug = augmentNullPairsWithHeuristic(validated, parentRows, teacherRows);
+    if (aug.usedAugment) anyHeuristic = true;
+    allPairs.push(...aug.pairs);
   }
   if (anyHeuristic) {
     warnings.push(

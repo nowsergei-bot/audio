@@ -8387,11 +8387,11 @@ body {
   margin-top: 0.5rem;
 }
 
-/* Блок урока: поля слева (~50%), диаграмма справа */
+/* Блок урока: поля слева столбиком; диаграмма справа — около половины ширины карточки */
 .phenomenal-report-block-top {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem 1.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 48%);
+  gap: 1rem 1.35rem;
   align-items: start;
   margin-top: 0.5rem;
 }
@@ -8405,10 +8405,17 @@ body {
 
 .phenomenal-report-block-chart {
   min-width: 0;
+  justify-self: stretch;
+  max-width: 100%;
 }
 
 .phenomenal-report-block-chart .phenomenal-block-competency-title {
-  font-size: 0.88rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
+}
+
+.phenomenal-block-competency--editor-sidebar .phenomenal-block-competency-title {
+  font-size: 0.78rem;
 }
 
 .phenomenal-report-teacher-notes {
@@ -8451,6 +8458,25 @@ body {
 .phenomenal-report-source-tag {
   font-size: 0.82rem;
   margin: 0 0 0.5rem;
+}
+
+.phenomenal-public-dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.phenomenal-public-dl dt {
+  font-size: 0.78rem;
+  color: var(--muted, #64748b);
+  font-weight: 600;
+}
+
+.phenomenal-public-dl dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .phenomenal-report-review-row {

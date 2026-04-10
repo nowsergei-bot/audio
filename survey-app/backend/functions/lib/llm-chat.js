@@ -59,6 +59,47 @@ function isRateLimitFailure(res) {
   return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted|quota|лимит/i.test(d);
 }
 
+/**
+ * Следующая модель в цепочке OPENAI/OpenRouter: 429, лимиты free-tier, часто 403 Forbidden у OpenRouter.
+ */
+function shouldTryNextOpenAiModel(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429 || st === 402) return true;
+  const d = String(res.detail || '').toLowerCase();
+  if (/rate limit|too many|quota|free-models|free model|credits|exhausted|resource_exhausted|лимит/i.test(d)) {
+    return true;
+  }
+  if (st === 403) {
+    if (/forbidden|free-model|credit|429|quota|limit|add\s+\d+\s+credits/i.test(d)) return true;
+    const base = String(process.env.OPENAI_BASE_URL || '').toLowerCase();
+    if (base.includes('openrouter')) return true;
+  }
+  if (st >= 500 && st < 600) return true;
+  if (st === 0 && /etimedout|econnreset|timeout|fetch failed/i.test(d)) return true;
+  return false;
+}
+
+/**
+ * Цепочка имён моделей: явная из вызова → OPENAI_MODEL → OPENAI_MODEL_FALLBACKS (через запятую).
+ */
+function buildOpenAiModelChain(explicitModel) {
+  const seen = new Set();
+  const out = [];
+  const add = (m) => {
+    const s = String(m ?? '').trim();
+    if (!s || seen.has(s)) return;
+    seen.add(s);
+    out.push(s);
+  };
+  add(explicitModel);
+  add(process.env.OPENAI_MODEL);
+  const raw = String(process.env.OPENAI_MODEL_FALLBACKS || process.env.LLM_MODEL_FALLBACKS || '').trim();
+  for (const part of raw.split(/[,;]+/).map((x) => x.trim()).filter(Boolean)) add(part);
+  if (out.length === 0) add('gpt-4o-mini');
+  return out;
+}
+
 /** Убирает BOM/пробелы — частая причина 401 при вставке ключа из консоли. */
 function normalizeYandexSecret(raw) {
   let s = String(raw ?? '');
@@ -332,7 +373,7 @@ function extractOpenAiStyleAssistantText(message) {
   return { text: '', refusal: null, hasToolCalls };
 }
 
-async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonObject }) {
+async function fetchOpenAIChatOnce(messages, { model, maxTokens, temperature, jsonObject }) {
   const key = String(process.env.OPENAI_API_KEY || '').trim();
   if (!key) return { ok: false, kind: 'no_openai_key', status: 0, detail: 'Нет OPENAI_API_KEY' };
 
@@ -408,6 +449,29 @@ async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonOb
     };
   }
   return { ok: true, text };
+}
+
+/** Несколько моделей подряд при лимите/403 у OpenRouter и т.п. */
+async function fetchOpenAIChat(messages, opts = {}) {
+  const chain = buildOpenAiModelChain(opts.model);
+  let last = { ok: false, kind: 'openai_error', status: 0, detail: 'Нет моделей в цепочке' };
+  const errors = [];
+  for (let i = 0; i < chain.length; i++) {
+    const m = chain[i];
+    const res = await fetchOpenAIChatOnce(messages, { ...opts, model: m });
+    if (res.ok) return res;
+    last = res;
+    errors.push(`${m}: ${res.detail || res.kind || 'ошибка'}`);
+    const tryNext = i < chain.length - 1 && shouldTryNextOpenAiModel(res);
+    if (!tryNext) break;
+  }
+  if (chain.length > 1 && errors.length > 1) {
+    last = {
+      ...last,
+      detail: `Перепробованы модели (${chain.join(' → ')}). Последняя: ${last.detail}\n---\n${errors.join('\n')}`,
+    };
+  }
+  return last;
 }
 
 function yandexErrorDetail(status, errBody) {

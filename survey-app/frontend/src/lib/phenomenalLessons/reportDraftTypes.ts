@@ -57,6 +57,27 @@ export interface PhenomenalReportDraft {
   surveyId?: number | null;
 }
 
+/** Заголовок блока в редакторе/публичной странице: предмет + класс/шифр, без «Урок N». */
+export function phenomenalBlockHeadingTitle(
+  block: Pick<PhenomenalReportBlockDraft, 'subjects' | 'lessonCode' | 'parentClassLabel'>,
+  blockIndex: number,
+): string {
+  const rawSubj = String(block.subjects ?? '').trim();
+  let subj = rawSubj.split(/\s*\/\s*/)[0]?.trim() || rawSubj;
+  subj = subj.split('\n')[0].trim().replace(/\s+/g, ' ');
+  if (subj.length > 64) subj = `${subj.slice(0, 62)}…`;
+
+  const clsRaw =
+    String(block.parentClassLabel ?? '').trim() || String(block.lessonCode ?? '').trim();
+  let cls = clsRaw.replace(/\s+/g, ' ');
+  if (cls.length > 48) cls = `${cls.slice(0, 46)}…`;
+
+  if (subj && cls) return `${subj}, ${cls}`;
+  if (subj) return subj;
+  if (cls) return cls;
+  return `Блок ${blockIndex + 1}`;
+}
+
 function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }

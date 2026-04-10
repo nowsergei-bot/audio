@@ -37,6 +37,42 @@ function teacherHintOverlap(hint, conductingTeachers) {
 }
 
 /**
+ * Один столбец «сжато» / экспорт: класс и ФИО педагога спрятаны внутри текста ответа.
+ */
+function parseHintsFromAnswerBlob(text) {
+  const raw = String(text ?? '').replace(/\r\n?/g, '\n');
+  if (!raw.trim()) return { lessonCode: '', teacherHint: '', classLabel: '' };
+
+  let lessonCode = '';
+  let teacherHint = '';
+  let classLabel = '';
+
+  const tryCode =
+    raw.match(/шифр[^\n:：]*[:\s]+([^\n]+)/i) ||
+    raw.match(/код\s*урок[a-zа-яё]*\s*[:\s]+([^\n]+)/i) ||
+    raw.match(/номер\s*урок[a-zа-яё]*\s*[:\s]+([^\n]+)/i);
+  if (tryCode) lessonCode = tryCode[1].trim();
+
+  const tryClass =
+    raw.match(/класс\s*\/\s*групп[a-zа-яё\s]*\s*[:\s]+([^\n]+)/i) ||
+    raw.match(/класс\s*\/\s*группа?\s*[:\s]+([^\n]+)/i) ||
+    raw.match(/класс\s+групп[a-zа-яё]*\s*[:\s]+([^\n]+)/i);
+  if (tryClass) classLabel = tryClass[1].trim();
+
+  const tryTeach =
+    raw.match(
+      /фио\s*учител[a-zа-яё]*,?\s*проводивш[a-zа-яё]*[^\n:：]*[:\s]+([^\n]+)/i,
+    ) ||
+    raw.match(/фио\s*учител[а-яё]+?\s*[,:：]\s*([^\n]+)/i) ||
+    raw.match(/учител[a-zа-яё]*,?\s*проводивш[a-zа-яё]*[^\n:：]*урок[a-zа-яё]*\s*[:\s]+([^\n]+)/i) ||
+    raw.match(/ведущ[a-zа-яё]*\s*педагог[a-zа-яё]*\s*[:\s]+([^\n]+)/i) ||
+    raw.match(/преподавател[a-zа-яё]*,?\s*проводивш[a-zа-яё]*\s*[:\s]+([^\n]+)/i);
+  if (tryTeach) teacherHint = tryTeach[1].trim();
+
+  return { lessonCode, teacherHint, classLabel };
+}
+
+/**
  * @param {Record<string, unknown>} answers_labeled
  */
 function extractHints(answers_labeled) {
@@ -64,7 +100,69 @@ function extractHints(answers_labeled) {
       if (!teacherHint) teacherHint = val;
     }
   }
+
+  const blobParts = [];
+  for (const v of Object.values(answers_labeled || {})) {
+    const s = String(v ?? '').trim();
+    if (s) blobParts.push(s);
+  }
+  const blobJoined = blobParts.join('\n');
+  const fromBlob = parseHintsFromAnswerBlob(blobJoined);
+  if (!lessonCode && fromBlob.lessonCode) lessonCode = fromBlob.lessonCode;
+  if (!teacherHint && fromBlob.teacherHint) teacherHint = fromBlob.teacherHint;
+  if (!classLabel && fromBlob.classLabel) classLabel = fromBlob.classLabel;
+
   return { lessonCode, teacherHint, classLabel };
+}
+
+function compactAlnum(s) {
+  return normalizeLessonCode(s).replace(/\s+/g, '');
+}
+
+/**
+ * Класс из ответа родителя vs строка педагога (шифр часто = «класс + код», в subjects может быть класс).
+ */
+function classMatchesTeacherRow(classLabel, teacher) {
+  const cl = normalizeLessonCode(classLabel);
+  if (!cl || cl.length < 2) return false;
+  const bag = `${teacher.lessonCode || ''} ${teacher.subjects || ''} ${teacher.observerName || ''}`;
+  const bagN = normalizeLessonCode(bag);
+  if (!bagN) return false;
+  const clC = compactAlnum(cl);
+  const bagC = compactAlnum(bagN);
+  if (bagN.includes(cl) || cl.includes(bagN.slice(0, 14))) return true;
+  if (clC.length >= 2 && bagC.includes(clC)) return true;
+  return false;
+}
+
+function teacherHaystack(teacher) {
+  return [teacher.conductingTeachers, teacher.observerName, teacher.lessonCode, teacher.subjects]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Первая значащая часть ФИО (обычно фамилия) длиной ≥ 4 — ищем в строке педагога. */
+function surnameMatchesInHaystack(hint, haystack) {
+  const parts = normalizeKeyPart(hint)
+    .split(/\s+/)
+    .filter(Boolean);
+  const t = normalizeKeyPart(haystack);
+  if (!t || !parts.length) return false;
+  const s = parts[0];
+  if (s.length < 4) return false;
+  return t.includes(s);
+}
+
+function teacherNameMatchScore(hints, teacher) {
+  if (!hints.teacherHint) return 0;
+  const h = hints.teacherHint;
+  const ct = teacher.conductingTeachers || '';
+  let best = 0;
+  if (ct && teacherHintOverlap(h, ct)) best = Math.max(best, 38);
+  const hay = teacherHaystack(teacher);
+  if (hay && teacherHintOverlap(h, hay)) best = Math.max(best, 36);
+  if (surnameMatchesInHaystack(h, hay || ct)) best = Math.max(best, 41);
+  return best;
 }
 
 function scoreTeacher(hints, teacher) {
@@ -75,14 +173,13 @@ function scoreTeacher(hints, teacher) {
     if (pc === tc) score += 100;
     else if (pc.includes(tc) || tc.includes(pc)) score += 72;
   }
-  if (hints.teacherHint && teacher.conductingTeachers) {
-    if (teacherHintOverlap(hints.teacherHint, teacher.conductingTeachers)) score += 38;
-  }
-  if (hints.classLabel && (pc || tc)) {
+  score += teacherNameMatchScore(hints, teacher);
+  if (hints.classLabel) {
     const cl = normalizeLessonCode(hints.classLabel);
     if (cl.length >= 2) {
       if (pc && (pc.includes(cl) || cl.includes(pc))) score += 12;
       if (tc && (tc.includes(cl) || cl.includes(tc))) score += 12;
+      if (classMatchesTeacherRow(hints.classLabel, teacher)) score += 46;
     }
   }
   return score;
@@ -130,7 +227,8 @@ function heuristicPairsForParentIndices(parentIndices, parentRows, teacherRows) 
         pi,
         ti: null,
         confidence: 0,
-        reason: 'Без ИИ: в ответе родителя не найдено однозначного шифра/учителя для пары',
+        reason:
+          'Без ИИ: мало данных для пары (нужны шифр урока или совпадение ФИО педагога и класса; при «сжатом» ответе проверьте, что в тексте есть строки вида «Класс / Группа: …» и «ФИО учителей, проводивших урок: …»)',
       });
     }
   }

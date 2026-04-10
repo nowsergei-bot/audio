@@ -11,8 +11,17 @@ import {
 } from './competencyScores';
 
 export type PhenomenalBlockCompetencyPanelProps =
-  | { source: 'block'; block: PhenomenalReportBlockDraft; variant?: 'default' | 'half' }
-  | { source: 'teacherRow'; row: TeacherLessonChecklistRow; variant?: 'default' | 'half' };
+  | {
+      source: 'block';
+      block: PhenomenalReportBlockDraft;
+      /** half — узкая колонка; editorSidebar — ещё компактнее по высоте для полосы справа */
+      variant?: 'default' | 'half' | 'editorSidebar';
+    }
+  | {
+      source: 'teacherRow';
+      row: TeacherLessonChecklistRow;
+      variant?: 'default' | 'half' | 'editorSidebar';
+    };
 
 type ChartRow = { name: string; pct: number };
 
@@ -20,8 +29,8 @@ const pctTick = (v: number) => `${Math.round(v * 100)}%`;
 
 export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCompetencyPanelProps) {
   const variant = props.variant ?? 'default';
-  const chartH = variant === 'half' ? 210 : 240;
-  const yAxisW = variant === 'half' ? 112 : 130;
+  const chartH = variant === 'editorSidebar' ? 168 : variant === 'half' ? 210 : 240;
+  const yAxisW = variant === 'editorSidebar' ? 100 : variant === 'half' ? 112 : 130;
   const rubricRows = useMemo(() => {
     if (props.source === 'block') return competencyRowsForBlock(props.block);
     return competencyRowsForTeacherRow(props.row);
@@ -47,9 +56,10 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
 
   const hasChart = chartRows.length > 0;
 
+  const narrow = variant === 'half' || variant === 'editorSidebar';
   return (
     <div
-      className={`phenomenal-block-competency phenomenal-block-competency--bar-only${variant === 'half' ? ' phenomenal-block-competency--half' : ''}`}
+      className={`phenomenal-block-competency phenomenal-block-competency--bar-only${narrow ? ' phenomenal-block-competency--half' : ''}${variant === 'editorSidebar' ? ' phenomenal-block-competency--editor-sidebar' : ''}`}
     >
       <h4 className="phenomenal-block-competency-title">Сводка по метрикам (доля от макс. в опроснике)</h4>
       {!hasChart ? (
@@ -70,7 +80,7 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
                 type="number"
                 domain={[0, 1]}
                 tickCount={5}
-                tick={{ fontSize: variant === 'half' ? 9 : 10 }}
+                tick={{ fontSize: variant === 'editorSidebar' ? 8 : variant === 'half' ? 9 : 10 }}
                 tickFormatter={pctTick}
               />
               <YAxis type="category" dataKey="name" width={yAxisW} tick={{ fontSize: 8 }} interval={0} />

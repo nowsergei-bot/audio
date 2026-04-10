@@ -38,7 +38,9 @@ function isRetryableLlmFailure(res) {
   const d = String(res.detail || res.kind || '');
   return (
     res.kind === 'network' ||
-    /Пустой ответ|empty response|429|rate limit|too many|лимит|timeout|ETIMEDOUT|ECONNRESET/i.test(d)
+    /Пустой ответ|empty response|429|403|forbidden|rate limit|too many|лимит|timeout|ETIMEDOUT|ECONNRESET|free-models/i.test(
+      d,
+    )
   );
 }
 
