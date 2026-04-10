@@ -76,7 +76,12 @@ export default function PhenomenalCompetencyCharts(props: Props) {
                     return p?.n != null ? `Уроков с данными: ${p.n}` : '';
                   }}
                 />
-                <Bar dataKey="pct" name="Доля" fill="var(--chart-bar, #6366f1)" radius={[0, 4, 4, 0]} />
+                <Bar
+                  dataKey="pct"
+                  name="Доля"
+                  fill="var(--phenomenal-competency-bar, var(--chart-bar, #2563eb))"
+                  radius={[0, 4, 4, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { adminStagger, adminStaggerItem } from '../motion/adminMotion';
 import AiWaitIndicator from '../components/AiWaitIndicator';
 import {
@@ -13,18 +13,22 @@ import {
   putPhenomenalReportProject,
 } from '../api/client';
 import PhenomenalBlockCompetencyPanel from '../lib/phenomenalLessons/PhenomenalBlockCompetencyPanel';
+import PhenomenalMergeImportCard from '../lib/phenomenalLessons/PhenomenalMergeImportCard';
 import { downloadPhenomenalReportXlsx } from '../lib/phenomenalLessons/exportPhenomenalReportXlsx';
 import {
   applyPhenomenalBlockClusterGroups,
   buildDraftFromMerge,
   buildDraftFromTeacherRows,
+  composeReviewFlatText,
   emptyBlock,
   emptyReviewLine,
+  hydrateReviewStructuredFields,
   phenomenalBlockHeadingTitle,
   PHENOMENAL_REPORT_AUTOSAVE_KEY,
   PHENOMENAL_REPORT_SEED_KEY,
   type PhenomenalReportBlockDraft,
   type PhenomenalReportDraft,
+  type PhenomenalReportReviewLine,
 } from '../lib/phenomenalLessons/reportDraftTypes';
 import type { TeacherLessonChecklistRow } from '../lib/phenomenalLessons/parseTeacherChecklistApril';
 import type { PhenomenalLessonsMergePayload, Survey } from '../types';
@@ -97,6 +101,21 @@ export default function PhenomenalReportEditorPage() {
   const pulseReq = useRef(0);
 
   draftRef.current = draft;
+
+  useEffect(() => {
+    if (!draft) return;
+    const next = hydrateReviewStructuredFields(draft);
+    if (next === draft) return;
+    setDraft(next);
+  }, [draft]);
+
+  const applyImportDraft = useCallback((d: PhenomenalReportDraft, msg: string) => {
+    setDraft(d);
+    setLoadMsg(msg);
+    setSavedProject(null);
+    setServerErr(null);
+    setServerMsg(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -280,6 +299,7 @@ export default function PhenomenalReportEditorPage() {
     });
   }, []);
 
+  /** Текст с Пульса (один блок, вопрос+ответ). */
   const updateReview = useCallback((blockIndex: number, reviewIndex: number, text: string) => {
     setDraft((d) => {
       if (!d) return d;
@@ -291,6 +311,27 @@ export default function PhenomenalReportEditorPage() {
         ...prev,
         text,
         ...(prev.fromPulse ? { fromPulse: false } : {}),
+      };
+      b.reviews = reviews;
+      blocks[blockIndex] = b;
+      return { ...d, blocks, updatedAt: new Date().toISOString() };
+    });
+  }, []);
+
+  const patchReview = useCallback((blockIndex: number, reviewIndex: number, patch: Partial<PhenomenalReportReviewLine>) => {
+    setDraft((d) => {
+      if (!d) return d;
+      const blocks = [...d.blocks];
+      const b = { ...blocks[blockIndex] };
+      const reviews = [...b.reviews];
+      const prev = reviews[reviewIndex];
+      const next = { ...prev, ...patch };
+      const structural =
+        'respondentName' in patch || 'overallRating' in patch || 'comments' in patch;
+      next.text = composeReviewFlatText(next);
+      reviews[reviewIndex] = {
+        ...next,
+        ...(structural && prev.fromPulse ? { fromPulse: false } : {}),
       };
       b.reviews = reviews;
       blocks[blockIndex] = b;
@@ -478,17 +519,12 @@ export default function PhenomenalReportEditorPage() {
       animate="show"
     >
       <motion.section className="card glass-surface" variants={adminStaggerItem}>
-        <p className="admin-dash-kicker">
-          <Link to="/analytics/phenomenal" className="phenomenal-report-back-link">
-            ← Феноменальные уроки
-          </Link>
-        </p>
-        <h1 className="admin-dash-title">Редактор отчёта (как лист «Отзывы»)</h1>
+        <p className="admin-dash-kicker">Аналитика · феноменальные уроки</p>
+        <h1 className="admin-dash-title">Отчёт по феноменальным урокам</h1>
         <p className="muted admin-dash-lead">
-          В каждом блоке слева столбиком — данные урока; справа — компактная диаграмма метрик (~половина ширины). Заголовок
-          блока — предмет и класс/шифр. Ниже — выводы педагога и отзывы родителей. Выберите
-          опрос на Пульсе: свободные ответы подставятся в строки отзывов автоматически (по шифру, классу и ФИО ведущих);
-          правка текста строки снимает метку «Пульс».
+          Один рабочий экран: сверху при необходимости — импорт Excel и автослияние с родителями; ниже — черновик отчёта
+          (в блоке и данные педагога, и отзывы родителей). Опрос на Пульсе подставляет ответы в строки по шифру, классу и
+          ФИО ведущих.
         </p>
         {loadMsg ? (
           <p className="muted" style={{ marginTop: '0.5rem', fontSize: '0.92rem' }}>
@@ -497,16 +533,18 @@ export default function PhenomenalReportEditorPage() {
         ) : null}
       </motion.section>
 
+      <details className="phenomenal-import-details" open={!draft}>
+        <summary className="phenomenal-import-details-summary">
+          Импорт чек-листа и автослияние с родителями (ИИ)
+        </summary>
+        <PhenomenalMergeImportCard onDraftReady={applyImportDraft} />
+      </details>
+
       {!draft ? (
         <motion.section className="card glass-surface" variants={adminStaggerItem} style={{ marginTop: '1rem' }}>
           <p className="muted">
-            Нет данных для редактора. Вернитесь на страницу феноменальных уроков и после слияния с ИИ нажмите «Открыть
-            редактор отчёта», либо «Черновик только из Excel педагогов».
-          </p>
-          <p style={{ marginTop: '0.75rem' }}>
-            <button type="button" className="btn" onClick={() => navigate('/analytics/phenomenal')}>
-              К загрузке и слиянию
-            </button>
+            Загрузите чек-лист педагогов в блоке выше и нажмите «Автослияние с ИИ» или «Продолжить без родителей» — черновик
+            откроется здесь же. Проект с сервера: добавьте <code>?project=…</code> в адрес.
           </p>
         </motion.section>
       ) : (
@@ -747,7 +785,7 @@ export default function PhenomenalReportEditorPage() {
                       className="phenomenal-report-input"
                       value={block.parentClassLabel ?? ''}
                       onChange={(e) => updateBlock(bi, { parentClassLabel: e.target.value })}
-                      placeholder="Как в ответе родителей на вопрос про класс"
+                      placeholder="Например, как в ответе родителя на вопрос про класс / параллель"
                     />
                   </label>
                 </div>
@@ -757,69 +795,106 @@ export default function PhenomenalReportEditorPage() {
               </div>
 
               <label className="phenomenal-report-label phenomenal-report-label--full phenomenal-report-teacher-notes">
-                Выводы педагога (комментарии из Excel)
+                Выводы педагога (из Excel)
                 <textarea
-                  className="phenomenal-report-textarea"
-                  rows={3}
+                  className="phenomenal-report-textarea phenomenal-report-teacher-notes-textarea"
+                  rows={4}
                   value={block.teacherNotes}
                   onChange={(e) => updateBlock(bi, { teacherNotes: e.target.value })}
                 />
               </label>
 
-              <h3 className="phenomenal-merge-subtitle">Комментарии родителей</h3>
-              {block.reviews.length === 0 ? (
-                <p className="muted">
-                  Пока нет строк — при выбранном опросе на Пульсе ответы подставятся сами; иначе добавьте вручную или
-                  соберите черновик из слияния с ИИ.
-                </p>
-              ) : null}
-              {block.reviews.map((rev, ri) => (
-                <div key={rev.id} className="phenomenal-report-review-row">
-                  <div className="phenomenal-report-review-meta">
-                    <span className="phenomenal-report-review-num">{ri + 1}.</span>
-                    {rev.fromPulse ? (
-                      <span className="muted" style={{ fontSize: '0.78rem' }}>
-                        Пульс
-                      </span>
-                    ) : rev.fromMergedParent ? (
-                      <span className="muted" style={{ fontSize: '0.78rem' }}>
-                        слияние
-                      </span>
-                    ) : null}
-                    <div className="phenomenal-report-review-btns">
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={ri === 0}
-                        onClick={() => moveReview(bi, ri, -1)}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={ri >= block.reviews.length - 1}
-                        onClick={() => moveReview(bi, ri, 1)}
-                      >
-                        ↓
-                      </button>
-                      <button type="button" className="btn btn-sm danger" onClick={() => removeReview(bi, ri)}>
-                        Удалить строку
-                      </button>
+              <div className="phenomenal-report-parents-panel">
+                <h3 className="phenomenal-report-section-title">Отзывы родителей (строки)</h3>
+                {block.reviews.length === 0 ? (
+                  <p className="muted phenomenal-report-parents-empty">
+                    Пока нет строк — при выбранном опросе на Пульсе ответы подставятся сами; иначе добавьте вручную или
+                    выполните автослияние с ИИ в блоке импорта выше.
+                  </p>
+                ) : null}
+                {block.reviews.map((rev, ri) => (
+                  <div key={rev.id} className="phenomenal-report-review-row">
+                    <div className="phenomenal-report-review-meta">
+                      <span className="phenomenal-report-review-num">{ri + 1}.</span>
+                      {rev.fromPulse ? (
+                        <span className="phenomenal-report-review-source">Пульс</span>
+                      ) : rev.fromMergedParent ? (
+                        <span className="phenomenal-report-review-source">слияние ИИ</span>
+                      ) : (
+                        <span className="phenomenal-report-review-source phenomenal-report-review-source--manual">
+                          вручную
+                        </span>
+                      )}
+                      <div className="phenomenal-report-review-btns">
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          disabled={ri === 0}
+                          onClick={() => moveReview(bi, ri, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          disabled={ri >= block.reviews.length - 1}
+                          onClick={() => moveReview(bi, ri, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button type="button" className="btn btn-sm danger" onClick={() => removeReview(bi, ri)}>
+                          Удалить строку
+                        </button>
+                      </div>
                     </div>
+                    {rev.fromPulse ? (
+                      <textarea
+                        className="phenomenal-report-textarea phenomenal-report-review-textarea"
+                        rows={6}
+                        value={rev.text}
+                        onChange={(e) => updateReview(bi, ri, e.target.value)}
+                        placeholder="Текст с Пульса (вопрос и ответ)…"
+                      />
+                    ) : (
+                      <div className="phenomenal-report-review-structured-fields">
+                        <label className="phenomenal-report-label">
+                          ФИО (посетивший урок / родитель)
+                          <input
+                            type="text"
+                            className="phenomenal-report-input"
+                            value={rev.respondentName ?? ''}
+                            onChange={(e) => patchReview(bi, ri, { respondentName: e.target.value })}
+                            placeholder="Фамилия Имя Отчество"
+                          />
+                        </label>
+                        <label className="phenomenal-report-label">
+                          Общая оценка
+                          <input
+                            type="text"
+                            className="phenomenal-report-input"
+                            value={rev.overallRating ?? ''}
+                            onChange={(e) => patchReview(bi, ri, { overallRating: e.target.value })}
+                            placeholder="Например, 9 или 10"
+                          />
+                        </label>
+                        <label className="phenomenal-report-label phenomenal-report-label--full">
+                          Комментарии (ответы на вопросы — отдельными абзацами)
+                          <textarea
+                            className="phenomenal-report-textarea phenomenal-report-review-textarea"
+                            rows={8}
+                            value={rev.comments ?? ''}
+                            onChange={(e) => patchReview(bi, ri, { comments: e.target.value })}
+                            placeholder="Текст отзыва, можно несколько абзацев (Enter)…"
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
-                  <textarea
-                    className="phenomenal-report-textarea"
-                    rows={5}
-                    value={rev.text}
-                    onChange={(e) => updateReview(bi, ri, e.target.value)}
-                    placeholder="Текст отзыва…"
-                  />
-                </div>
-              ))}
-              <button type="button" className="btn btn-sm" style={{ marginTop: '0.5rem' }} onClick={() => addReview(bi)}>
-                + Строка отзыва
-              </button>
+                ))}
+                <button type="button" className="btn btn-sm phenomenal-report-add-review" onClick={() => addReview(bi)}>
+                  + Строка отзыва
+                </button>
+              </div>
             </motion.article>
           ))}
         </>

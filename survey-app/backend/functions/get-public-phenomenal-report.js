@@ -38,7 +38,15 @@ function publicBlockShape(b) {
     rubricCultural: rubricCultural ?? '',
     rubricReflection: rubricReflection ?? '',
     reviews: Array.isArray(reviews)
-      ? reviews.map((r) => ({ id: r.id, text: r.text, fromMergedParent: r.fromMergedParent }))
+      ? reviews.map((r) => ({
+          id: r.id,
+          text: r.text,
+          fromMergedParent: r.fromMergedParent,
+          fromPulse: r.fromPulse,
+          respondentName: r.respondentName,
+          overallRating: r.overallRating,
+          comments: r.comments,
+        }))
       : [],
   };
 }

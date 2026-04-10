@@ -28,21 +28,12 @@ export default function AnalyticsModuleLayout() {
             Сводка по опросам
           </NavLink>
           <NavLink
-            to="/analytics/phenomenal"
-            end
-            className={({ isActive }) =>
-              `analytics-module-tab${isActive ? ' analytics-module-tab--active' : ''}`
-            }
-          >
-            Феноменальные уроки
-          </NavLink>
-          <NavLink
             to="/analytics/phenomenal/report"
             className={({ isActive }) =>
               `analytics-module-tab${isActive ? ' analytics-module-tab--active' : ''}`
             }
           >
-            Редактор отчёта
+            Феноменальные уроки
           </NavLink>
           <NavLink
             to="/analytics/pedagogical"

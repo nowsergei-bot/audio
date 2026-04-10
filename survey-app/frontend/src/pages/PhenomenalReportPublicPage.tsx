@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom';
 import { getPublicPhenomenalReport, type PublicPhenomenalReportPayload } from '../api/client';
 import PhenomenalBlockCompetencyPanel from '../lib/phenomenalLessons/PhenomenalBlockCompetencyPanel';
 import PhenomenalCompetencyCharts from '../lib/phenomenalLessons/PhenomenalCompetencyCharts';
+import { effectiveReviewParts } from '../lib/phenomenalLessons/parentReviewFormat';
 import {
   phenomenalBlockHeadingTitle,
   type PhenomenalReportBlockDraft,
   type PhenomenalReportDraft,
+  type PhenomenalReportReviewLine,
 } from '../lib/phenomenalLessons/reportDraftTypes';
 
 function toBlockDraft(b: PublicPhenomenalReportPayload['blocks'][number]): PhenomenalReportBlockDraft {
@@ -27,7 +29,15 @@ function toBlockDraft(b: PublicPhenomenalReportPayload['blocks'][number]): Pheno
     rubricGeneralContent: b.rubricGeneralContent,
     rubricCultural: b.rubricCultural,
     rubricReflection: b.rubricReflection,
-    reviews: b.reviews.map((r) => ({ ...r })),
+    reviews: b.reviews.map((r) => ({
+      id: r.id,
+      text: r.text,
+      fromMergedParent: r.fromMergedParent,
+      fromPulse: r.fromPulse,
+      respondentName: r.respondentName,
+      overallRating: r.overallRating,
+      comments: r.comments,
+    })),
   };
 }
 
@@ -103,7 +113,7 @@ export default function PhenomenalReportPublicPage() {
         </p>
       </header>
 
-      <section className="card glass-surface phenomenal-competency-section" style={{ marginTop: '1rem' }}>
+      <section className="card glass-surface phenomenal-competency-section phenomenal-public-aggregate-chart" style={{ marginTop: '1rem' }}>
         <PhenomenalCompetencyCharts mode="draft" draft={draftForCharts} />
       </section>
 
@@ -111,70 +121,108 @@ export default function PhenomenalReportPublicPage() {
         const pulse = data.parent_pulse_comments[block.id] ?? [];
         const bDraft = toBlockDraft(block);
         return (
-          <article key={block.id} className="card glass-surface phenomenal-report-block" style={{ marginTop: '1rem' }}>
+          <article key={block.id} className="card glass-surface phenomenal-report-block phenomenal-public-lesson-card" style={{ marginTop: '1rem' }}>
             <h2 className="phenomenal-report-block-title">{phenomenalBlockHeadingTitle(bDraft, bi)}</h2>
-            <div className="phenomenal-report-block-top">
+            <div className="phenomenal-report-block-top phenomenal-public-block-top">
               <div className="phenomenal-report-block-fields">
-                <dl className="phenomenal-public-dl">
-                  <div>
-                    <dt>Шифр / класс</dt>
-                    <dd>{block.lessonCode || '—'}</dd>
-                  </div>
-                  <div>
+                <div className="phenomenal-public-meta-grid" aria-label="Данные урока из черновика">
+                  <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
+                    <dt>Шифр урока / класс</dt>
+                    <dd className="phenomenal-public-prose">{block.lessonCode || '—'}</dd>
+                  </dl>
+                  <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
                     <dt>ФИО ведущих</dt>
-                    <dd>{block.conductingTeachers || '—'}</dd>
-                  </div>
-                  <div>
+                    <dd className="phenomenal-public-prose">{block.conductingTeachers || '—'}</dd>
+                  </dl>
+                  <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
                     <dt>Предметы</dt>
-                    <dd>{block.subjects || '—'}</dd>
-                  </div>
+                    <dd className="phenomenal-public-prose">{block.subjects || '—'}</dd>
+                  </dl>
+                  <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
+                    <dt>Оценка методики (/10)</dt>
+                    <dd className="phenomenal-public-prose">{block.methodologicalScore || '—'}</dd>
+                  </dl>
                   {block.parentClassLabel ? (
-                    <div>
-                      <dt>Класс (опрос родителей)</dt>
-                      <dd>{block.parentClassLabel}</dd>
-                    </div>
+                    <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
+                      <dt>Класс (опрос родителей, Пульс)</dt>
+                      <dd className="phenomenal-public-prose">{block.parentClassLabel}</dd>
+                    </dl>
                   ) : null}
-                </dl>
+                </div>
               </div>
-              <div className="phenomenal-report-block-chart">
-                <PhenomenalBlockCompetencyPanel source="block" block={bDraft} variant="editorSidebar" />
+              <div className="phenomenal-report-block-chart phenomenal-public-block-chart">
+                <PhenomenalBlockCompetencyPanel source="block" block={bDraft} variant="public" />
               </div>
             </div>
             {block.teacherNotes ? (
-              <div style={{ marginTop: '0.75rem' }}>
-                <h3 className="phenomenal-merge-subtitle">Выводы педагога</h3>
-                <p style={{ whiteSpace: 'pre-wrap' }}>{block.teacherNotes}</p>
-              </div>
+              <section className="phenomenal-public-teacher-notes">
+                <h3 className="phenomenal-report-section-title">Выводы педагога (из Excel)</h3>
+                <div className="phenomenal-public-prose phenomenal-public-prose--notes">{block.teacherNotes}</div>
+              </section>
             ) : null}
-            <h3 className="phenomenal-merge-subtitle" style={{ marginTop: '1rem' }}>
-              Отзывы в отчёте
-            </h3>
-            {block.reviews.length === 0 ? (
-              <p className="muted">Нет строк в черновике.</p>
-            ) : (
-              <ul className="phenomenal-public-reviews">
-                {block.reviews.map((r) => (
-                  <li key={r.id}>
-                    <p style={{ whiteSpace: 'pre-wrap' }}>{r.text}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <h3 className="phenomenal-merge-subtitle" style={{ marginTop: '1rem' }}>
-              Комментарии родителей (Пульс)
-            </h3>
-            {pulse.length === 0 ? (
-              <p className="muted">Нет текстовых ответов по этому уроку или опрос не сопоставлен.</p>
-            ) : (
-              <ul className="phenomenal-pulse-comments">
-                {pulse.map((c, i) => (
-                  <li key={`${block.id}-p-${i}`}>
-                    <strong className="phenomenal-pulse-q">{c.question}</strong>
-                    <p style={{ whiteSpace: 'pre-wrap', marginTop: '0.25rem' }}>{c.text}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <section className="phenomenal-report-parents-panel phenomenal-public-parents-panel">
+              <h3 className="phenomenal-report-section-title">Отзывы родителей</h3>
+              <p className="muted phenomenal-public-panel-lead">
+                Структура как в черновике (ФИО, оценка, комментарии); текст показан целиком, без прокрутки.
+              </p>
+              {block.reviews.length === 0 ? (
+                <p className="muted phenomenal-report-parents-empty" style={{ marginBottom: 0 }}>
+                  Для этого урока в черновике нет строк отзывов (или слияние с опросом не дало пары).
+                </p>
+              ) : (
+                <ul className="phenomenal-public-reviews">
+                  {block.reviews.map((r) => {
+                    const parts = effectiveReviewParts(r as PhenomenalReportReviewLine);
+                    const hasStruct = parts.name || parts.rating || parts.comments;
+                    return (
+                      <li key={r.id} className="phenomenal-public-review-item">
+                        {hasStruct ? (
+                          <div className="phenomenal-public-review-structured">
+                            {parts.name ? (
+                              <p className="phenomenal-public-review-block">
+                                <span className="phenomenal-public-review-label">ФИО</span>
+                                <span className="phenomenal-public-review-value phenomenal-public-prose">{parts.name}</span>
+                              </p>
+                            ) : null}
+                            {parts.rating ? (
+                              <p className="phenomenal-public-review-block">
+                                <span className="phenomenal-public-review-label">Общая оценка</span>
+                                <span className="phenomenal-public-review-value phenomenal-public-prose">{parts.rating}</span>
+                              </p>
+                            ) : null}
+                            {parts.comments ? (
+                              <p className="phenomenal-public-review-block phenomenal-public-review-comments">
+                                <span className="phenomenal-public-review-label">Комментарии</span>
+                                <span className="phenomenal-public-review-value phenomenal-public-prose">{parts.comments}</span>
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="phenomenal-public-review-fallback phenomenal-public-prose">{r.text || '—'}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+            <section className="phenomenal-public-pulse-panel">
+              <h3 className="phenomenal-report-section-title">Комментарии родителей (Пульс)</h3>
+              {pulse.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Нет текстовых ответов по этому уроку или опрос не сопоставлен.
+                </p>
+              ) : (
+                <ul className="phenomenal-pulse-comments">
+                  {pulse.map((c, i) => (
+                    <li key={`${block.id}-p-${i}`} className="phenomenal-pulse-comments-item">
+                      <strong className="phenomenal-pulse-q">{c.question}</strong>
+                      <div className="phenomenal-public-prose phenomenal-pulse-comments-body">{c.text}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </article>
         );
       })}

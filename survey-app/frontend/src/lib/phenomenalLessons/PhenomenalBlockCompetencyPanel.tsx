@@ -14,13 +14,13 @@ export type PhenomenalBlockCompetencyPanelProps =
   | {
       source: 'block';
       block: PhenomenalReportBlockDraft;
-      /** half — узкая колонка; editorSidebar — ещё компактнее по высоте для полосы справа */
-      variant?: 'default' | 'half' | 'editorSidebar';
+      /** half — узкая колонка; editorSidebar — компактно справа в редакторе; public — полная высота под все метрики (страница руководителя) */
+      variant?: 'default' | 'half' | 'editorSidebar' | 'public';
     }
   | {
       source: 'teacherRow';
       row: TeacherLessonChecklistRow;
-      variant?: 'default' | 'half' | 'editorSidebar';
+      variant?: 'default' | 'half' | 'editorSidebar' | 'public';
     };
 
 type ChartRow = { name: string; pct: number };
@@ -29,17 +29,28 @@ const pctTick = (v: number) => `${Math.round(v * 100)}%`;
 
 export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCompetencyPanelProps) {
   const variant = props.variant ?? 'default';
-  const chartH = variant === 'editorSidebar' ? 168 : variant === 'half' ? 210 : 240;
-  const yAxisW = variant === 'editorSidebar' ? 100 : variant === 'half' ? 112 : 130;
-  const rubricRows = useMemo(() => {
-    if (props.source === 'block') return competencyRowsForBlock(props.block);
-    return competencyRowsForTeacherRow(props.row);
+
+  const { rubricRows, methodologyTen, metricCount } = useMemo(() => {
+    const rubric =
+      props.source === 'block' ? competencyRowsForBlock(props.block) : competencyRowsForTeacherRow(props.row);
+    const meth =
+      props.source === 'block' ? methodologyAvgRawOnTen(props.block) : methodologyAvgRawOnTenFromTeacherRow(props.row);
+    const metrics = chartMetricsFromBlockScores(rubric, meth);
+    return { rubricRows: rubric, methodologyTen: meth, metricCount: metrics.length };
   }, [props]);
 
-  const methodologyTen = useMemo(() => {
-    if (props.source === 'block') return methodologyAvgRawOnTen(props.block);
-    return methodologyAvgRawOnTenFromTeacherRow(props.row);
-  }, [props]);
+  const publicChartH =
+    metricCount > 0 ? Math.min(560, Math.max(220, metricCount * 34 + 108)) : 220;
+  const chartH =
+    variant === 'public'
+      ? publicChartH
+      : variant === 'editorSidebar'
+        ? 168
+        : variant === 'half'
+          ? 210
+          : 240;
+  const yAxisW =
+    variant === 'public' ? 140 : variant === 'editorSidebar' ? 100 : variant === 'half' ? 112 : 130;
 
   const emptyHint =
     props.source === 'block'
@@ -57,9 +68,13 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
   const hasChart = chartRows.length > 0;
 
   const narrow = variant === 'half' || variant === 'editorSidebar';
+  const tickAxis =
+    variant === 'editorSidebar' ? 8 : variant === 'half' ? 9 : variant === 'public' ? 10 : 10;
+  const tickX =
+    variant === 'editorSidebar' ? 8 : variant === 'half' ? 9 : variant === 'public' ? 11 : 10;
   return (
     <div
-      className={`phenomenal-block-competency phenomenal-block-competency--bar-only${narrow ? ' phenomenal-block-competency--half' : ''}${variant === 'editorSidebar' ? ' phenomenal-block-competency--editor-sidebar' : ''}`}
+      className={`phenomenal-block-competency phenomenal-block-competency--bar-only${narrow ? ' phenomenal-block-competency--half' : ''}${variant === 'editorSidebar' ? ' phenomenal-block-competency--editor-sidebar' : ''}${variant === 'public' ? ' phenomenal-block-competency--public' : ''}`}
     >
       <h4 className="phenomenal-block-competency-title">Сводка по метрикам (доля от макс. в опроснике)</h4>
       {!hasChart ? (
@@ -80,12 +95,17 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
                 type="number"
                 domain={[0, 1]}
                 tickCount={5}
-                tick={{ fontSize: variant === 'editorSidebar' ? 8 : variant === 'half' ? 9 : 10 }}
+                tick={{ fontSize: tickX }}
                 tickFormatter={pctTick}
               />
-              <YAxis type="category" dataKey="name" width={yAxisW} tick={{ fontSize: 8 }} interval={0} />
+              <YAxis type="category" dataKey="name" width={yAxisW} tick={{ fontSize: tickAxis }} interval={0} />
               <Tooltip formatter={(v: number) => [pctTick(v), 'Относительный уровень']} />
-              <Bar dataKey="pct" name="Доля" fill="var(--chart-bar, #6366f1)" radius={[0, 4, 4, 0]} />
+              <Bar
+                dataKey="pct"
+                name="Доля"
+                fill="var(--phenomenal-competency-bar, var(--chart-bar, #2563eb))"
+                radius={[0, 4, 4, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

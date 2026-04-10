@@ -93,7 +93,7 @@ const {
 } = require('./phenomenal-report-projects');
 
 /** Смените при выкладке — по GET /api/ping видно, что в облаке свежий bundle */
-const DEPLOY_STAMP = '2026-04-10-phenomenal-editor-pulse-layout';
+const DEPLOY_STAMP = '2026-04-10-function-bundle-zip';
 
 function segmentsFromPath(path) {
   return path
@@ -522,10 +522,10 @@ async function handlerImpl(event) {
     return handlePostPhenomenalPreviewPulseComments(pool, event, canAccessSurvey);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'phenomenal-report-projects' && segs.length === 2) {
-    return handleListPhenomenalReportProjects(pool, user);
+    return handleListPhenomenalReportProjects(pool, user, auth.viaAdminKey, sessionUser);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'phenomenal-report-projects' && segs.length === 2) {
-    return handlePostPhenomenalReportProject(pool, user, event);
+    return handlePostPhenomenalReportProject(pool, user, auth.viaAdminKey, sessionUser, event);
   }
   if (
     method === 'GET' &&
@@ -536,7 +536,7 @@ async function handlerImpl(event) {
   ) {
     const pid = Number(segs[2]);
     if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
-    return handleGetPhenomenalReportProject(pool, user, pid);
+    return handleGetPhenomenalReportProject(pool, user, auth.viaAdminKey, sessionUser, pid);
   }
   if (
     method === 'PUT' &&
@@ -547,7 +547,7 @@ async function handlerImpl(event) {
   ) {
     const pid = Number(segs[2]);
     if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
-    return handlePutPhenomenalReportProject(pool, user, pid, event);
+    return handlePutPhenomenalReportProject(pool, user, auth.viaAdminKey, sessionUser, pid, event);
   }
   if (
     method === 'DELETE' &&
@@ -558,7 +558,7 @@ async function handlerImpl(event) {
   ) {
     const pid = Number(segs[2]);
     if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
-    return handleDeletePhenomenalReportProject(pool, user, pid);
+    return handleDeletePhenomenalReportProject(pool, user, auth.viaAdminKey, sessionUser, pid);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'surveys' && segs[2] && segs[3] === 'text-answers' && segs.length === 4) {
     const id = Number(segs[2]);

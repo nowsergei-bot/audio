@@ -30,6 +30,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Имя / id функции из survey-app/deploy.config.json (если не заданы YC_FUNCTION_NAME / YC_FUNCTION_ID)
+deploy_config_field() {
+  local field="$1"
+  local p="$ROOT/deploy.config.json"
+  [[ -f "$p" ]] || return 0
+  # Одна строка и одинарные кавычки — совместимость с bash 3.2 / macOS
+  node -e 'const j=require(process.argv[1]);const k=process.argv[2];const r=j[k];let v="";if(typeof r==="string")v=r.trim();else if(r!=null)v=String(r).trim();if(v&&v!=="null")process.stdout.write(v);' "$p" "$field" 2>/dev/null || true
+}
+
 # Секреты не в репозитории: создайте survey-app/.env.cloud-function (шаблон: .env.cloud-function.example)
 # с PG_CONNECTION_STRING, ADMIN_API_KEY, CORS_ORIGIN и при необходимости SMTP_* для почты.
 # или задайте их в shell до запуска. Иначе: YC_FUNCTION_ENV_FILE=/path/to/file
@@ -42,8 +52,9 @@ if [[ -f "$_ENV_CF" ]]; then
   echo ">>> Переменные окружения: загружен $_ENV_CF" >&2
 fi
 ZIP="${ZIP_PATH:-$ROOT/backend/function-bundle.zip}"
-NAME="${YC_FUNCTION_NAME:-survey-api}"
-FUNC_ID="${YC_FUNCTION_ID:-}"
+NAME="${YC_FUNCTION_NAME:-$(deploy_config_field yandexFunctionName)}"
+NAME="${NAME:-survey-api}"
+FUNC_ID="${YC_FUNCTION_ID:-$(deploy_config_field yandexFunctionId)}"
 RUNTIME="${YC_FUNCTION_RUNTIME:-nodejs18}"
 MEMORY="${YC_FUNCTION_MEMORY:-256MB}"
 # Мульти-сводка (batch-analytics) + LLM: при 60s часто 504 у шлюза; по умолчанию 120s, при необходимости 180s
@@ -61,10 +72,15 @@ if [[ "$CMD" == "help" || "$CMD" == "-h" ]]; then
   echo "ZIP > 3.5 МБ: автоматически s3 cp в бакет + version create с package (нужны YC_BUCKET и AWS_*)."
   echo ""
   echo "Если yc пишет «can't resolve … without folder id» или «function … not found»:"
-  echo "  yc config set folder-id b1g…   # из URL консоли …/folders/b1g…/…"
-  echo "  или: export YC_FOLDER_ID=b1g…"
-  echo "Опционально вместо имени — id функции:"
-  echo "  export YC_FUNCTION_ID=d4e32…"
+  echo "  1) Каталог должен совпадать с тем, где создана функция: yc config set folder-id b1g…"
+  echo "     (или YC_FOLDER_ID / поле yandexFolderId в deploy.config.json)"
+  echo "  2) Список функций в каталоге: yc serverless function list"
+  echo "  3) Создать функцию survey-api (один раз):"
+  echo "     yc serverless function create --name survey-api"
+  echo "  4) Или укажите реальное имя: export YC_FUNCTION_NAME=имя-из-списка"
+  echo "     либо в deploy.config.json: \"yandexFunctionName\": \"…\""
+  echo "  5) Вместо имени — id из консоли (Обзор функции):"
+  echo "     export YC_FUNCTION_ID=d4e32…  или \"yandexFunctionId\" в deploy.config.json"
   exit 0
 fi
 
@@ -98,9 +114,10 @@ fi
 env_args=()
 for key in \
   PG_CONNECTION_STRING PG_POOL_MAX PG_SSL PG_SSL_REJECT_UNAUTHORIZED ADMIN_API_KEY CORS_ORIGIN \
-  OPENAI_API_KEY OPENAI_MODEL OPENAI_BASE_URL \
+  OPENAI_API_KEY OPENAI_MODEL OPENAI_MODEL_FALLBACKS LLM_MODEL_FALLBACKS OPENAI_BASE_URL \
+  OPENROUTER_HTTP_REFERER OPENROUTER_TITLE OPENROUTER_APP_NAME \
   GIGACHAT_CREDENTIALS GIGACHAT_AUTHORIZATION_KEY GIGACHAT_CLIENT_ID GIGACHAT_CLIENT_SECRET \
-  GIGACHAT_MODEL GIGACHAT_SCOPE GIGACHAT_OAUTH_URL GIGACHAT_CHAT_BASE_URL LLM_PROVIDER \
+  GIGACHAT_MODEL GIGACHAT_SCOPE GIGACHAT_OAUTH_URL GIGACHAT_CHAT_BASE_URL GIGACHAT_TLS_INSECURE LLM_PROVIDER \
   YANDEX_CLOUD_FOLDER_ID YANDEX_API_KEY YANDEX_IAM_TOKEN YANDEX_MODEL_URI \
   YC_FOLDER_ID YC_API_KEY YC_IAM_TOKEN \
   PHOTO_WALL_BUCKET S3_BUCKET YC_BUCKET PHOTO_WALL_STORAGE PHOTO_WALL_PUBLIC_BASE_URL \
@@ -268,7 +285,8 @@ if [[ "$ZIP_SIZE" -gt "$MAX_DIRECT_ZIP" || "${YC_FORCE_FUNCTION_PACKAGE_BUCKET:-
   fi
   PKG_SHA="$(sha256_file "$ZIP")"
   SOURCE_ARGS=(--package-bucket-name "$PKG_BUCKET" --package-object-name "$OBJECT_KEY" --package-sha256 "$PKG_SHA")
-  echo ">>> Создание версии из пакета в бакете (sha256 ${PKG_SHA:0:12}…)" >&2
+  PKG_SHA12="$(printf '%s' "$PKG_SHA" | awk '{print substr($0,1,12)}')"
+  echo ">>> Создание версии из пакета в бакете, sha256 ${PKG_SHA12}..." >&2
 fi
 
 echo ">>> yc serverless function version create …"

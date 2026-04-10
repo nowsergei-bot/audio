@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { looksLikeRubricLevelNotSubjects } from './parentReviewFormat';
 
 /** Строка экспорта Google Forms «lesson checklist April» (14 колонок, лист с ответами). */
 export interface TeacherLessonChecklistRow {
@@ -115,12 +116,21 @@ function resolveColumnMap(headerRow: unknown[]): ColumnMap | null {
   const ixObs = find((h) => (/фио|педагог/i.test(h) && /посетивш/i.test(h)) || /наблюдател/i.test(h));
   if (ixObs >= 0) map.observerName = ixObs;
 
-  const ixSubj = find(
+  let ixSubj = find(
     (h) =>
       /перечень.*тем/i.test(h) ||
       /изученн.*тем/i.test(h) ||
-      (/предмет/i.test(h) && /тем/i.test(h)),
+      (/предмет/i.test(h) && /тем/i.test(h)) ||
+      /^перечень изученных/i.test(h.trim()),
   );
+  if (ixSubj < 0) {
+    ixSubj = find((h) => {
+      const t = h.toLowerCase();
+      if (!/предмет|тематик|дисциплин|направленност|раздел/i.test(t)) return false;
+      if (/оцените|итогов|методич|ведущ|посетивш|шифр|фио.*провод/i.test(t)) return false;
+      return true;
+    });
+  }
   if (ixSubj >= 0) map.subjects = ixSubj;
 
   const ixR0 = find((h) => /организац.*пространств/i.test(h));
@@ -245,10 +255,13 @@ export function parseTeacherChecklistAprilWorkbook(wb: XLSX.WorkBook): ParseTeac
     const nonempty = r.some((c) => c !== '' && c != null);
     if (!nonempty) continue;
 
+    let subjects = strCell(cellAt(r, colMap, 'subjects', LEGACY_COL.subjects));
+    if (looksLikeRubricLevelNotSubjects(subjects)) subjects = '';
+
     rows.push({
       submittedAt: submittedIso(cellAt(r, colMap, 'submittedAt', LEGACY_COL.submittedAt)),
       observerName: strCell(cellAt(r, colMap, 'observerName', LEGACY_COL.observerName)),
-      subjects: strCell(cellAt(r, colMap, 'subjects', LEGACY_COL.subjects)),
+      subjects,
       lessonCode: strCell(cellAt(r, colMap, 'lessonCode', LEGACY_COL.lessonCode)),
       conductingTeachers: strCell(cellAt(r, colMap, 'conductingTeachers', LEGACY_COL.conductingTeachers)),
       rubricOrganizational: strCell(

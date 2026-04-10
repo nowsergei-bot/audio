@@ -1,4 +1,5 @@
 const { json, parseBody } = require('./lib/http');
+const { resolveProjectOwner } = require('./lib/resolve-project-owner');
 
 /** Postgres SQLSTATE 23502 — нарушение NOT NULL (часто user_id до миграции 016). */
 function isNotNullUserIdExcelProjectsError(err) {
@@ -24,19 +25,6 @@ function validateSessionPayload(s) {
   if (typeof s.headerRow1Based !== 'number' || !Number.isFinite(s.headerRow1Based)) return 'Некорректная строка заголовков';
   if (!Array.isArray(s.headers) || !Array.isArray(s.roles)) return 'Некорректные headers/roles в session';
   return null;
-}
-
-/**
- * @returns {{ ok: true, userId: number } | { ok: true, apiKey: true } | { ok: false }}
- * При X-Api-Key + Bearer владелец — пользователь из сессии (иначе POST пишет user_id, GET по ключу — 404).
- */
-function resolveProjectOwner(user, viaAdminKey, sessionUser) {
-  if (sessionUser && sessionUser.id != null) {
-    return { ok: true, userId: Number(sessionUser.id) };
-  }
-  if (user && user.id != null) return { ok: true, userId: Number(user.id) };
-  if (viaAdminKey) return { ok: true, apiKey: true };
-  return { ok: false };
 }
 
 function requireProjectAccess(user, viaAdminKey, sessionUser) {

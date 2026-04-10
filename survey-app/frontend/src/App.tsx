@@ -15,7 +15,6 @@ import PedagogicalAnalyticsLayout from './pages/PedagogicalAnalyticsLayout';
 import PedagogicalProgressPage from './pages/PedagogicalProgressPage';
 import PedagogicalReviewPage from './pages/PedagogicalReviewPage';
 import PedagogicalReportPage from './pages/PedagogicalReportPage';
-import PhenomenalLessonsPage from './pages/PhenomenalLessonsPage';
 import PhenomenalReportEditorPage from './pages/PhenomenalReportEditorPage';
 import PhenomenalReportPublicPage from './pages/PhenomenalReportPublicPage';
 import SurveyGroupsAdminPage from './pages/SurveyGroupsAdminPage';
@@ -54,7 +53,7 @@ export default function App() {
           <Route path="excel" element={<ExcelAnalyticsPage />} />
           <Route path="surveys" element={<MultiSurveyAnalyticsPage />} />
           <Route path="phenomenal" element={<Outlet />}>
-            <Route index element={<PhenomenalLessonsPage />} />
+            <Route index element={<Navigate to="report" replace />} />
             <Route path="report" element={<PhenomenalReportEditorPage />} />
           </Route>
           <Route path="pedagogical" element={<Outlet />}>

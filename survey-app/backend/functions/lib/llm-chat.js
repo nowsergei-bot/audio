@@ -59,6 +59,20 @@ function isRateLimitFailure(res) {
   return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted|quota|лимит/i.test(d);
 }
 
+/** YandexGPT исчерпал квоту / перегружен — пробуем OpenAI/OpenRouter или GigaChat. */
+function shouldFallbackAfterYandexFailure(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429 || st === 402) return true;
+  if (st >= 500 && st < 600) return true;
+  const d = String(res.detail || '').toLowerCase();
+  if (/quota|лимит|rate|too many|resource_exhausted|exhausted|overload|unavailable|temporar|503|502/.test(d)) {
+    return true;
+  }
+  if (st === 403 && /quota|limit|кредит|credit|forbidden/.test(d)) return true;
+  return false;
+}
+
 /**
  * Следующая модель в цепочке OPENAI/OpenRouter: 429, лимиты free-tier, часто 403 Forbidden у OpenRouter.
  */
@@ -606,6 +620,14 @@ async function runChatCompletion(messages, opts = {}) {
     if (isRateLimitFailure(g) && hasYandexLlmCreds()) {
       const y = await fetchYandexGptChat(messages, opts);
       if (y.ok) return { ...y, provider: 'yandex' };
+      if (shouldFallbackAfterYandexFailure(y) && process.env.OPENAI_API_KEY) {
+        const oa = await fetchOpenAIChat(messages, opts);
+        if (oa.ok) return { ...oa, provider: 'openai' };
+      }
+    }
+    if (isRateLimitFailure(g) && process.env.OPENAI_API_KEY) {
+      const oa = await fetchOpenAIChat(messages, opts);
+      if (oa.ok) return { ...oa, provider: 'openai' };
     }
     return g;
   }
@@ -613,6 +635,16 @@ async function runChatCompletion(messages, opts = {}) {
   if (tryYandexFirst && hasYandexLlmCreds()) {
     const y = await fetchYandexGptChat(messages, opts);
     if (y.ok) return { ...y, provider: 'yandex' };
+    if (shouldFallbackAfterYandexFailure(y)) {
+      if (process.env.OPENAI_API_KEY) {
+        const oa = await fetchOpenAIChat(messages, opts);
+        if (oa.ok) return { ...oa, provider: 'openai' };
+      }
+      if (hasGigaChatCreds()) {
+        const g2 = await fetchGigaChatChat(messages, opts);
+        if (g2.ok) return { ...g2, provider: 'gigachat' };
+      }
+    }
     return y;
   }
 
@@ -664,7 +696,14 @@ async function runChatCompletion(messages, opts = {}) {
 
   if (hasYandexLlmCreds()) {
     const y = await fetchYandexGptChat(messages, opts);
-    return y.ok ? { ...y, provider: 'yandex' } : y;
+    if (y.ok) return { ...y, provider: 'yandex' };
+    if (shouldFallbackAfterYandexFailure(y)) {
+      if (hasGigaChatCreds()) {
+        const g3 = await fetchGigaChatChat(messages, opts);
+        if (g3.ok) return { ...g3, provider: 'gigachat' };
+      }
+    }
+    return y;
   }
 
   return {

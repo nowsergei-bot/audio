@@ -315,7 +315,10 @@ export async function postPhenomenalReportProject(body: {
     draft?: PhenomenalReportDraft;
     error?: string;
   }>(res);
-  if (!res.ok || !data.project || !data.draft) throw new Error(data.error || res.statusText);
+  if (!res.ok || !data.project || !data.draft) {
+    const msg = [data.error, (data as { message?: string }).message].filter(Boolean).join(': ');
+    throw new Error(msg || res.statusText);
+  }
   return { project: data.project, draft: data.draft };
 }
 
@@ -350,7 +353,10 @@ export async function putPhenomenalReportProject(
     draft?: PhenomenalReportDraft;
     error?: string;
   }>(res);
-  if (!res.ok || !data.project || !data.draft) throw new Error(data.error || res.statusText);
+  if (!res.ok || !data.project || !data.draft) {
+    const msg = [data.error, (data as { message?: string }).message].filter(Boolean).join(': ');
+    throw new Error(msg || res.statusText);
+  }
   return { project: data.project, draft: data.draft };
 }
 
@@ -373,7 +379,15 @@ export interface PublicPhenomenalReportPayload {
     rubricGeneralContent?: string;
     rubricCultural?: string;
     rubricReflection?: string;
-    reviews: { id: string; text: string; fromMergedParent?: boolean }[];
+    reviews: {
+      id: string;
+      text: string;
+      fromMergedParent?: boolean;
+      fromPulse?: boolean;
+      respondentName?: string;
+      overallRating?: string;
+      comments?: string;
+    }[];
   }>;
   parent_pulse_comments: Record<string, { question: string; text: string }[]>;
 }

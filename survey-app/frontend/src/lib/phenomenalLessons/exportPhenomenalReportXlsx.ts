@@ -1,4 +1,8 @@
-import type { PhenomenalReportBlockDraft, PhenomenalReportDraft } from './reportDraftTypes';
+import {
+  composeReviewFlatText,
+  type PhenomenalReportBlockDraft,
+  type PhenomenalReportDraft,
+} from './reportDraftTypes';
 import { TEACHER_CHECKLIST_APRIL_HEADER_ROW } from './parseTeacherChecklistApril';
 import { PHENOMENAL_RUBRIC_DIMENSIONS } from './phenomenalRubricDimensions';
 import {
@@ -141,7 +145,7 @@ export async function downloadPhenomenalReportXlsx(draft: PhenomenalReportDraft,
     } else {
       b.reviews.forEach((r, i) => {
         wsSummary.getCell(sr, 1).value = `${i + 1}.`;
-        wsSummary.getCell(sr, 2).value = r.text;
+        wsSummary.getCell(sr, 2).value = composeReviewFlatText(r);
         wsSummary.getRow(sr).getCell(2).alignment = { wrapText: true, vertical: 'top' };
         sr += 1;
       });
@@ -379,7 +383,7 @@ export async function downloadPhenomenalReportXlsx(draft: PhenomenalReportDraft,
       b.reviews.forEach((rev, ri) => {
         wsDash.getCell(r, 1).value = `${ri + 1}.`;
         wsDash.mergeCells(r, 2, r, 7);
-        wsDash.getCell(r, 2).value = rev.text;
+        wsDash.getCell(r, 2).value = composeReviewFlatText(rev);
         wsDash.getRow(r).getCell(2).alignment = { wrapText: true, vertical: 'top' };
         r += 1;
       });

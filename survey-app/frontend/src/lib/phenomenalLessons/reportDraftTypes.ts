@@ -1,4 +1,5 @@
 import type { PhenomenalLessonsMergePayload, PhenomenalMergeRow } from '../../types';
+import { parentAnswersToStructuredReview, tryParseStructuredFromFlatReviewText } from './parentReviewFormat';
 import {
   normalizeLessonCodeForGroup,
   type TeacherLessonChecklistRow,
@@ -12,8 +13,14 @@ export const PHENOMENAL_REPORT_AUTOSAVE_KEY = 'phenomenal_report_autosave_v1';
  */
 export interface PhenomenalReportReviewLine {
   id: string;
-  /** Текст отзыва (можно править) */
+  /** Совмещённый текст (экспорт, совместимость) */
   text: string;
+  /** ФИО посетившего / родителя */
+  respondentName?: string;
+  /** Общая оценка (например 1–10) */
+  overallRating?: string;
+  /** Комментарии и ответы на вопросы — отдельным абзацем от ФИО и оценки */
+  comments?: string;
   /** Пришло из слияния с ответом родителя */
   fromMergedParent?: boolean;
   /** Подставлено из текстов опроса на Пульсе (обновляется при смене полей блока) */
@@ -150,6 +157,84 @@ function minTeacherRowIndex(rows: PhenomenalMergeRow[]): number {
   return Math.min(...rows.map((r) => r.teacher_row_index ?? Infinity));
 }
 
+function sortMergeRowsForBlock(rows: PhenomenalMergeRow[]): PhenomenalMergeRow[] {
+  return [...rows].sort((a, b) => {
+    const ta = a.teacher_row_index ?? 999999;
+    const tb = b.teacher_row_index ?? 999999;
+    if (ta !== tb) return ta - tb;
+    return a.parent_row_index - b.parent_row_index;
+  });
+}
+
+function groupPhenomenalMergeRowsByKey(rows: PhenomenalMergeRow[]): Map<string, PhenomenalMergeRow[]> {
+  const map = new Map<string, PhenomenalMergeRow[]>();
+  for (const row of rows) {
+    const k = phenomenalMergeGroupKey(row);
+    if (k == null) continue;
+    if (!map.has(k)) map.set(k, []);
+    map.get(k)!.push(row);
+  }
+  return map;
+}
+
+function sortLessonKeysByMinTeacherRow(
+  keys: string[],
+  rowsByKey: Map<string, PhenomenalMergeRow[]>,
+): string[] {
+  return [...keys].sort((a, b) => {
+    const da = minTeacherRowIndex(rowsByKey.get(a) ?? []);
+    const db = minTeacherRowIndex(rowsByKey.get(b) ?? []);
+    if (da !== db) return da - db;
+    return a.localeCompare(b);
+  });
+}
+
+function groupTeacherRowsByLessonKey(rows: TeacherLessonChecklistRow[]): Map<string, { row: TeacherLessonChecklistRow; idx: number }[]> {
+  const groups = new Map<string, { row: TeacherLessonChecklistRow; idx: number }[]>();
+  rows.forEach((row, idx) => {
+    const raw = (row.lessonCode ?? '').replace(/\s+/g, ' ').trim();
+    const key = raw ? `code:${normalizeLessonCodeForGroup(raw)}` : `row:${idx}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push({ row, idx });
+  });
+  return groups;
+}
+
+function blockSortKeyForDraft(b: PhenomenalReportBlockDraft): number {
+  if (b.sourceTeacherRowIndices?.length) return Math.min(...b.sourceTeacherRowIndices);
+  return b.sourceTeacherRowIndex ?? Number.POSITIVE_INFINITY;
+}
+
+function blockFromTeacherLessonItems(items: { row: TeacherLessonChecklistRow; idx: number }[]): PhenomenalReportBlockDraft {
+  items.sort((a, b) => a.idx - b.idx);
+  const list = items.map((i) => i.row);
+  const primary = list[0]!;
+  const indices = items.map((i) => i.idx).sort((a, b) => a - b);
+  const scoreValues = list.map((r) => r.methodologicalScore).filter((x): x is number => x != null);
+  return {
+    id: newId('blk'),
+    sourceTeacherRowIndex: indices[0]!,
+    sourceTeacherRowIndices: indices.length > 1 ? indices : undefined,
+    submittedAt: primary.submittedAt ?? null,
+    lessonCode: primary.lessonCode ?? '',
+    conductingTeachers: uniqueNormalizedStrings(list.map((r) => expandPersonListField(r.conductingTeachers))).join(' · '),
+    subjects: uniqueNormalizedStrings(list.map((r) => r.subjects)).join(' · '),
+    rubricOrganizational: uniqueNormalizedStrings(list.map((r) => r.rubricOrganizational)).join('\n') || undefined,
+    rubricGoalSetting: uniqueNormalizedStrings(list.map((r) => r.rubricGoalSetting)).join('\n') || undefined,
+    rubricTechnologies: uniqueNormalizedStrings(list.map((r) => r.rubricTechnologies)).join('\n') || undefined,
+    rubricInformation: uniqueNormalizedStrings(list.map((r) => r.rubricInformation)).join('\n') || undefined,
+    rubricGeneralContent: uniqueNormalizedStrings(list.map((r) => r.rubricGeneralContent)).join('\n') || undefined,
+    rubricCultural: uniqueNormalizedStrings(list.map((r) => r.rubricCultural)).join('\n') || undefined,
+    rubricReflection: uniqueNormalizedStrings(list.map((r) => r.rubricReflection)).join('\n') || undefined,
+    methodologicalScore: formatMethodologyScoresLine(scoreValues),
+    teacherNotes: uniqueNormalizedStrings(list.map((r) => r.generalThoughts)).join('\n\n'),
+    observerName: uniqueNormalizedStrings(
+      list.map((r) => preferFullPersonLabel(r.observerName.replace(/\s+/g, ' ').trim())),
+    ).join(' · '),
+    reviews: [],
+  };
+}
+
 function scoresFromTeacherSnapshot(t: NonNullable<PhenomenalMergeRow['teacher']>): number[] {
   if (Array.isArray(t.methodologicalScores) && t.methodologicalScores.length) {
     return t.methodologicalScores.filter((n) => typeof n === 'number' && Number.isFinite(n));
@@ -180,12 +265,7 @@ function mergeRubricsFromTeachers(
 }
 
 function blockFromMergedGroup(rows: PhenomenalMergeRow[]): PhenomenalReportBlockDraft {
-  const sorted = [...rows].sort((a, b) => {
-    const ta = a.teacher_row_index ?? 999999;
-    const tb = b.teacher_row_index ?? 999999;
-    if (ta !== tb) return ta - tb;
-    return a.parent_row_index - b.parent_row_index;
-  });
+  const sorted = sortMergeRowsForBlock(rows);
 
   const tiOrder: number[] = [];
   const byTi = new Map<number, NonNullable<PhenomenalMergeRow['teacher']>>();
@@ -229,11 +309,20 @@ function blockFromMergedGroup(rows: PhenomenalMergeRow[]): PhenomenalReportBlock
   for (const r of sorted) {
     if (seenParent.has(r.parent_row_index)) continue;
     seenParent.add(r.parent_row_index);
-    reviews.push({
-      id: newId('rev'),
-      text: r.parent?.answers_labeled ? parentAnswersToReviewText(r.parent.answers_labeled) : '',
-      fromMergedParent: true,
-    });
+    const al = r.parent?.answers_labeled;
+    if (al && typeof al === 'object') {
+      const st = parentAnswersToStructuredReview(al as Record<string, unknown>);
+      reviews.push({
+        id: newId('rev'),
+        respondentName: st.respondentName || undefined,
+        overallRating: st.overallRating || undefined,
+        comments: st.comments || undefined,
+        text: st.flatText || parentAnswersToReviewText(al as Record<string, unknown>),
+        fromMergedParent: true,
+      });
+    } else {
+      reviews.push({ id: newId('rev'), text: '', fromMergedParent: true });
+    }
   }
 
   const sortedTi = [...tiOrder].sort((a, b) => a - b);
@@ -264,24 +353,46 @@ function blockFromMergedGroup(rows: PhenomenalMergeRow[]): PhenomenalReportBlock
 
 export function buildDraftFromMerge(
   merge: PhenomenalLessonsMergePayload,
-  opts?: { title?: string; periodLabel?: string },
+  opts?: { title?: string; periodLabel?: string; teacherRows?: TeacherLessonChecklistRow[] },
 ): PhenomenalReportDraft {
-  const groups = new Map<string, PhenomenalMergeRow[]>();
-  for (const row of merge.merged) {
-    const k = phenomenalMergeGroupKey(row);
-    if (k == null) continue;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k)!.push(row);
+  const mergedGrouped = groupPhenomenalMergeRowsByKey(merge.merged ?? []);
+  const uncertainGrouped = groupPhenomenalMergeRowsByKey(merge.uncertain ?? []);
+
+  const keysWithBlocks = new Set<string>();
+  const blocks: PhenomenalReportBlockDraft[] = [];
+
+  const mergedKeysSorted = sortLessonKeysByMinTeacherRow([...mergedGrouped.keys()], mergedGrouped);
+  for (const key of mergedKeysSorted) {
+    const mRows = mergedGrouped.get(key)!;
+    const uRows = uncertainGrouped.get(key) ?? [];
+    if (uRows.length) uncertainGrouped.delete(key);
+    blocks.push(blockFromMergedGroup(sortMergeRowsForBlock([...mRows, ...uRows])));
+    keysWithBlocks.add(key);
   }
 
-  const ordered = [...groups.entries()].sort((a, b) => {
-    const da = minTeacherRowIndex(a[1]);
-    const db = minTeacherRowIndex(b[1]);
-    if (da !== db) return da - db;
-    return a[0].localeCompare(b[0]);
-  });
+  const uncertainOnlySorted = sortLessonKeysByMinTeacherRow([...uncertainGrouped.keys()], uncertainGrouped);
+  for (const key of uncertainOnlySorted) {
+    const rows = uncertainGrouped.get(key)!;
+    blocks.push(blockFromMergedGroup(sortMergeRowsForBlock(rows)));
+    keysWithBlocks.add(key);
+  }
 
-  const blocks: PhenomenalReportBlockDraft[] = ordered.map(([, g]) => blockFromMergedGroup(g));
+  if (opts?.teacherRows?.length) {
+    const tg = groupTeacherRowsByLessonKey(opts.teacherRows);
+    const teacherKeysSorted = [...tg.keys()].sort((a, b) => {
+      const ia = Math.min(...(tg.get(a) ?? []).map((x) => x.idx));
+      const ib = Math.min(...(tg.get(b) ?? []).map((x) => x.idx));
+      if (ia !== ib) return ia - ib;
+      return a.localeCompare(b);
+    });
+    for (const key of teacherKeysSorted) {
+      if (keysWithBlocks.has(key)) continue;
+      const items = tg.get(key)!;
+      blocks.push(blockFromTeacherLessonItems(items));
+    }
+  }
+
+  blocks.sort((a, b) => blockSortKeyForDraft(a) - blockSortKeyForDraft(b));
 
   return {
     title: opts?.title ?? merge.survey?.title ?? 'Отчёт по феноменальным урокам',
@@ -297,14 +408,7 @@ export function buildDraftFromTeacherRows(
   rows: TeacherLessonChecklistRow[],
   opts?: { title?: string; periodLabel?: string },
 ): PhenomenalReportDraft {
-  type Item = { row: TeacherLessonChecklistRow; idx: number };
-  const groups = new Map<string, Item[]>();
-  rows.forEach((row, idx) => {
-    const raw = (row.lessonCode ?? '').replace(/\s+/g, ' ').trim();
-    const key = raw ? `code:${normalizeLessonCodeForGroup(raw)}` : `row:${idx}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push({ row, idx });
-  });
+  const groups = groupTeacherRowsByLessonKey(rows);
 
   const ordered = [...groups.entries()].sort((a, b) => {
     const ma = Math.min(...a[1].map((x) => x.idx));
@@ -312,37 +416,7 @@ export function buildDraftFromTeacherRows(
     return ma - mb;
   });
 
-  const blocks: PhenomenalReportBlockDraft[] = ordered.map(([, items]) => {
-    items.sort((a, b) => a.idx - b.idx);
-    const list = items.map((i) => i.row);
-    const primary = list[0];
-    const indices = items.map((i) => i.idx).sort((a, b) => a - b);
-    const scoreValues = list.map((r) => r.methodologicalScore).filter((x): x is number => x != null);
-    return {
-      id: newId('blk'),
-      sourceTeacherRowIndex: indices[0]!,
-      sourceTeacherRowIndices: indices.length > 1 ? indices : undefined,
-      submittedAt: primary.submittedAt ?? null,
-      lessonCode: primary.lessonCode ?? '',
-      conductingTeachers: uniqueNormalizedStrings(list.map((r) => expandPersonListField(r.conductingTeachers))).join(
-        ' · ',
-      ),
-      subjects: uniqueNormalizedStrings(list.map((r) => r.subjects)).join(' · '),
-      rubricOrganizational: uniqueNormalizedStrings(list.map((r) => r.rubricOrganizational)).join('\n') || undefined,
-      rubricGoalSetting: uniqueNormalizedStrings(list.map((r) => r.rubricGoalSetting)).join('\n') || undefined,
-      rubricTechnologies: uniqueNormalizedStrings(list.map((r) => r.rubricTechnologies)).join('\n') || undefined,
-      rubricInformation: uniqueNormalizedStrings(list.map((r) => r.rubricInformation)).join('\n') || undefined,
-      rubricGeneralContent: uniqueNormalizedStrings(list.map((r) => r.rubricGeneralContent)).join('\n') || undefined,
-      rubricCultural: uniqueNormalizedStrings(list.map((r) => r.rubricCultural)).join('\n') || undefined,
-      rubricReflection: uniqueNormalizedStrings(list.map((r) => r.rubricReflection)).join('\n') || undefined,
-      methodologicalScore: formatMethodologyScoresLine(scoreValues),
-      teacherNotes: uniqueNormalizedStrings(list.map((r) => r.generalThoughts)).join('\n\n'),
-      observerName: uniqueNormalizedStrings(
-        list.map((r) => preferFullPersonLabel(r.observerName.replace(/\s+/g, ' ').trim())),
-      ).join(' · '),
-      reviews: [],
-    };
-  });
+  const blocks: PhenomenalReportBlockDraft[] = ordered.map(([, items]) => blockFromTeacherLessonItems(items));
 
   return {
     title: opts?.title ?? 'Черновик из чек-листа педагогов',
@@ -427,7 +501,15 @@ export function mergePhenomenalReportBlockGroup(
   const reviews: PhenomenalReportReviewLine[] = [];
   for (const b of list) {
     for (const r of b.reviews) {
-      const k = r.text.replace(/\s+/g, ' ').trim().toLowerCase();
+      const k = [
+        r.respondentName,
+        r.overallRating,
+        r.comments,
+        r.text,
+      ]
+        .map((x) => String(x ?? '').replace(/\s+/g, ' ').trim().toLowerCase())
+        .filter(Boolean)
+        .join('|');
       if (!k) continue;
       if (seenRev.has(k)) continue;
       seenRev.add(k);
@@ -511,4 +593,60 @@ export function emptyBlock(): PhenomenalReportBlockDraft {
 
 export function emptyReviewLine(): PhenomenalReportReviewLine {
   return { id: newId('rev'), text: '' };
+}
+
+/** Собрать поле text из структурных полей (для сохранения и экспорта). */
+export function composeReviewFlatText(r: Pick<PhenomenalReportReviewLine, 'respondentName' | 'overallRating' | 'comments' | 'text'>): string {
+  const name = String(r.respondentName ?? '').trim();
+  const rating = String(r.overallRating ?? '').trim();
+  const com = String(r.comments ?? '').trim();
+  const parts = [
+    name ? `ФИО, посетившего урок: ${name}` : '',
+    rating ? `Общая оценка урока: ${rating}` : '',
+    com,
+  ].filter(Boolean);
+  const built = parts.join('\n\n').trim();
+  if (built) return built;
+  return String(r.text ?? '').trim();
+}
+
+/** Разовое заполнение полей из старого единого text (после загрузки черновика). */
+export function hydrateReviewStructuredFields(d: PhenomenalReportDraft): PhenomenalReportDraft {
+  let needs = false;
+  for (const b of d.blocks) {
+    for (const r of b.reviews) {
+      if (r.fromPulse) continue;
+      const hasStruct =
+        String(r.respondentName ?? '').trim() ||
+        String(r.overallRating ?? '').trim() ||
+        String(r.comments ?? '').trim();
+      if (hasStruct) continue;
+      if (tryParseStructuredFromFlatReviewText(r.text)) {
+        needs = true;
+        break;
+      }
+    }
+    if (needs) break;
+  }
+  if (!needs) return d;
+
+  const blocks = d.blocks.map((b) => ({
+    ...b,
+    reviews: b.reviews.map((r) => {
+      if (r.fromPulse) return r;
+      const hasStruct =
+        String(r.respondentName ?? '').trim() ||
+        String(r.overallRating ?? '').trim() ||
+        String(r.comments ?? '').trim();
+      if (hasStruct) return r;
+      const p = tryParseStructuredFromFlatReviewText(r.text);
+      if (!p) return r;
+      const respondentName = (p.respondentName ?? '').trim();
+      const overallRating = (p.overallRating ?? '').trim();
+      const comments = (p.comments ?? '').trim();
+      const merged = { ...r, respondentName, overallRating, comments };
+      return { ...merged, text: composeReviewFlatText(merged) };
+    }),
+  }));
+  return { ...d, blocks, updatedAt: new Date().toISOString() };
 }
