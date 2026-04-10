@@ -90,7 +90,7 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
               data={chartRows}
               margin={{ top: 6, right: 8, left: 2, bottom: 6 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #33415555)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, rgba(197, 48, 48, 0.2))" />
               <XAxis
                 type="number"
                 domain={[0, 1]}
@@ -103,7 +103,7 @@ export default function PhenomenalBlockCompetencyPanel(props: PhenomenalBlockCom
               <Bar
                 dataKey="pct"
                 name="Доля"
-                fill="var(--phenomenal-competency-bar, var(--chart-bar, #2563eb))"
+                fill="var(--phenomenal-competency-bar, var(--chart-bar, #c53030))"
                 radius={[0, 4, 4, 0]}
               />
             </BarChart>

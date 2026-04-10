@@ -106,10 +106,10 @@ export default function PhenomenalReportPublicPage() {
       <header className="card glass-surface" style={{ marginTop: '1rem' }}>
         <h1 className="admin-dash-title">{data.title}</h1>
         {data.period_label ? <p className="muted admin-dash-lead">{data.period_label}</p> : null}
-        <p className="muted" style={{ fontSize: '0.88rem', marginTop: '0.5rem' }}>
+        <p className="muted" style={{ fontSize: '0.86rem', marginTop: '0.45rem', lineHeight: 1.45 }}>
           {data.survey_linked
-            ? 'Комментарии родителей с Пульса подгружаются при открытии страницы (по уроку: класс, учитель, шифр).'
-            : 'К этому отчёту не привязан опрос на Пульсе — блоки комментариев родителей пустые.'}
+            ? 'Комментарии с Пульса подставляются по совпадению класса, учителя и шифра урока.'
+            : 'Опрос на Пульсе к отчёту не привязан — блок «Пульс» будет пустым.'}
         </p>
       </header>
 
@@ -136,7 +136,9 @@ export default function PhenomenalReportPublicPage() {
                   </dl>
                   <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
                     <dt>Предметы</dt>
-                    <dd className="phenomenal-public-prose">{block.subjects || '—'}</dd>
+                    <dd className="phenomenal-public-prose">
+                      {block.subjects?.trim() ? block.subjects : 'Не указано в чек-листе'}
+                    </dd>
                   </dl>
                   <dl className="phenomenal-public-dl phenomenal-public-dl--cell">
                     <dt>Оценка методики (/10)</dt>
@@ -162,13 +164,8 @@ export default function PhenomenalReportPublicPage() {
             ) : null}
             <section className="phenomenal-report-parents-panel phenomenal-public-parents-panel">
               <h3 className="phenomenal-report-section-title">Отзывы родителей</h3>
-              <p className="muted phenomenal-public-panel-lead">
-                Структура как в черновике (ФИО, оценка, комментарии); текст показан целиком, без прокрутки.
-              </p>
               {block.reviews.length === 0 ? (
-                <p className="muted phenomenal-report-parents-empty" style={{ marginBottom: 0 }}>
-                  Для этого урока в черновике нет строк отзывов (или слияние с опросом не дало пары).
-                </p>
+                <p className="phenomenal-public-empty-hint">Для этого урока в черновике нет строк отзывов.</p>
               ) : (
                 <ul className="phenomenal-public-reviews">
                   {block.reviews.map((r) => {
@@ -209,9 +206,7 @@ export default function PhenomenalReportPublicPage() {
             <section className="phenomenal-public-pulse-panel">
               <h3 className="phenomenal-report-section-title">Комментарии родителей (Пульс)</h3>
               {pulse.length === 0 ? (
-                <p className="muted" style={{ margin: 0 }}>
-                  Нет текстовых ответов по этому уроку или опрос не сопоставлен.
-                </p>
+                <p className="phenomenal-public-empty-hint">Нет комментариев с Пульса по этому уроку.</p>
               ) : (
                 <ul className="phenomenal-pulse-comments">
                   {pulse.map((c, i) => (

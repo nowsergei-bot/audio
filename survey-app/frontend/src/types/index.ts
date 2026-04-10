@@ -464,12 +464,23 @@ export interface PhenomenalMergeRow {
   } | null;
 }
 
+/** Модель/провайдер для автослияния чек-листа с ответами родителей (POST phenomenal-lessons/merge). */
+export type PhenomenalMergeLlmChoice =
+  | 'auto'
+  | 'yandex'
+  | 'gigachat'
+  | 'openrouter_deepseek'
+  | 'openrouter_openai'
+  | 'openrouter_nvidia';
+
 export interface PhenomenalLessonsMergePayload {
   survey: { id: number; title: string };
   /** Откуда взяты строки родителей: опрос в системе или второй Excel */
   parent_source?: 'survey' | 'excel';
   confidence_threshold: number;
   warnings: string[];
+  /** Нормализованный выбор из запроса (для отображения). */
+  llm_choice?: PhenomenalMergeLlmChoice;
   llm_provider: string | null;
   stats: {
     parent_rows: number;

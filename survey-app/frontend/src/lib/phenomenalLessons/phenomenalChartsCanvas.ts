@@ -5,7 +5,7 @@ const BAR_H = 320;
 const RADAR = 360;
 const PAD = 36;
 const FONT = '12px system-ui, -apple-system, Segoe UI, sans-serif';
-const BAR_COLOR = '#1d4ed8';
+const BAR_COLOR = '#c53030';
 const GRID = '#cbd5e1';
 const TEXT = '#334155';
 

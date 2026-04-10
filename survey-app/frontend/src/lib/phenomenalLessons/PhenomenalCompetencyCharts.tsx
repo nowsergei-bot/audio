@@ -57,7 +57,7 @@ export default function PhenomenalCompetencyCharts(props: Props) {
           <div className="phenomenal-competency-chart-wrap phenomenal-competency-chart-wrap--bar">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart layout="vertical" data={rows} margin={{ top: 8, right: 24, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, #33415555)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid, rgba(197, 48, 48, 0.2))" />
                 <XAxis
                   type="number"
                   domain={[0, 1]}
@@ -79,7 +79,7 @@ export default function PhenomenalCompetencyCharts(props: Props) {
                 <Bar
                   dataKey="pct"
                   name="Доля"
-                  fill="var(--phenomenal-competency-bar, var(--chart-bar, #2563eb))"
+                  fill="var(--phenomenal-competency-bar, var(--chart-bar, #c53030))"
                   radius={[0, 4, 4, 0]}
                 />
               </BarChart>

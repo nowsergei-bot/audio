@@ -232,7 +232,52 @@ const MERGE_SYSTEM = `Ты сопоставляешь ответы родите�
 - Верни один JSON-объект (без markdown): {"pairs":[{"pi":0,"ti":3,"confidence":0.88,"reason":"кратко по-русски"}, ...]}
 - В pairs ровно по одному объекту на **каждый** pi из массива parents входного JSON (все pi из запроса должны присутствовать).`;
 
-async function runMergeLlmChunk(parentsChunk, teachersCompact, model) {
+const MERGE_LLM_CHOICES = new Set([
+  'auto',
+  'yandex',
+  'gigachat',
+  'openrouter_deepseek',
+  'openrouter_openai',
+  'openrouter_nvidia',
+]);
+
+/**
+ * Тело запроса: llm_choice — auto | yandex | gigachat | openrouter_deepseek | openrouter_openai | openrouter_nvidia
+ */
+function mergeLlmOptionsFromBody(body) {
+  let raw = String(body.llm_choice ?? body.llm_provider ?? '').trim().toLowerCase();
+  raw = raw.replace(/-/g, '_');
+  if (!raw || raw === 'auto') {
+    return { providerPreference: null, model: undefined, canonicalChoice: 'auto' };
+  }
+  if (!MERGE_LLM_CHOICES.has(raw)) {
+    return { providerPreference: null, model: undefined, canonicalChoice: 'auto' };
+  }
+  if (raw === 'yandex') {
+    return { providerPreference: 'yandex', model: undefined, canonicalChoice: 'yandex' };
+  }
+  if (raw === 'gigachat') {
+    return { providerPreference: 'gigachat', model: undefined, canonicalChoice: 'gigachat' };
+  }
+  if (raw === 'openrouter_deepseek') {
+    const model = String(process.env.OPENROUTER_MODEL_DEEPSEEK || 'deepseek/deepseek-chat').trim();
+    return { providerPreference: 'openai', model, canonicalChoice: raw };
+  }
+  if (raw === 'openrouter_openai') {
+    const model = String(process.env.OPENROUTER_MODEL_OPENAI || 'openai/gpt-4o-mini').trim();
+    return { providerPreference: 'openai', model, canonicalChoice: raw };
+  }
+  if (raw === 'openrouter_nvidia') {
+    const model = String(
+      process.env.OPENROUTER_MODEL_NVIDIA || 'nvidia/llama-3.1-nemotron-70b-instruct',
+    ).trim();
+    return { providerPreference: 'openai', model, canonicalChoice: raw };
+  }
+  return { providerPreference: null, model: undefined, canonicalChoice: 'auto' };
+}
+
+async function runMergeLlmChunk(parentsChunk, teachersCompact, llmRequest) {
+  const { model, providerPreference } = llmRequest;
   const payload = { parents: parentsChunk, teachers: teachersCompact };
   const messages = [
     { role: 'system', content: MERGE_SYSTEM },
@@ -241,12 +286,16 @@ async function runMergeLlmChunk(parentsChunk, teachersCompact, model) {
       content: `Сопоставь pi с ti. Вход:\n${JSON.stringify(payload)}`,
     },
   ];
-  const res = await chatCompletion(messages, {
+  const ccOpts = {
     model,
     maxTokens: 9000,
     temperature: 0.12,
     jsonObject: true,
-  });
+  };
+  if (providerPreference != null && String(providerPreference).trim() !== '') {
+    ccOpts.providerPreference = String(providerPreference).trim().toLowerCase();
+  }
+  const res = await chatCompletion(messages, ccOpts);
   if (!res.ok || typeof res.text !== 'string') {
     return {
       ok: false,
@@ -264,8 +313,8 @@ async function runMergeLlmChunk(parentsChunk, teachersCompact, model) {
 /**
  * Сначала LLM; при любой ошибке или битом JSON — эвристика (без 502 для пользователя).
  */
-async function runMergeLlmChunkWithFallback(parentsChunk, teachersCompact, teacherRows, parentRows, model) {
-  const llmRes = await runMergeLlmChunk(parentsChunk, teachersCompact, model);
+async function runMergeLlmChunkWithFallback(parentsChunk, teachersCompact, teacherRows, parentRows, llmRequest) {
+  const llmRes = await runMergeLlmChunk(parentsChunk, teachersCompact, llmRequest);
   if (llmRes.ok) {
     return { ok: true, pairs: llmRes.pairs, provider: llmRes.provider || null, usedHeuristic: false };
   }
@@ -342,7 +391,8 @@ function augmentNullPairsWithHeuristic(validated, parentRows, teacherRows) {
  *   confidence_threshold?: number,
  *   survey_id?: number,
  *   parent_rows?: [{ answers_labeled?: {}, cells?: [{q,v}], created_at?, respondent_id? }],
- *   parent_source_title?: string
+ *   parent_source_title?: string,
+ *   llm_choice?: 'auto' | 'yandex' | 'gigachat' | 'openrouter_deepseek' | 'openrouter_openai' | 'openrouter_nvidia'
  * }
  * Родители: либо parent_rows (Excel), либо survey_id + загрузка из БД.
  */
@@ -415,7 +465,12 @@ async function handlePostPhenomenalLessonsMerge(pool, event, canAccessSurvey) {
   const parentsFull = buildParentsCompactUnified(parentRows, 160);
   const teachersForMatch = teacherRows.map((t, i) => compactTeacherForMergeMatch(t, i));
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const mergeLlm = mergeLlmOptionsFromBody(body);
+  const model = mergeLlm.model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const llmRequest = {
+    model,
+    providerPreference: mergeLlm.providerPreference,
+  };
   const chunks = [];
   for (let start = 0; start < parentsFull.length; start += PARENT_CHUNK) {
     chunks.push(parentsFull.slice(start, start + PARENT_CHUNK));
@@ -427,7 +482,7 @@ async function handlePostPhenomenalLessonsMerge(pool, event, canAccessSurvey) {
     const batch = chunks.slice(i, i + LLM_PARALLEL);
     const part = await Promise.all(
       batch.map((slice) =>
-        runMergeLlmChunkWithFallback(slice, teachersForMatch, teacherRows, parentRows, model),
+        runMergeLlmChunkWithFallback(slice, teachersForMatch, teacherRows, parentRows, llmRequest),
       ),
     );
     chunkResults.push(...part);
@@ -503,6 +558,7 @@ async function handlePostPhenomenalLessonsMerge(pool, event, canAccessSurvey) {
     parent_source: useExcelParents ? 'excel' : 'survey',
     confidence_threshold: threshold,
     warnings,
+    llm_choice: mergeLlm.canonicalChoice,
     llm_provider: lastProvider,
     stats: {
       parent_rows: parentRows.length,

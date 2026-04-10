@@ -13,7 +13,7 @@ import {
   buildDraftFromTeacherRows,
   type PhenomenalReportDraft,
 } from './reportDraftTypes';
-import type { PhenomenalLessonsMergePayload, Survey } from '../../types';
+import type { PhenomenalLessonsMergePayload, PhenomenalMergeLlmChoice, Survey } from '../../types';
 
 function truncate(s: string, n: number): string {
   const t = s.replace(/\s+/g, ' ').trim();
@@ -47,6 +47,7 @@ export default function PhenomenalMergeImportCard({ onDraftReady }: PhenomenalMe
   const [surveysErr, setSurveysErr] = useState<string | null>(null);
   const [surveyId, setSurveyId] = useState<string>('');
   const [mergeThreshold, setMergeThreshold] = useState<string>('0.72');
+  const [mergeLlmChoice, setMergeLlmChoice] = useState<PhenomenalMergeLlmChoice>('auto');
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeErr, setMergeErr] = useState<string | null>(null);
   const [mergeResult, setMergeResult] = useState<PhenomenalLessonsMergePayload | null>(null);
@@ -94,6 +95,7 @@ export default function PhenomenalMergeImportCard({ onDraftReady }: PhenomenalMe
         parentRows: parentFromExcel ?? undefined,
         parentSourceTitle: parentFromExcel ? parentFileLabel || undefined : undefined,
         confidenceThreshold: threshold,
+        llmChoice: mergeLlmChoice,
       });
       setMergeResult(data);
       const draft = buildDraftFromMerge(data, { title: data.survey?.title, teacherRows });
@@ -112,7 +114,7 @@ export default function PhenomenalMergeImportCard({ onDraftReady }: PhenomenalMe
     } finally {
       setMergeBusy(false);
     }
-  }, [surveyId, parseResult, parentParseResult, parentFileLabel, mergeThreshold, onDraftReady]);
+  }, [surveyId, parseResult, parentParseResult, parentFileLabel, mergeThreshold, mergeLlmChoice, onDraftReady]);
 
   const onFile = useCallback(async (f: File | null) => {
     setFileError(null);
@@ -263,6 +265,25 @@ export default function PhenomenalMergeImportCard({ onDraftReady }: PhenomenalMe
         ) : null}
 
         <div className="phenomenal-merge-toolbar" style={{ marginTop: '1.25rem' }}>
+          <label className="phenomenal-merge-field phenomenal-merge-field--full">
+            <span className="muted">Нейросеть для автослияния</span>
+            <select
+              className="excel-analytics-select"
+              value={mergeLlmChoice}
+              onChange={(e) => setMergeLlmChoice(e.target.value as PhenomenalMergeLlmChoice)}
+              aria-label="Провайдер ИИ для сопоставления родителей и чек-листа"
+            >
+              <option value="auto">Авто (как на сервере: LLM_PROVIDER и ключи)</option>
+              <option value="yandex">Яндекс (YandexGPT)</option>
+              <option value="gigachat">GigaChat (Сбер)</option>
+              <option value="openrouter_deepseek">OpenRouter · DeepSeek</option>
+              <option value="openrouter_openai">OpenRouter · OpenAI (gpt-4o-mini)</option>
+              <option value="openrouter_nvidia">OpenRouter · NVIDIA (Nemotron)</option>
+            </select>
+            <span className="muted" style={{ fontSize: '0.78rem', lineHeight: 1.35 }}>
+              OpenRouter: в облаке должен быть задан OPENAI_API_KEY и при необходимости OPENAI_BASE_URL=https://openrouter.ai/api/v1
+            </span>
+          </label>
           <label className="phenomenal-merge-field">
             <span className="muted">Опрос родителей (если нет второго Excel)</span>
             <select

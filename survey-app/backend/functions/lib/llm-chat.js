@@ -599,9 +599,59 @@ async function chatCompletion(messages, opts = {}) {
 
 /**
  * @param {Array<{role:string,content:string}>} messages
- * @param {{ model?: string, maxTokens?: number, temperature?: number, jsonObject?: boolean }} opts
+ * @param {{ model?: string, maxTokens?: number, temperature?: number, jsonObject?: boolean, providerPreference?: string | null }} opts
+ * opts.providerPreference — явный выбор из UI: только этот провайдер (без fallback на другие API).
  */
 async function runChatCompletion(messages, opts = {}) {
+  const explicitPrefRaw = opts.providerPreference;
+  const hasExplicitPref =
+    explicitPrefRaw != null && String(explicitPrefRaw).trim() !== '';
+  const prefExplicit = hasExplicitPref
+    ? String(explicitPrefRaw).trim().toLowerCase()
+    : null;
+
+  if (hasExplicitPref && prefExplicit) {
+    if (prefExplicit === 'yandex' || prefExplicit === 'yc' || prefExplicit === 'yandexgpt') {
+      if (!hasYandexLlmCreds()) {
+        return {
+          ok: false,
+          kind: 'no_key',
+          status: 0,
+          detail:
+            'Выбран ЯндексGPT, но не заданы YANDEX_CLOUD_FOLDER_ID и YANDEX_API_KEY (или YANDEX_IAM_TOKEN).',
+        };
+      }
+      const y = await fetchYandexGptChat(messages, opts);
+      return y.ok ? { ...y, provider: 'yandex' } : y;
+    }
+    if (prefExplicit === 'gigachat' || prefExplicit === 'sber') {
+      if (!hasGigaChatCreds()) {
+        return {
+          ok: false,
+          kind: 'no_key',
+          status: 0,
+          detail:
+            'Выбран GigaChat, но не заданы GIGACHAT_CREDENTIALS (или GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET).',
+        };
+      }
+      const g = await fetchGigaChatChat(messages, opts);
+      return g.ok ? { ...g, provider: 'gigachat' } : g;
+    }
+    if (prefExplicit === 'openai' || prefExplicit === 'openrouter') {
+      if (!process.env.OPENAI_API_KEY) {
+        return {
+          ok: false,
+          kind: 'no_key',
+          status: 0,
+          detail:
+            'Выбран OpenRouter/OpenAI-совместимый API, но не задан OPENAI_API_KEY (для OpenRouter — ключ из кабинета).',
+        };
+      }
+      const oa = await fetchOpenAIChat(messages, opts);
+      return oa.ok ? { ...oa, provider: 'openai' } : { ...oa, provider: 'openai' };
+    }
+  }
+
   const provider = String(process.env.LLM_PROVIDER || 'auto').trim().toLowerCase();
   const tryYandexFirst = provider === 'yandex' || provider === 'yc' || provider === 'yandexgpt';
   const tryGigaChatFirst = provider === 'gigachat' || provider === 'sber';

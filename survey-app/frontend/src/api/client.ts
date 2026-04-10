@@ -30,6 +30,7 @@ import type {
   SurveyInviteTemplate,
   SurveyExportRowsPayload,
   PhenomenalLessonsMergePayload,
+  PhenomenalMergeLlmChoice,
   SurveyWorkbook,
   TextAnswersPage,
   PhotoWallPhotoRow,
@@ -212,9 +213,10 @@ export async function postPhenomenalLessonsMerge(
     parentRows?: ParentResponsesSheetRow[];
     parentSourceTitle?: string;
     confidenceThreshold?: number;
+    llmChoice?: PhenomenalMergeLlmChoice;
   } = {},
 ): Promise<PhenomenalLessonsMergePayload> {
-  const { surveyId, parentRows, parentSourceTitle, confidenceThreshold } = options;
+  const { surveyId, parentRows, parentSourceTitle, confidenceThreshold, llmChoice } = options;
   const body: Record<string, unknown> = { teacher_rows: teacherRows };
   if (parentRows && parentRows.length > 0) {
     body.parent_rows = parentRows.map((r) => ({
@@ -229,6 +231,9 @@ export async function postPhenomenalLessonsMerge(
   }
   if (typeof confidenceThreshold === 'number' && Number.isFinite(confidenceThreshold)) {
     body.confidence_threshold = confidenceThreshold;
+  }
+  if (llmChoice && llmChoice !== 'auto') {
+    body.llm_choice = llmChoice;
   }
   const res = await apiFetch(`${API_BASE}/api/phenomenal-lessons/merge`, {
     method: 'POST',

@@ -8316,6 +8316,11 @@ body {
   min-width: 12rem;
 }
 
+.phenomenal-lessons-page .phenomenal-merge-field--full {
+  flex: 1 1 100%;
+  min-width: min(100%, 28rem);
+}
+
 .phenomenal-lessons-page .phenomenal-merge-threshold-input {
   max-width: 6rem;
   padding: 0.35rem 0.55rem;
@@ -8511,8 +8516,9 @@ body {
 }
 
 .phenomenal-report-editor-page {
-  --phenomenal-competency-bar: #2563eb;
-  --chart-bar: #2563eb;
+  --phenomenal-competency-bar: #c53030;
+  --chart-bar: #c53030;
+  --chart-grid: rgba(197, 48, 48, 0.14);
 }
 
 .phenomenal-report-toolbar {
@@ -8549,9 +8555,9 @@ body {
 
 /* Публичная страница отчёта для руководителя */
 .phenomenal-report-public-page {
-  --phenomenal-competency-bar: #1d4ed8;
-  --chart-bar: #1d4ed8;
-  --chart-grid: rgba(29, 78, 216, 0.14);
+  --phenomenal-competency-bar: #c53030;
+  --chart-bar: #c53030;
+  --chart-grid: rgba(197, 48, 48, 0.14);
   padding-bottom: 2rem;
 }
 
@@ -8608,23 +8614,36 @@ body {
   margin-top: 1.1rem;
 }
 
+/* Одна колонка: поля сверху, диаграмма снизу на всю ширину — иначе подписи Recharts наезжают на текст */
 .phenomenal-public-block-top {
   grid-template-columns: minmax(0, 1fr);
-  gap: 1.25rem;
+  gap: 1.35rem;
 }
 
-@media (min-width: 960px) {
-  .phenomenal-public-block-top {
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
-    align-items: start;
-  }
-
-  .phenomenal-public-block-chart {
-    max-width: none;
-  }
+.phenomenal-public-block-chart {
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.15rem;
+  padding: 0.85rem 0.75rem 0.95rem;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.85);
+  border: 1px solid var(--card-border);
+  box-sizing: border-box;
+  overflow: hidden;
+  max-height: none;
 }
 
-.phenomenal-public-block-chart,
+.phenomenal-public-block-chart .phenomenal-block-competency {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.phenomenal-public-block-chart .recharts-responsive-container,
+.phenomenal-public-block-chart .recharts-wrapper {
+  max-width: 100% !important;
+}
+
 .phenomenal-public-aggregate-chart .phenomenal-competency-chart-wrap {
   overflow: visible;
   max-height: none;
@@ -8639,10 +8658,11 @@ body {
   margin-top: 1.15rem;
 }
 
-.phenomenal-public-panel-lead {
-  font-size: 0.84rem;
-  margin: 0 0 0.75rem;
+.phenomenal-public-empty-hint {
+  margin: 0;
+  font-size: 0.88rem;
   line-height: 1.45;
+  color: var(--muted, #64748b);
 }
 
 .phenomenal-public-pulse-panel {
