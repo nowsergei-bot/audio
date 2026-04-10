@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS surveys (
     status survey_status NOT NULL DEFAULT 'draft',
     access_link TEXT NOT NULL UNIQUE,
     director_token TEXT UNIQUE,
+    allow_multiple_responses BOOLEAN NOT NULL DEFAULT FALSE,
     media JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
@@ -96,11 +97,11 @@ CREATE TABLE IF NOT EXISTS responses (
     id SERIAL PRIMARY KEY,
     survey_id INTEGER NOT NULL REFERENCES surveys (id) ON DELETE CASCADE,
     respondent_id TEXT NOT NULL,
-    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (survey_id, respondent_id)
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_responses_survey ON responses (survey_id);
+CREATE INDEX IF NOT EXISTS idx_responses_survey_respondent ON responses (survey_id, respondent_id);
 
 CREATE TABLE IF NOT EXISTS answer_values (
     id SERIAL PRIMARY KEY,
@@ -182,3 +183,15 @@ CREATE TABLE IF NOT EXISTS photo_wall_uploads (
 );
 
 CREATE INDEX IF NOT EXISTS idx_photo_wall_status ON photo_wall_uploads (moderation_status);
+
+-- Педагогическая аналитика (сессии, JSON-состояние)
+CREATE TABLE IF NOT EXISTS pedagogical_analytics_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users (id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT 'Без названия',
+  state_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pedagogical_sessions_user_updated ON pedagogical_analytics_sessions (user_id, updated_at DESC);

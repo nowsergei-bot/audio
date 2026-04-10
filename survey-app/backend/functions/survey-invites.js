@@ -1,5 +1,5 @@
 const { json, parseBody } = require('./lib/http');
-const { sendInviteEmail } = require('./lib/mailer');
+const { sendInviteEmail, isSmtpConfigured } = require('./lib/mailer');
 const crypto = require('crypto');
 
 function normalizeEmail(raw) {
@@ -131,6 +131,13 @@ async function handlePostSurveyInvitesSend(pool, surveyId, event) {
   if (!survey) return json(404, { error: 'Not found' });
   const link = publicSurveyUrlFromEnv(survey.access_link);
   if (!link) return json(400, { error: 'PUBLIC_APP_BASE не задан на функции (нужен для ссылки в письме)' });
+  if (!isSmtpConfigured()) {
+    return json(503, {
+      error: 'smtp_not_configured',
+      message:
+        'SMTP не настроен: задайте SMTP_HOST, SMTP_PORT, SMTP_FROM и при необходимости SMTP_USER, SMTP_PASS в окружении функции.',
+    });
+  }
 
   const tplR = await pool.query(`SELECT subject, html FROM survey_invite_templates WHERE survey_id = $1`, [surveyId]);
   const compiled = compileTemplate(tplR.rows[0] || {}, survey, link);
@@ -206,6 +213,13 @@ async function handlePostSurveyInvitesRemind(pool, surveyId, event) {
   if (!survey) return json(404, { error: 'Not found' });
   const link = publicSurveyUrlFromEnv(survey.access_link);
   if (!link) return json(400, { error: 'PUBLIC_APP_BASE не задан на функции (нужен для ссылки в письме)' });
+  if (!isSmtpConfigured()) {
+    return json(503, {
+      error: 'smtp_not_configured',
+      message:
+        'SMTP не настроен: задайте SMTP_HOST, SMTP_PORT, SMTP_FROM и при необходимости SMTP_USER, SMTP_PASS в окружении функции.',
+    });
+  }
 
   const tplR = await pool.query(`SELECT subject, html FROM survey_invite_templates WHERE survey_id = $1`, [surveyId]);
   const compiled = compileTemplate(tplR.rows[0] || {}, survey, link);

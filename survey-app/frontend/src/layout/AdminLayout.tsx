@@ -11,7 +11,9 @@ export default function AdminLayout() {
   const resultsWideLayout = /\/results\/?$/.test(location.pathname);
   const analyticsExcelWideLayout = /\/analytics\/excel\/?$/.test(location.pathname);
   const photoWallWideLayout = /\/photo-wall\/results\/?$/.test(location.pathname);
-  const wideDashboardLayout = resultsWideLayout || analyticsExcelWideLayout || photoWallWideLayout;
+  const pedagogicalWideLayout = /\/analytics\/pedagogical(\/|$)/.test(location.pathname);
+  const wideDashboardLayout =
+    resultsWideLayout || analyticsExcelWideLayout || photoWallWideLayout || pedagogicalWideLayout;
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });

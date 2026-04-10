@@ -189,12 +189,15 @@ chmod +x scripts/deploy-functions.sh
 | `PG_SSL_REJECT_UNAUTHORIZED` | `false` — только если функция не подключается к БД из‑за сертификата. **Необязательно** для Neon: можно не добавлять эту строку. Имя копируйте **без пробела в конце** (`PG_SSL_REJECT_UNAUTHORIZED`). |
 | `OPENAI_API_KEY` | Ключ API OpenAI для ПУЛЬС, сводки Excel и др. **Важно:** запросы к `api.openai.com` с IP в РФ и из многих облаков дают **HTTP 403** (`Country, region, or territory not supported`). Тогда задайте YandexGPT (ниже) или прокси через `OPENAI_BASE_URL`. |
 | `OPENAI_MODEL` | Необязательно; по умолчанию в коде `gpt-4o-mini`. |
-| `OPENAI_BASE_URL` | Необязательно. База до суффикса `/v1` (например Azure OpenAI или прокси в поддерживаемом регионе). По умолчанию `https://api.openai.com/v1`. **OpenRouter:** `https://openrouter.ai/api/v1`; ключ — в **`OPENAI_API_KEY`** (в документации OpenRouter он часто назван `OPENROUTER_API_KEY` — смысл тот же). В **`OPENAI_MODEL`** — любой поддерживаемый идентификатор: публичная модель (`deepseek/deepseek-chat` и т.д.) или **пресет** вида **`@preset/primakov`** — строка передаётся в API как в примере curl OpenRouter. Не задавайте одновременно прямой `DEEPSEEK_API_KEY`, если нужен только OpenRouter, либо выставьте `LLM_PROVIDER=openai`. |
+| `OPENAI_BASE_URL` | Необязательно. База до суффикса `/v1` (например Azure OpenAI или прокси в поддерживаемом регионе). По умолчанию `https://api.openai.com/v1`. **OpenRouter:** `https://openrouter.ai/api/v1`; ключ — в **`OPENAI_API_KEY`** (в документации OpenRouter он часто назван `OPENROUTER_API_KEY` — смысл тот же). В **`OPENAI_MODEL`** — любой поддерживаемый идентификатор из каталога OpenRouter или **пресет** вида **`@preset/...`** — строка передаётся в API как в примере curl OpenRouter. Если нужен только OpenRouter без GigaChat как запасного провайдера в `auto`, выставьте `LLM_PROVIDER=openai`. |
 | `OPENROUTER_HTTP_REFERER` | Необязательно. URL сайта для заголовка `HTTP-Referer` при `OPENAI_BASE_URL` на OpenRouter (рекомендация провайдера). Иначе подставляется `PUBLIC_APP_BASE`, если задан. |
 | `OPENROUTER_TITLE` | Необязательно. Короткое имя приложения для заголовка `X-Title` на OpenRouter. Синоним: `OPENROUTER_APP_NAME`. |
-| `DEEPSEEK_API_KEY` | Ключ [DeepSeek API](https://platform.deepseek.com/) (Bearer). Работает из РФ и с Cloud Functions. Используется для ПУЛЬС, сводки Excel, запесок директора и др., если задан `LLM_PROVIDER=deepseek` или если нет `OPENAI_API_KEY` (см. `LLM_PROVIDER`). |
-| `DEEPSEEK_MODEL` | Необязательно. По умолчанию `deepseek-chat`; можно `deepseek-reasoner` (дольше и дороже). |
-| `LLM_PROVIDER` | `auto` (по умолчанию) — сначала OpenAI, если есть ключ; при ошибке OpenAI в режиме `auto` пробуется DeepSeek (если есть `DEEPSEEK_API_KEY`); при геоблоке 403 — YandexGPT, затем при неудаче DeepSeek. Значение **`deepseek`** — **только** DeepSeek (удобно для дашборда Excel). Значение `yandex` — только YandexGPT. |
+| `GIGACHAT_CREDENTIALS` | **Authorization key** из [кабинета GigaChat](https://developers.sber.ru/docs/ru/gigachat/api/overview): строка Base64 (часто уже готова к вставке) для заголовка `Authorization: Basic …` при получении OAuth-токена. Синоним: `GIGACHAT_AUTHORIZATION_KEY`. Альтернатива: пара **`GIGACHAT_CLIENT_ID`** + **`GIGACHAT_CLIENT_SECRET`** (код сам соберёт Basic). Используется для ПУЛЬС, сводки Excel, записок директора и др., если задан `LLM_PROVIDER=gigachat` или если нет `OPENAI_API_KEY` (см. `LLM_PROVIDER`). |
+| `GIGACHAT_MODEL` | Необязательно. По умолчанию в коде `GigaChat`; при необходимости укажите модель из [документации GigaChat](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/post-chat). |
+| `GIGACHAT_SCOPE` | Необязательно. По умолчанию `GIGACHAT_API_PERS` (физлица). Для юрлиц и иных тарифов см. документацию GigaChat (`GIGACHAT_API_B2B`, `GIGACHAT_API_CORP` и т.д.). |
+| `GIGACHAT_OAUTH_URL` | Необязательно. По умолчанию `https://ngw.devices.sberbank.ru:9443/api/v2/oauth`. |
+| `GIGACHAT_CHAT_BASE_URL` | Необязательно. Для API физлиц по умолчанию `https://gigachat.devices.sberbank.ru/api/v1`. Для юрлиц может потребоваться `https://api.giga.chat/v1` — см. документацию для вашего типа доступа. |
+| `LLM_PROVIDER` | `auto` (по умолчанию) — сначала OpenAI/OpenRouter, если есть `OPENAI_API_KEY`; при ошибке OpenAI в режиме `auto` пробуется **GigaChat** (если заданы учётные данные GigaChat); при геоблоке 403 — YandexGPT, затем при неудаче GigaChat. При **HTTP 429** (лимит OpenRouter/OpenAI/GigaChat) в `auto` дополнительно пробуется **YandexGPT**, если заданы `YANDEX_CLOUD_FOLDER_ID` + ключ. Значение **`gigachat`** (синоним **`sber`**) — сначала GigaChat; при 429 с ключом Yandex — fallback на YandexGPT. Значение `yandex` — только YandexGPT. |
 | `YANDEX_CLOUD_FOLDER_ID` | ID **каталога** Yandex Cloud (строка вида `b1g...`). |
 | `YANDEX_API_KEY` | **Секрет** Api-Key сервисного аккаунта (в консоли: IAM → сервисные аккаунты → ключи API). На **каталог** у этого СА нужна роль **`ai.languageModels.user`**. У самого ключа при создании укажите scope **`yc.ai.languageModels.execute`** (так в [официальных примерах](https://github.com/yandex-cloud-examples/yc-serverless-ai-agent)) или **`yc.ai.foundationModels.execute`**, если в вашей версии консоли так назван пункт для Foundation Models. |
 | `YANDEX_IAM_TOKEN` | Необязательно. **IAM-токен** того же сервисного аккаунта с `Authorization: Bearer` (если удобнее, чем Api-Key). Если задан, используется вместо `YANDEX_API_KEY`. Срок жизни токена ограничен — для продакшена обычно предпочтительнее Api-Key. |
@@ -349,6 +352,42 @@ yc iam api-key create --service-account-id <ID_СА> --scopes yc.ai.languageMode
    ```
 
 Если выполнить **`yc iam create-token` без** профиля с `service-account-key`, токен будет для **вашего пользовательского** аккаунта (OAuth), а не для СА — для LLM это обычно не подходит.
+
+---
+
+## Педагогическая аналитика (Пульс)
+
+Отдельный контур для текстов с персональными данными: сессии в PostgreSQL, **псевдонимизация на сервере** до вызова LLM (в провайдер уходит только текст с токенами вроде `УЧ_…`, `ТЛФ_…`), таблица соответствия остаётся в БД, затем шаги согласования и отправки отчёта (почта / вебхук Max — как настроено для модуля).
+
+### База данных
+
+Таблица **`pedagogical_analytics_sessions`**. Если базу поднимали **до** появления этого модуля, выполните на той же БД, что в **`PG_CONNECTION_STRING`**, SQL из файла **`survey-app/backend/db/migration_20260408_pedagogical_analytics_sessions.sql`** (или соответствующий фрагмент из актуального **`survey-app/backend/db/schema.sql`**). Иначе при сохранении сессии будет ошибка вида `relation "pedagogical_analytics_sessions" does not exist`.
+
+### HTTP-маршруты (админка, тот же `X-Api-Key` / cookie, что и для остальных `/api/*`)
+
+| Метод | Путь | Назначение |
+|--------|------|------------|
+| `GET` | `/api/pedagogical-analytics-sessions` | Список сессий (`id`, `title`, `step`, `updated_at`). |
+| `GET` | `/api/pedagogical-analytics-sessions/:id` | Одна сессия: `title`, `state` (JSON), `created_at`, `updated_at`. |
+| `POST` | `/api/pedagogical-analytics-sessions` | Создание или обновление: тело `{ title, state, id? }`; ответ — `session` с **`updated_at`**. |
+| `DELETE` | `/api/pedagogical-analytics-sessions/:id` | Удаление сессии. |
+| `POST` | `/api/pedagogical-pii-tokenize` | Ручная или авто-псевдонимизация (`auto: true`, опционально `entities`); для типового сценария достаточно **`POST …/:id/llm`**, который делает извлечение и токенизацию сам. |
+| `POST` | `/api/pedagogical-analytics-sessions/:id/llm` | Тело: опционально **`sourcePlain`**, **`sourceBlocks`** (массив строк — по одному фрагменту на педагога после загрузки .xlsx), **`extraEntities`**, **`maxTokens`**. Если задан непустой **`sourceBlocks`**, авто-извлечение ПДн выполняется **по каждому элементу отдельно**, затем списки объединяются и строится общий redacted-текст. В **`session`** возвращается **`updated_at`**. |
+| `POST` | `/api/pedagogical-analytics-sessions/:id/notify` | Отправка согласованного отчёта (e-mail при настроенном SMTP; для Max — отдельная ветка с сырым текстом вебхука без подстановки ПДн в тело вебхука). |
+
+Переменные окружения для моделей те же, что для Excel и ПУЛЬС: **`OPENAI_API_KEY`**, **`LLM_PROVIDER`**, GigaChat, YandexGPT и т.д. (см. таблицу в **шаге 5**).
+
+### Сценарий: таблица на странице, копирование из модуля Excel, сохранение сессии
+
+На фронте (раздел **Педагогическая аналитика**):
+
+1. **Либо** загрузить на странице файл **.xlsx** (первая строка — заголовки; каждая следующая строка — один педагог; колонка ФИО определяется по заголовку). В состоянии сохраняются **`sourceBlocks`** и склеенный **`sourcePlain`**.
+2. **Либо** в **«Наблюдения Excel»** сформировать срез / отчёт ИИ, раскрыть **«Исходные факты (машинная сводка)»**, скопировать текст и вставить в поле фактов (режим без **`sourceBlocks`**).
+3. При необходимости изменить **название сессии**.
+4. **Сохранить сессию** (кнопка или автосохранение ~2 с). При несохранённых правках возможно предупреждение при закрытии вкладки.
+5. **«Запустить анализ ИИ»** — при необходимости тихое сохранение, затем **`POST …/llm`** с **`sourceBlocks`**, если таблица загружалась с этой страницы.
+
+Редактирование текста в поле фактов **вручную** сбрасывает **`sourceBlocks`** на клиенте (остаётся обычный сплошной текст). Черновик не теряется при обрыве связи после сохранения.
 
 ---
 

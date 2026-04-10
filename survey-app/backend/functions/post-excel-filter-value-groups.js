@@ -114,7 +114,7 @@ async function handlePostExcelFilterValueGroups(_pool, event) {
     groups: null,
     hint:
       llm.kind === 'no_key'
-        ? 'Нет ключей LLM (DeepSeek / OpenAI / YandexGPT).'
+        ? 'Нет ключей LLM (GigaChat / OpenAI / OpenRouter / YandexGPT).'
         : truncate(llm.detail, 800),
   });
 }

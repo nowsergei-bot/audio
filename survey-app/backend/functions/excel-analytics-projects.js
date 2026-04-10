@@ -28,15 +28,19 @@ function validateSessionPayload(s) {
 
 /**
  * @returns {{ ok: true, userId: number } | { ok: true, apiKey: true } | { ok: false }}
+ * При X-Api-Key + Bearer владелец — пользователь из сессии (иначе POST пишет user_id, GET по ключу — 404).
  */
-function resolveProjectOwner(user, viaAdminKey) {
+function resolveProjectOwner(user, viaAdminKey, sessionUser) {
+  if (sessionUser && sessionUser.id != null) {
+    return { ok: true, userId: Number(sessionUser.id) };
+  }
   if (user && user.id != null) return { ok: true, userId: Number(user.id) };
   if (viaAdminKey) return { ok: true, apiKey: true };
   return { ok: false };
 }
 
-function requireProjectAccess(user, viaAdminKey) {
-  const scope = resolveProjectOwner(user, viaAdminKey);
+function requireProjectAccess(user, viaAdminKey, sessionUser) {
+  const scope = resolveProjectOwner(user, viaAdminKey, sessionUser);
   if (!scope.ok) {
     return json(403, {
       error: 'excel_projects_auth',
@@ -46,10 +50,10 @@ function requireProjectAccess(user, viaAdminKey) {
   return null;
 }
 
-async function handleGetExcelAnalyticsProjects(pool, user, viaAdminKey) {
-  const denied = requireProjectAccess(user, viaAdminKey);
+async function handleGetExcelAnalyticsProjects(pool, user, viaAdminKey, sessionUser) {
+  const denied = requireProjectAccess(user, viaAdminKey, sessionUser);
   if (denied) return denied;
-  const scope = resolveProjectOwner(user, viaAdminKey);
+  const scope = resolveProjectOwner(user, viaAdminKey, sessionUser);
   const r =
     scope.apiKey === true
       ? await pool.query(
@@ -72,10 +76,10 @@ async function handleGetExcelAnalyticsProjects(pool, user, viaAdminKey) {
   return json(200, { projects: r.rows });
 }
 
-async function handleGetExcelAnalyticsProject(pool, user, viaAdminKey, id) {
-  const denied = requireProjectAccess(user, viaAdminKey);
+async function handleGetExcelAnalyticsProject(pool, user, viaAdminKey, sessionUser, id) {
+  const denied = requireProjectAccess(user, viaAdminKey, sessionUser);
   if (denied) return denied;
-  const scope = resolveProjectOwner(user, viaAdminKey);
+  const scope = resolveProjectOwner(user, viaAdminKey, sessionUser);
   const r =
     scope.apiKey === true
       ? await pool.query(
@@ -105,10 +109,10 @@ async function handleGetExcelAnalyticsProject(pool, user, viaAdminKey, id) {
   });
 }
 
-async function handlePostExcelAnalyticsProject(pool, user, viaAdminKey, event) {
-  const denied = requireProjectAccess(user, viaAdminKey);
+async function handlePostExcelAnalyticsProject(pool, user, viaAdminKey, sessionUser, event) {
+  const denied = requireProjectAccess(user, viaAdminKey, sessionUser);
   if (denied) return denied;
-  const scope = resolveProjectOwner(user, viaAdminKey);
+  const scope = resolveProjectOwner(user, viaAdminKey, sessionUser);
   const body = parseBody(event) || {};
   const err = validateSessionPayload(body.session);
   if (err) return json(400, { error: err });
@@ -163,10 +167,10 @@ async function handlePostExcelAnalyticsProject(pool, user, viaAdminKey, event) {
   }
 }
 
-async function handleDeleteExcelAnalyticsProject(pool, user, viaAdminKey, id) {
-  const denied = requireProjectAccess(user, viaAdminKey);
+async function handleDeleteExcelAnalyticsProject(pool, user, viaAdminKey, sessionUser, id) {
+  const denied = requireProjectAccess(user, viaAdminKey, sessionUser);
   if (denied) return denied;
-  const scope = resolveProjectOwner(user, viaAdminKey);
+  const scope = resolveProjectOwner(user, viaAdminKey, sessionUser);
   const r =
     scope.apiKey === true
       ? await pool.query(`DELETE FROM excel_analytics_projects WHERE id = $1 AND user_id IS NULL RETURNING id`, [id])

@@ -28,10 +28,21 @@ async function handleSaveResponse(pool, surveyId, event) {
   if (!validation.ok) {
     return json(400, { error: validation.error });
   }
+  const allowMultipleResponses = survey.allow_multiple_responses === true;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    if (!allowMultipleResponses) {
+      const duplicateR = await client.query(
+        `SELECT 1 FROM responses WHERE survey_id = $1 AND respondent_id = $2 LIMIT 1`,
+        [surveyId, respondent_id]
+      );
+      if (duplicateR.rows.length) {
+        await client.query('ROLLBACK');
+        return json(409, { error: 'You have already submitted this survey' });
+      }
+    }
     const insR = await client.query(
       `INSERT INTO responses (survey_id, respondent_id) VALUES ($1, $2) RETURNING id`,
       [surveyId, respondent_id]

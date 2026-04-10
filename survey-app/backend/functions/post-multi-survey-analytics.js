@@ -294,14 +294,14 @@ function heuristicFallbackExplanation(llmRes, source) {
       return {
         code: 'no_key',
         hint_ru:
-          'На функции не настроен LLM: задайте в окружении Serverless-функции хотя бы один вариант — DEEPSEEK_API_KEY (часто с LLM_PROVIDER=deepseek), или OPENAI_API_KEY, или пару YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY / YANDEX_IAM_TOKEN. См. BACKEND_AND_API.md.',
+          'На функции не настроен LLM: задайте в окружении Serverless-функции хотя бы один вариант — GIGACHAT_CREDENTIALS (часто с LLM_PROVIDER=gigachat), или OPENAI_API_KEY, или пару YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY / YANDEX_IAM_TOKEN. См. BACKEND_AND_API.md.',
       };
     }
     if (k === 'parse_json_failed') {
       return {
         code: 'parse_json_failed',
         hint_ru:
-          'Модель ответила, но ответ не удалось разобрать как JSON. Повторите «Построить сводку» или смените модель/провайдера (LLM_PROVIDER, DEEPSEEK_MODEL, OPENAI_MODEL).',
+          'Модель ответила, но ответ не удалось разобрать как JSON. Повторите «Построить сводку» или смените модель/провайдера (LLM_PROVIDER, GIGACHAT_MODEL, OPENAI_MODEL).',
       };
     }
     return {

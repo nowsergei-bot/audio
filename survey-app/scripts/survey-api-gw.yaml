@@ -12,6 +12,11 @@
 #
 # CORS на шлюзе обязателен для браузера: иначе preflight (OPTIONS) с заголовком X-Api-Key
 # даёт «Failed to fetch», хотя curl с того же URL работает.
+#
+# Таймаут 504 (Gateway Timeout) на длинных POST (напр. /api/phenomenal-lessons/merge):
+# в консоли API Gateway задайте «Таймаут выполнения запроса» до 300 с или через CLI:
+#   yc serverless api-gateway update --id <id> --execution-timeout 300s
+# Таймаут версии Cloud Function тоже должен быть достаточным (например 120–180 с).
 
 openapi: 3.0.0
 info:

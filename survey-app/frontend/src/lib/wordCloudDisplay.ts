@@ -10,6 +10,43 @@ function normalizeWordCloudToken(s: string): string {
     .replace(/ё/g, 'е');
 }
 
+/**
+ * Имена и отчества — как backend/functions/lib/word-cloud-person-filter.js
+ * (дублируем, чтобы старые ответы API после деплоя бэкенда тоже чистились в UI).
+ */
+const RE_PATRONYMIC_F = /(овна|евна|ична|инична)$/u;
+const RE_PATRONYMIC_M = /(ович|евич|ьич)$/u;
+
+const RU_FIRST_NAMES = new Set(
+  `
+анна мария елена ольга наталья екатерина татьяна ирина светлана анастасия юлия оксана виктория
+валентина людмила галина лариса екатерина дарья полина ксения алиса софия софья вероника
+марина виктория нина зоя вера надежда любовь раиса тамара инна жанна эльвира алла инга
+кристина виктория евгения дина элина яна жанна фаина роза лилия клавдия нелли эмма
+александр дмитрий максим сергей андрей алексей артем артём михаил никита иван матвей
+егор даниил кирилл владимир константин тимофей борис виктор глеб руслан павел роман
+семен семён степан валентин вадим вячеслав григорий олег лев ярослав евгений денис
+игорь арсений арсентий петр пётр федор фёдор антон платон леонид эдуард альберт
+илья данил елисей марк роберт давид салават рамиль тимур эмиль азат
+снежана божена елизавета василиса ульяна карина агата валерия диана алина милана
+милена варвара ева арина амина камила эмилия ариана александра
+`
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((s) => normalizeWordCloudToken(s)),
+);
+
+const RE_SURNAME_F_OVA_EVA = /(ова|ева)$/u;
+
+function isExcludedPersonNameToken(w: string): boolean {
+  if (!w || w.length < 3) return false;
+  if (RU_FIRST_NAMES.has(w)) return true;
+  if (w.length >= 5 && RE_PATRONYMIC_F.test(w)) return true;
+  if (w.length >= 5 && RE_PATRONYMIC_M.test(w)) return true;
+  if (w.length >= 8 && RE_SURNAME_F_OVA_EVA.test(w)) return true;
+  return false;
+}
+
 const STOP = new Set(
   `и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по
   только ее мне было вот от меня еще нет о из ему теперь когда даже ну вдруг ли если
@@ -33,6 +70,7 @@ const STOP = new Set(
   собой собою
   хочется хотелось
   чтобы чтоб
+  фио фамилия имя отчество
   нас наших нам нами вас вами
   огромное огромная огромный огромные огромной огромную огромным огромными
   спасибо благодарю благодарность благодарности благодарен благодарна благодарны
@@ -50,7 +88,8 @@ export function refineWordCloudForDisplay(words: TextWordCloudWord[], maxWords =
   const filtered = words.filter((w) => {
     const t = normalizeWordCloudToken(String(w.text || ''));
     if (t.length < 3) return false;
-    return !STOP.has(t);
+    if (STOP.has(t) || isExcludedPersonNameToken(t)) return false;
+    return true;
   });
   return [...filtered].sort((a, b) => b.count - a.count).slice(0, maxWords);
 }

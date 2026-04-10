@@ -33,6 +33,8 @@ if not any(n.startswith('node_modules/') for n in z):
 fi
 
 echo "Created $ZIP"
+# Дубликат в корне репозитория — удобно для ручной загрузки в консоль
+cp -f "$ZIP" "$ROOT/survey-app-bundle.zip" && echo "Copied to $ROOT/survey-app-bundle.zip"
 echo "Первые строки содержимого (проверка структуры):"
 unzip -l "$ZIP" | head -25 || true
 echo "Пример:"

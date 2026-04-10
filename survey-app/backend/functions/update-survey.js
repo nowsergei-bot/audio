@@ -1,6 +1,7 @@
 const { json, parseBody } = require('./lib/http');
 const { QUESTION_TYPES } = require('./lib/validation');
 const { loadSurveyWithQuestions } = require('./get-survey');
+const { surveysAllowMultipleResponsesSupported } = require('./lib/survey-schema-support');
 
 async function handleUpdateSurvey(pool, id, event, user) {
   const body = parseBody(event) || {};
@@ -12,6 +13,7 @@ async function handleUpdateSurvey(pool, id, event, user) {
 
   const client = await pool.connect();
   try {
+    const supportsAllowMultiple = await surveysAllowMultipleResponsesSupported(pool);
     await client.query('BEGIN');
     const title = body.title != null ? String(body.title).trim() : existing.title;
     const description = body.description != null ? String(body.description).trim() : existing.description;
@@ -20,6 +22,10 @@ async function handleUpdateSurvey(pool, id, event, user) {
       body.status != null && allowedStatus.has(body.status) ? body.status : existing.status;
     const access_link =
       body.access_link != null ? String(body.access_link).trim() : existing.access_link;
+    const allowMultipleResponses =
+      body.allow_multiple_responses != null
+        ? body.allow_multiple_responses === true
+        : existing.allow_multiple_responses === true;
     const media = body.media && typeof body.media === 'object' ? body.media : null;
 
     let nextGroupId = existing.survey_group_id != null ? existing.survey_group_id : null;
@@ -42,17 +48,37 @@ async function handleUpdateSurvey(pool, id, event, user) {
     }
 
     if (media) {
-      await client.query(
-        `UPDATE surveys
-         SET title = $1, description = $2, status = $3::survey_status, access_link = $4, media = $5::jsonb, survey_group_id = $6
-         WHERE id = $7`,
-        [title, description, status, access_link, JSON.stringify(media), nextGroupId, id],
-      );
+      if (supportsAllowMultiple) {
+        await client.query(
+          `UPDATE surveys
+           SET title = $1, description = $2, status = $3::survey_status, access_link = $4, allow_multiple_responses = $5, media = $6::jsonb, survey_group_id = $7
+           WHERE id = $8`,
+          [title, description, status, access_link, allowMultipleResponses, JSON.stringify(media), nextGroupId, id],
+        );
+      } else {
+        await client.query(
+          `UPDATE surveys
+           SET title = $1, description = $2, status = $3::survey_status, access_link = $4, media = $5::jsonb, survey_group_id = $6
+           WHERE id = $7`,
+          [title, description, status, access_link, JSON.stringify(media), nextGroupId, id],
+        );
+      }
     } else {
-      await client.query(
-        `UPDATE surveys SET title = $1, description = $2, status = $3::survey_status, access_link = $4, survey_group_id = $5 WHERE id = $6`,
-        [title, description, status, access_link, nextGroupId, id],
-      );
+      if (supportsAllowMultiple) {
+        await client.query(
+          `UPDATE surveys
+           SET title = $1, description = $2, status = $3::survey_status, access_link = $4, allow_multiple_responses = $5, survey_group_id = $6
+           WHERE id = $7`,
+          [title, description, status, access_link, allowMultipleResponses, nextGroupId, id],
+        );
+      } else {
+        await client.query(
+          `UPDATE surveys
+           SET title = $1, description = $2, status = $3::survey_status, access_link = $4, survey_group_id = $5
+           WHERE id = $6`,
+          [title, description, status, access_link, nextGroupId, id],
+        );
+      }
     }
 
     if (Array.isArray(body.questions)) {

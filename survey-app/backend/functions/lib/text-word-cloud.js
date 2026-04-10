@@ -1,3 +1,5 @@
+const { isExcludedPersonNameToken } = require('./word-cloud-person-filter');
+
 /**
  * Стоп-слова (RU + короткие «шумовые») для облака по свободным ответам.
  * Синхронизируйте с frontend/src/lib/wordCloudDisplay.ts (refineWordCloudForDisplay).
@@ -33,6 +35,7 @@ const STOP = new Set(
   собой собою
   хочется хотелось
   чтобы чтоб
+  фио фамилия имя отчество
   нас наших нам нами вас вами
   огромное огромная огромный огромные огромной огромную огромным огромными
   спасибо благодарю благодарность благодарности благодарен благодарна благодарны
@@ -53,7 +56,7 @@ function tokenizeLine(s) {
   if (!words) return [];
   return words
     .map((w) => normalizeWordCloudToken(w))
-    .filter((w) => w.length >= 3 && !STOP.has(w));
+    .filter((w) => w.length >= 3 && !STOP.has(w) && !isExcludedPersonNameToken(w));
 }
 
 /**

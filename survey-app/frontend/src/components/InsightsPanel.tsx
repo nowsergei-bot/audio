@@ -10,6 +10,8 @@ type Props = {
   surveyId: number;
   /** Если задан — запрос идёт на публичный эндпоинт директора (без X-Api-Key). */
   directorToken?: string;
+  /** Срез ИИ и дашборда только по ответам выбранного урока (вместе с directorToken). */
+  directorLessonKey?: string;
   onDrillDown?: (questionId: number) => void;
   filters?: AnalyticsFilter[];
   autoRun?: boolean;
@@ -76,7 +78,13 @@ function formatNarrative(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function InsightsPanel({ surveyId, directorToken, filters, autoRun = true }: Props) {
+export default function InsightsPanel({
+  surveyId,
+  directorToken,
+  directorLessonKey,
+  filters,
+  autoRun = true,
+}: Props) {
   const [loading, setLoading] = useState(autoRun);
   const [payload, setPayload] = useState<AiInsightsPayload | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -88,14 +96,16 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
     setPayload(null);
     setErr(null);
     setLoading(autoRun);
-  }, [surveyId, filterKey, directorToken, autoRun]);
+  }, [surveyId, filterKey, directorToken, directorLessonKey, autoRun]);
 
   const run = useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
       const data = directorToken
-        ? await requestDirectorAiInsights(directorToken)
+        ? await requestDirectorAiInsights(directorToken, {
+            lessonKey: directorLessonKey && directorLessonKey.trim() ? directorLessonKey.trim() : undefined,
+          })
         : await requestAiInsights(surveyId, effectiveFilters);
       setPayload(data);
     } catch (e) {
@@ -104,12 +114,12 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
     } finally {
       setLoading(false);
     }
-  }, [surveyId, effectiveFilters, directorToken]);
+  }, [surveyId, effectiveFilters, directorToken, directorLessonKey]);
 
   useEffect(() => {
     if (!autoRun) return;
     void run();
-  }, [surveyId, filterKey, directorToken, autoRun, run]);
+  }, [surveyId, filterKey, directorToken, directorLessonKey, autoRun, run]);
 
   const d = payload?.dashboard;
 
@@ -130,10 +140,11 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
               Умная аналитика
             </h2>
             <p className="muted ai-insights-sub">
-              <strong>Как это устроено.</strong> Сервер считает показатели по ответам (включая импорт из Excel). Связный
-              текст строится по заголовкам вопросов и распределению ответов (шкалы, варианты, средние) даже без
-              свободных текстов; при настроенной нейросети записка усиливается моделью. Ключ не попадает в браузер. По
-              текстовым вопросам на странице результатов — отдельные сводки.
+              <strong>Как это устроено.</strong> Сервер считает показатели по ответам (включая импорт из Excel). Блок
+              «ИИ-аналитика по опросу» при подключённой нейросети на функции — это текст модели (OpenRouter / GigaChat /
+              YandexGPT по цепочке fallback); если модель недоступна, показывается автосводка по вопросам и
+              распределениям. Ключи не попадают в браузер. По текстовым вопросам на странице результатов — отдельные
+              сводки.
             </p>
           </div>
           <div className="ai-insights-header-actions">
@@ -160,7 +171,11 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
                   initial={{ opacity: 0, x: 8 }}
                   animate={{ opacity: 1, x: 0 }}
                 >
-                  {payload.source === 'llm_hybrid' ? 'Текст нейросети' : 'Автотекст по вопросам'}
+                  {payload.source === 'llm_hybrid'
+                    ? 'Текст нейросети'
+                    : payload.llm_error
+                      ? 'Автотекст (модель не ответила)'
+                      : 'Автотекст по вопросам'}
                 </motion.span>
               )}
             </AnimatePresence>
@@ -170,6 +185,13 @@ export default function InsightsPanel({ surveyId, directorToken, filters, autoRu
         {err && (
           <motion.p className="err" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {err}
+          </motion.p>
+        )}
+
+        {payload?.llm_error && payload.source !== 'llm_hybrid' && (
+          <motion.p className="muted ai-insights-llm-fallback-hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            Нейросеть не вернула текст: {payload.llm_error}. Проверьте переменные окружения функции (OpenRouter,
+            GigaChat, YandexGPT) и логи. Ниже — автосводка.
           </motion.p>
         )}
 

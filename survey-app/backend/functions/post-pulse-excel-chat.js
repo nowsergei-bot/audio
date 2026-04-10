@@ -1,6 +1,7 @@
 const { json, parseBody } = require('./lib/http');
 const { chatCompletion, isOpenAiUnsupportedRegion, formatGeoBlockHint } = require('./lib/llm-chat');
 const { tryParseLlmJsonObject } = require('./lib/parse-llm-json');
+const { isTransientLlmDetail } = require('./lib/llm-transient');
 
 function normalizeChatMessages(body) {
   const raw = body && Array.isArray(body.messages) ? body.messages : [];
@@ -19,6 +20,20 @@ function truncate(s, n) {
   return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
 }
 
+const LLM_RATE_LIMIT_RETRIES = 3;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRateLimitError(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429) return true;
+  const d = String(res.detail || '');
+  return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted/i.test(d);
+}
+
 /**
  * Санитизация apply_filters: только известные ключи и значения из facetOptions.
  */
@@ -35,7 +50,9 @@ function sanitizeApplyFilters(applyFilters, facetOptions) {
   return Object.keys(out).length ? out : null;
 }
 
-async function fetchPulseReply(context, messages) {
+const PULSE_NETWORK_RETRIES = 3;
+
+async function fetchPulseReplyOnce(context, messages) {
   const facetJson = JSON.stringify(context.facetOptions || {}).slice(0, 120000);
   const labelsJson = JSON.stringify(context.facetLabels || {}).slice(0, 8000);
   const currentJson = JSON.stringify(context.currentFilters || {}).slice(0, 16000);
@@ -75,20 +92,39 @@ ${extra ? `\nдополнительно:\n${extra}` : ''}`;
   ];
 
   try {
-    const res = await chatCompletion(apiMessages, {
+    let res = await chatCompletion(apiMessages, {
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       maxTokens: 3500,
       temperature: 0.25,
       jsonObject: true,
     });
+    for (let attempt = 0; attempt < LLM_RATE_LIMIT_RETRIES && !res.ok && isRateLimitError(res); attempt++) {
+      const waitMs = 2500 * 2 ** attempt;
+      await sleep(waitMs);
+      res = await chatCompletion(apiMessages, {
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+        maxTokens: 3500,
+        temperature: 0.25,
+        jsonObject: true,
+      });
+    }
     if (!res.ok) {
       if (res.kind === 'no_key') return { kind: 'no_key' };
-      const detail =
+      let detail =
         res.kind === 'both_failed'
           ? res.detail
           : isOpenAiUnsupportedRegion(res.status, res.detail)
             ? formatGeoBlockHint(res.status, res.detail)
             : res.detail;
+      if (isRateLimitError(res)) {
+        detail = [
+          'Провайдер временно ограничил частоту запросов (HTTP 429). Подождите 1–2 минуты и повторите запрос; при частых обращениях проверьте тариф и квоту API.',
+          '',
+          String(detail || '').trim(),
+        ]
+          .filter(Boolean)
+          .join('\n');
+      }
       return { kind: 'openai_error', detail };
     }
     const parsed = tryParseLlmJsonObject(res.text);
@@ -102,6 +138,21 @@ ${extra ? `\nдополнительно:\n${extra}` : ''}`;
   } catch (e) {
     return { kind: 'openai_error', detail: String(e?.message || e) };
   }
+}
+
+async function fetchPulseReply(context, messages) {
+  let last;
+  for (let attempt = 0; attempt < PULSE_NETWORK_RETRIES; attempt++) {
+    if (attempt > 0) await sleep(1600 * attempt);
+    last = await fetchPulseReplyOnce(context, messages);
+    if (last.kind === 'ok' || last.kind === 'no_key') return last;
+    if (last.kind === 'openai_error') {
+      if (!isTransientLlmDetail(last.detail) || attempt === PULSE_NETWORK_RETRIES - 1) return last;
+    } else {
+      return last;
+    }
+  }
+  return last;
 }
 
 async function handlePostPulseExcelChat(_pool, event) {
@@ -128,7 +179,7 @@ async function handlePostPulseExcelChat(_pool, event) {
   const lastQ = messages[messages.length - 1].content;
   const pre =
     llm.kind === 'no_key'
-      ? 'ПУЛЬС недоступен: задайте DEEPSEEK_API_KEY и LLM_PROVIDER=deepseek, или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. Подробнее — BACKEND_AND_API.md.\n\n'
+      ? 'ПУЛЬС недоступен: задайте GIGACHAT_CREDENTIALS (или GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET) и при необходимости LLM_PROVIDER=gigachat, или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. Подробнее — BACKEND_AND_API.md.\n\n'
       : `${llm.detail}\n\n`;
 
   return json(200, {

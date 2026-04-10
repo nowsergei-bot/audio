@@ -151,6 +151,8 @@ export function listSurveyCandidateFilterKeys(roles: ColumnRole[]): string[] {
 
 export type AnalyticRow = {
   idx: number;
+  /** Значение колонки с ролью id_row (напр. «№ строки» в выгрузке). Одно значение = одно событие/урок для KPI и средних. */
+  sourceRowId: string | null;
   /** Если в ячейке «наставники» было несколько ФИО, это номер фрагмента (1…N) */
   splitPart?: number;
   date: string | null;
@@ -217,6 +219,9 @@ export function buildAnalyticRows(
 
     const dateCol = roles.indexOf('date');
     const labelCol = roles.indexOf('row_label');
+    const idRowCol = roles.indexOf('id_row');
+    const rawSourceId = idRowCol >= 0 ? cellText(line[idRowCol]) : '';
+    const sourceRowId = rawSourceId.trim() ? rawSourceId.trim() : null;
 
     const metricsNumeric = metricNumericCols.map(({ i, h }) => ({
       colIndex: i,
@@ -256,6 +261,7 @@ export function buildAnalyticRows(
 
     out.push({
       idx,
+      sourceRowId,
       date: dateCol >= 0 ? parseAnalyticsDate(line[dateCol]) : null,
       rowLabel: labelCol >= 0 ? cellText(line[labelCol]) || null : null,
       metricsNumeric,
@@ -792,29 +798,42 @@ function excerpt(s: string, max = 160): string {
   return `${t.slice(0, max - 1)}…`;
 }
 
-/** Одна аналитическая строка на запись урока (первая по idx) — чтобы средние и шкалы не раздувались развёрткой тегов/наставников. */
-export function dedupeRowsByLessonIdx(rows: AnalyticRow[]): AnalyticRow[] {
-  const seen = new Set<number>();
-  const out: AnalyticRow[] = [];
-  for (const r of rows) {
-    if (seen.has(r.idx)) continue;
-    seen.add(r.idx);
-    out.push(r);
-  }
-  return out;
-}
-
 function normLessonKeyPart(s: string): string {
   return s.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
 }
 
 /**
- * Логический «урок»/событие для счётчиков на дашборде: дата + подпись строки + все фильтры,
- * кроме колонки наставника (несколько ФИО в ячейке дают несколько аналитических строк одного урока).
- * Если признаков мало (одна координата), к ключу добавляется idx — не склеиваем разные строки импорта.
+ * Одна запись в источнике для KPI и дедупликации: колонка «ID строки» (id_row), иначе позиция строки в загруженном файле.
+ */
+export function lessonIdentityKey(row: AnalyticRow): string {
+  const s = row.sourceRowId?.trim();
+  if (s) return `sr:${normLessonKeyPart(s)}`;
+  return `idx:${row.idx}`;
+}
+
+/** Одна аналитическая строка на логическое событие (по id источника или первой строке idx) — без раздувания средних при дубликатах и развёртке. */
+export function dedupeRowsByLessonIdx(rows: AnalyticRow[]): AnalyticRow[] {
+  const seen = new Set<string>();
+  const out: AnalyticRow[] = [];
+  for (const r of rows) {
+    const k = lessonIdentityKey(r);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(r);
+  }
+  return out;
+}
+
+/**
+ * Логический «урок»/событие для счётчиков на дашборде: при заданном id_row — он задаёт ядро ключа (дубликаты с одним № сливаются);
+ * иначе дата + подпись + фильтры, кроме наставника.
+ * Если признаков мало (одна координата) и нет id_row — к ключу добавляется idx.
  */
 export function lessonSemanticKey(row: AnalyticRow, excludeTeacherFilterKey: string | null): string {
   const segs: string[] = [];
+  if (row.sourceRowId?.trim()) {
+    segs.push(`sr:${normLessonKeyPart(row.sourceRowId)}`);
+  }
   if (row.date) segs.push(`d:${row.date}`);
   if (row.rowLabel?.trim()) segs.push(`lbl:${normLessonKeyPart(row.rowLabel)}`);
   const keys = Object.keys(row.filterValues).sort((a, b) => a.localeCompare(b, 'ru'));
@@ -826,7 +845,7 @@ export function lessonSemanticKey(row: AnalyticRow, excludeTeacherFilterKey: str
     if (!v || v === '(не указано)') continue;
     segs.push(`${k}:${normLessonKeyPart(String(v))}`);
   }
-  if (segs.length <= 1) {
+  if (!row.sourceRowId?.trim() && segs.length <= 1) {
     return `${segs.join('|')}|idx:${row.idx}`;
   }
   return segs.join('|');
@@ -840,9 +859,9 @@ export function countUniqueLessonSemantics(rows: AnalyticRow[], excludeTeacherFi
   return s.size;
 }
 
-/** Число уникальных физических строк импорта (idx) в выборке. */
+/** Число уникальных записей в выборке: по id_row, если задан, иначе по строкам файла (idx). */
 export function countUniqueImportRows(rows: AnalyticRow[]): number {
-  return new Set(rows.map((r) => r.idx)).size;
+  return new Set(rows.map((r) => lessonIdentityKey(r))).size;
 }
 
 /** Ключ для объединения почти одинаковых подписей («Математика» / «математика »). */
@@ -899,7 +918,7 @@ export function listFeatureTagCounts(
   columnHeader: string,
   topN: number | null = 28,
 ): { display: string; uniqueLessons: number }[] {
-  const m = new Map<string, { display: string; lessonIds: Set<number> }>();
+  const m = new Map<string, { display: string; lessonIds: Set<string> }>();
   for (const row of rowsOnePerLesson) {
     const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
     if (!entry?.text?.trim()) continue;
@@ -911,11 +930,12 @@ export function listFeatureTagCounts(
       const k = resolved.aggregateKey;
       if (seenInRow.has(k)) continue;
       seenInRow.add(k);
+      const lid = lessonIdentityKey(row);
       const cur = m.get(k);
       if (!cur) {
-        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([row.idx]) });
+        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([lid]) });
       } else {
-        cur.lessonIds.add(row.idx);
+        cur.lessonIds.add(lid);
         if (resolved.displayLabel.length > cur.display.length) cur.display = resolved.displayLabel;
       }
     }
@@ -955,7 +975,7 @@ export function listFeatureTagUniverse(
 }
 
 /**
- * По развёрнутым строкам (после мультинаставников): для выбранного педагога — сколько уроков (idx),
+ * По развёрнутым строкам (после мультинаставников): для выбранного педагога — сколько записей (по id_row или idx),
  * где в ячейке встретился пункт. topN: null — без обрезки.
  */
 export function listFeatureTagFrequencyByTeacher(
@@ -965,7 +985,7 @@ export function listFeatureTagFrequencyByTeacher(
   columnHeader: string,
   topN: number | null = 32,
 ): { display: string; lessonCount: number }[] {
-  const m = new Map<string, { display: string; lessonIds: Set<number> }>();
+  const m = new Map<string, { display: string; lessonIds: Set<string> }>();
   for (const row of rowsExpanded) {
     if (row.filterValues[teacherFilterKey] !== teacherValue) continue;
     const entry = row.texts.find((t) => t.kind === 'text_list_features' && t.header === columnHeader);
@@ -978,11 +998,12 @@ export function listFeatureTagFrequencyByTeacher(
       const k = resolved.aggregateKey;
       if (seenInRow.has(k)) continue;
       seenInRow.add(k);
+      const lid = lessonIdentityKey(row);
       const cur = m.get(k);
       if (!cur) {
-        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([row.idx]) });
+        m.set(k, { display: resolved.displayLabel, lessonIds: new Set([lid]) });
       } else {
-        cur.lessonIds.add(row.idx);
+        cur.lessonIds.add(lid);
         if (resolved.displayLabel.length > cur.display.length) cur.display = resolved.displayLabel;
       }
     }

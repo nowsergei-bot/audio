@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const { json, parseBody } = require('./lib/http');
 const { QUESTION_TYPES } = require('./lib/validation');
 const { loadSurveyWithQuestions } = require('./get-survey');
+const { surveysAllowMultipleResponsesSupported } = require('./lib/survey-schema-support');
 
 async function handleCreateSurvey(pool, event, user) {
   const body = parseBody(event) || {};
@@ -11,6 +12,7 @@ async function handleCreateSurvey(pool, event, user) {
   const director_token = uuidv4().replace(/-/g, '');
   const questions = Array.isArray(body.questions) ? body.questions : [];
   const media = body.media && typeof body.media === 'object' ? body.media : {};
+  const allowMultipleResponses = body.allow_multiple_responses === true;
   const allowedStatus = new Set(['draft', 'published', 'closed']);
   const status = allowedStatus.has(body.status) ? body.status : 'draft';
   const ownerUserId = user && user.id != null ? Number(user.id) : null;
@@ -27,13 +29,21 @@ async function handleCreateSurvey(pool, event, user) {
   const client = await pool.connect();
   let newSurveyId;
   try {
+    const supportsAllowMultiple = await surveysAllowMultipleResponsesSupported(pool);
     await client.query('BEGIN');
-    const ins = await client.query(
-      `INSERT INTO surveys (title, description, status, access_link, director_token, media, owner_user_id, survey_group_id)
-       VALUES ($1, $2, $3::survey_status, $4, $5, $6::jsonb, $7, $8)
-       RETURNING id`,
-      [title, description, status, access_link, director_token, JSON.stringify(media), ownerUserId, surveyGroupId],
-    );
+    const ins = supportsAllowMultiple
+      ? await client.query(
+        `INSERT INTO surveys (title, description, status, access_link, director_token, allow_multiple_responses, media, owner_user_id, survey_group_id)
+         VALUES ($1, $2, $3::survey_status, $4, $5, $6, $7::jsonb, $8, $9)
+         RETURNING id`,
+        [title, description, status, access_link, director_token, allowMultipleResponses, JSON.stringify(media), ownerUserId, surveyGroupId],
+      )
+      : await client.query(
+        `INSERT INTO surveys (title, description, status, access_link, director_token, media, owner_user_id, survey_group_id)
+         VALUES ($1, $2, $3::survey_status, $4, $5, $6::jsonb, $7, $8)
+         RETURNING id`,
+        [title, description, status, access_link, director_token, JSON.stringify(media), ownerUserId, surveyGroupId],
+      );
     newSurveyId = ins.rows[0].id;
 
     for (let i = 0; i < questions.length; i++) {

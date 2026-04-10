@@ -2,6 +2,7 @@ const { json } = require('./lib/http');
 const { loadSurveyWithQuestions } = require('./get-survey');
 const { fetchChartAggregates, fillDailySeries } = require('./lib/results-charts');
 const { buildWordCloudFromTexts } = require('./lib/text-word-cloud');
+const { shouldExcludeQuestionTextFromWordCloud } = require('./lib/word-cloud-person-filter');
 const { parseJsonbText } = require('./lib/fetch-text-answers');
 
 function pickTextHighlight(strings) {
@@ -192,7 +193,11 @@ async function fetchResultsSnapshot(pool, surveyId, opts = {}) {
   const textCorpus = [];
   if (!skipWordCloud) {
     for (const q of perQuestion) {
-      if (q.type === 'text' && Array.isArray(q.samples)) {
+      if (
+        q.type === 'text' &&
+        Array.isArray(q.samples) &&
+        !shouldExcludeQuestionTextFromWordCloud(q.text)
+      ) {
         textCorpus.push(...q.samples);
       }
     }

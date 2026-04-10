@@ -1,5 +1,6 @@
-import { motion, MotionConfig } from 'framer-motion';
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -41,6 +42,7 @@ import {
   countUniqueImportRows,
   countUniqueLessonSemantics,
   dedupeRowsByLessonIdx,
+  lessonIdentityKey,
   expandRowsForMultiValueFilterColumns,
   expandRowsForPulseSurveyMultiSelect,
   filterKeyForRole,
@@ -139,7 +141,42 @@ function detailTableRowKey(r: AnalyticRow, rowIndex: number): string {
     .sort()
     .map((k) => `${k}:${r.filterValues[k]}`)
     .join('\u0001');
-  return `dtr:${rowIndex}:${r.idx}:${r.splitPart ?? 0}:${fv}`;
+  return `dtr:${rowIndex}:${lessonIdentityKey(r)}:${r.splitPart ?? 0}:${fv}`;
+}
+
+/**
+ * В ячейке листа может быть «А, Б, В», а у этой аналитической строки — одно значение среза.
+ * Для колонок-измерений показываем значение из filterValues (как в фильтрах), иначе детализация «не бьётся» со срезом.
+ */
+function detailSheetCellValue(
+  r: AnalyticRow,
+  ci: number,
+  line: CellPrimitive[] | undefined,
+  roles: ColumnRole[],
+  customLabels: CustomFilterLabels,
+): CellPrimitive | undefined {
+  if (!line) return undefined;
+  const role = roles[ci];
+  if (role === undefined) return line[ci];
+
+  if (isFilterRole(role)) {
+    const fk = filterKeyForRole(role, customLabels);
+    const v = r.filterValues[fk];
+    if (v != null && String(v).trim() !== '') return v;
+    return line[ci];
+  }
+  if (role === 'metric_ordinal_text') {
+    const v = r.filterValues[PULSE_ORDINAL_LEVEL_KEY];
+    if (v != null && String(v).trim() !== '') return v;
+    return line[ci];
+  }
+  if (shouldExposePulseSurveyFilterCandidate(role)) {
+    const pk = pulseSurveyColKey(ci);
+    const v = r.filterValues[pk];
+    if (v != null && String(v).trim() !== '') return v;
+    return line[ci];
+  }
+  return line[ci];
 }
 
 function ExcelDrillMiniSummary({
@@ -246,6 +283,16 @@ function formatExcelProjectsListError(raw: string): string {
 }
 
 export default function ExcelAnalyticsPage() {
+  const [searchParams] = useSearchParams();
+  const { sessionId: routeSessionId } = useParams();
+  const linkPedSessionRaw = searchParams.get('linkPedSession');
+  const routePedSessionRaw = routeSessionId ?? null;
+  const linkPedSessionFromQuery =
+    linkPedSessionRaw && /^\d+$/.test(linkPedSessionRaw) ? linkPedSessionRaw : null;
+  const linkPedSessionFromRoute =
+    routePedSessionRaw && /^\d+$/.test(routePedSessionRaw) ? routePedSessionRaw : null;
+  const linkPedSession = linkPedSessionFromQuery ?? linkPedSessionFromRoute;
+
   const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -278,6 +325,7 @@ export default function ExcelAnalyticsPage() {
   const pendingOpenProjectIdRef = useRef<number | null>(null);
   /** Секция «1. Файл»: прокрутка после «Открыть», чтобы подсказка была видна. */
   const excelFileSectionRef = useRef<HTMLElement | null>(null);
+  const chartDrillDockRef = useRef<HTMLElement | null>(null);
   const [openProjectBusyId, setOpenProjectBusyId] = useState<number | null>(null);
   useEffect(() => {
     pendingServerSessionRef.current = pendingServerSession;
@@ -302,6 +350,12 @@ export default function ExcelAnalyticsPage() {
   const [ordinalDrill, setOrdinalDrill] = useState<{ rank: number; levelLabel: string } | null>(null);
   /** Раскрытие блока «Исходные факты» (в т.ч. после выбора педагога из дрилла) */
   const [excelFactsOpen, setExcelFactsOpen] = useState(false);
+  /** Увеличенный просмотр мини-диаграммы «Распределение по измерениям среза» */
+  const [filterDistributionModal, setFilterDistributionModal] = useState<{
+    key: string;
+    label: string;
+    bars: { short: string; fullName: string; uniqueLessons: number }[];
+  } | null>(null);
   /** Подписи из ячеек: по умолчанию только часть до «//» (рус.), иначе часть после «//». */
   const [showEnglishExcelLabels, setShowEnglishExcelLabels] = useState(false);
   /** Сообщение, если при анализе отсечена служебная колонка времени */
@@ -520,6 +574,19 @@ export default function ExcelAnalyticsPage() {
     return applyFilters(dashboardRows, sliceFilterSelection);
   }, [dashboardRows, sliceFilterSelection]);
 
+  /** Полное обновление tbody при смене среза (в т.ч. sticky-колонки в некоторых браузерах). */
+  const detailTableBodyKey = useMemo(() => {
+    const sel = Object.keys(sliceFilterSelection)
+      .sort()
+      .map((k) => {
+        const cur = sliceFilterSelection[k];
+        if (cur == null) return `${k}:*`;
+        return `${k}:${cur.join('\u0002')}`;
+      })
+      .join('|');
+    return `dtb:${filteredRows.length}:${sel}`;
+  }, [filteredRows.length, sliceFilterSelection]);
+
   /** Одна строка на урок: средние, гистограммы и шкала без лишнего веса после развёртки тегов/наставников. */
   const filteredRowsOnePerLesson = useMemo(
     () => dedupeRowsByLessonIdx(filteredRows),
@@ -541,10 +608,10 @@ export default function ExcelAnalyticsPage() {
 
   const mentorChartData = useMemo(() => {
     if (!teacherFilterKey || metricNumericCols.length === 0) return [];
-    return meanByTeacherGrouped(filteredRows, teacherFilterKey, metricNumericCols);
-  }, [filteredRows, teacherFilterKey, metricNumericCols]);
+    return meanByTeacherGrouped(filteredRowsOnePerLesson, teacherFilterKey, metricNumericCols);
+  }, [filteredRowsOnePerLesson, teacherFilterKey, metricNumericCols]);
 
-  /** Уникальные строки импорта (idx) в срезе — совпадает с ожидаемым числом записей в таблице Excel. */
+  /** Уникальные записи в срезе (колонка «ID строки», если задана, иначе строки файла). */
   const kpiLessons = useMemo(() => countUniqueImportRows(filteredRows), [filteredRows]);
   const kpiImportRowsTotal = useMemo(() => countUniqueImportRows(dashboardRows), [dashboardRows]);
   /** События по смыслу (дата + подпись + срезы без наставника/опроса); больше строк импорта, если в фильтрах мультизначения. */
@@ -739,7 +806,7 @@ export default function ExcelAnalyticsPage() {
     const lines: string[] = [];
     lines.push(`Файл: ${fileName || '—'}, лист: ${sheet || '—'}`);
     lines.push(
-      `Объём среза: ${kpiLessons} строк импорта Excel (уникальные записи); ${filteredRows.length} аналитических строк («точки») после развёртки мультизначений в ячейках; по смыслу (дата+подпись+срезы): ${kpiLessonSemanticsFiltered}.`,
+      `Объём среза: ${kpiLessons} уникальных записей (по колонке «номер строки в источнике», если задана, иначе строки файла); ${filteredRows.length} аналитических строк («точки») после развёртки мультизначений в ячейках; по смыслу (дата+подпись+срезы): ${kpiLessonSemanticsFiltered}.`,
     );
     if (teacherFilterKey && kpiMentors > 0) {
       lines.push(`Уникальных кодов/значений наставника в срезе: ${kpiMentors}.`);
@@ -1108,7 +1175,7 @@ export default function ExcelAnalyticsPage() {
 
   const pulseExtraContext = useMemo(() => {
     if (!teacherFilterKey || metricNumericCols.length === 0) return '';
-    const rows = meanByTeacherGrouped(filteredRows, teacherFilterKey, metricNumericCols);
+    const rows = meanByTeacherGrouped(filteredRowsOnePerLesson, teacherFilterKey, metricNumericCols);
     const maxLines = 220;
     const lines = rows.slice(0, maxLines).map((row) => {
       const mentor = String(row.mentor ?? '');
@@ -1123,7 +1190,7 @@ export default function ExcelAnalyticsPage() {
         ? `\n… Показаны ${maxLines} из ${rows.length} педагогов; остальные средние — на графике «По наставникам».`
         : '';
     return `Средние по наставникам (текущая выборка после фильтров):\n${lines.join('\n')}${tail}`;
-  }, [teacherFilterKey, metricNumericCols, filteredRows, headers]);
+  }, [teacherFilterKey, metricNumericCols, filteredRowsOnePerLesson, headers]);
 
   /** Справочник шифр→ФИО с других листов + средние по наставникам — уходит в ИИ первым блоком в extraContext. */
   const pulseLlmExtraBundle = useMemo(() => {
@@ -1215,7 +1282,20 @@ export default function ExcelAnalyticsPage() {
     setOrdinalDrill(null);
   }, [metricPickIndex]);
 
-  /** Не прокручиваем к панели дрилла автоматически — мешает при работе с фильтрами выше по странице. */
+  /** Клик по гистограмме/шкале — панель педагогов (справа или под графиками) прокручивается в зону видимости. */
+  useEffect(() => {
+    if (!teacherFilterKey || (!metricDrill && !ordinalDrill)) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        chartDrillDockRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'nearest',
+        });
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [teacherFilterKey, metricDrill, ordinalDrill]);
 
   /** Смена среза — сбрасываем записи для директора (нужно сформировать заново). */
   useEffect(() => {
@@ -2132,45 +2212,51 @@ export default function ExcelAnalyticsPage() {
     setSummaryNarrativeWords(null);
     setSummaryNarrativeApiHint(null);
     setSummaryNarrativeLoading(true);
-    void postExcelNarrativeSummary({
-      context: {
-        numericSummary: richLlmContext.slice(0, 22000),
-        extraContext: pulseLlmExtraBundle.trim() || undefined,
-        facetLabels: pulseFacetLabels,
-        filterSummary: filterParameterSummaryRu.trim() || undefined,
-        meta: {
-          filteredRowCount: filteredRows.length,
-          uniqueImportRows: kpiLessons,
-          semanticLessonCount: kpiLessonSemanticsFiltered,
+    /** Debounce: при движении фильтров не дёргать LLM на каждый кадр — меньше параллельных запросов и 429/обрывов. */
+    const debounceMs = 700;
+    const t = setTimeout(() => {
+      void postExcelNarrativeSummary({
+        context: {
+          numericSummary: richLlmContext.slice(0, 22000),
+          extraContext: pulseLlmExtraBundle.trim() || undefined,
+          facetLabels: pulseFacetLabels,
+          filterSummary: filterParameterSummaryRu.trim() || undefined,
+          meta: {
+            filteredRowCount: filteredRows.length,
+            uniqueImportRows: kpiLessons,
+            semanticLessonCount: kpiLessonSemanticsFiltered,
+          },
         },
-      },
-    })
-      .then((res) => {
-        if (cancelled) return;
-        if (res.source === 'llm' && res.narrative?.trim()) {
-          setSummaryNarrative(res.narrative.trim());
-          setSummaryNarrativeWords(typeof res.wordCount === 'number' ? res.wordCount : null);
-          setSummaryNarrativeApiHint(null);
-        } else {
-          setSummaryNarrative(null);
-          setSummaryNarrativeWords(null);
-          setSummaryNarrativeApiHint(res.hint?.trim() || null);
-        }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setSummaryNarrative(null);
-          setSummaryNarrativeWords(null);
-          setSummaryNarrativeApiHint(
-            'Не удалось получить отчёт: нет связи с сервером или ответ прерван. Попробуйте обновить страницу и снова открыть блок отчёта.',
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSummaryNarrativeLoading(false);
-      });
+        .then((res) => {
+          if (cancelled) return;
+          if (res.source === 'llm' && res.narrative?.trim()) {
+            setSummaryNarrative(res.narrative.trim());
+            setSummaryNarrativeWords(typeof res.wordCount === 'number' ? res.wordCount : null);
+            setSummaryNarrativeApiHint(null);
+          } else {
+            setSummaryNarrative(null);
+            setSummaryNarrativeWords(null);
+            setSummaryNarrativeApiHint(res.hint?.trim() || null);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSummaryNarrative(null);
+            setSummaryNarrativeWords(null);
+            setSummaryNarrativeApiHint(
+              'Не удалось получить отчёт: нет связи с API или шлюз оборвал длинный запрос к модели. Подождите минуту и обновите страницу; при частых сбоях увеличьте таймаут шлюза и проверьте квоты OpenRouter/GigaChat.',
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setSummaryNarrativeLoading(false);
+        });
+    }, debounceMs);
     return () => {
       cancelled = true;
+      clearTimeout(t);
+      setSummaryNarrativeLoading(false);
     };
   }, [
     richLlmContext,
@@ -2278,6 +2364,15 @@ export default function ExcelAnalyticsPage() {
     if (fileName) setSaveProjectTitle(fileName);
   }, [fileName]);
 
+  useEffect(() => {
+    if (!filterDistributionModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFilterDistributionModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [filterDistributionModal]);
+
   const saveTemplate = () => {
     const name = templateName.trim();
     if (!name) {
@@ -2316,6 +2411,21 @@ export default function ExcelAnalyticsPage() {
   return (
     <MotionConfig reducedMotion="user">
       <motion.div className="page excel-analytics-page" {...fadeIn}>
+        {linkPedSession ? (
+          <div
+            className="card glass-surface pedagogical-excel-bridge-banner"
+            style={{ marginBottom: '1rem', padding: '0.85rem 1.1rem' }}
+          >
+            <p className="muted" style={{ margin: 0, fontSize: '0.92rem', lineHeight: 1.5 }}>
+              Режим методиста: вы в полном дашборде «Наблюдения Excel». Сформируйте срез и ИИ-сводку, скопируйте блок{' '}
+              <strong>«Исходные факты»</strong> или экспортируйте таблицу и загрузите .xlsx на шаге «Факты» в{' '}
+              <Link to={`/analytics/pedagogical/${linkPedSession}/progress`}>
+                педагогической сессии #{linkPedSession}
+              </Link>
+              .
+            </p>
+          </div>
+        ) : null}
         <motion.header
           className="card excel-analytics-hero glass-surface"
           initial={{ opacity: 0, y: 12 }}
@@ -3119,8 +3229,9 @@ export default function ExcelAnalyticsPage() {
                     <strong>{filteredRows.length}</strong>.
                   </>
                 )}{' '}
-                Если в ячейке было несколько значений (наставники, списки), одна строка файла может отображаться
-                несколько раз — колонка «Разв.» показывает номер фрагмента.
+                В колонках-измерениях в таблице показывается значение для этой точки среза (как в чипах), а не вся
+                мультизначная ячейка файла. Если в ячейке было несколько значений (наставники, списки), одна строка
+                файла может отображаться несколько раз — колонка «Разв.» показывает номер фрагмента наставника.
                 {filteredRows.length > DETAIL_TABLE_MAX_ROWS && (
                   <>
                     {' '}
@@ -3133,7 +3244,9 @@ export default function ExcelAnalyticsPage() {
                 <table className="excel-analytics-table excel-analytics-table--full-sheet">
                   <thead>
                     <tr>
-                      <th className="excel-analytics-th-fixed">№ строки</th>
+                      <th className="excel-analytics-th-fixed" title="При сопоставлении «Номер строки в источнике» — значение из файла; иначе порядковый номер строки в загрузке.">
+                        № строки
+                      </th>
                       {detailShowSplitColumn && (
                         <th className="excel-analytics-th-fixed excel-analytics-th-fixed--after-num">Разв.</th>
                       )}
@@ -3147,19 +3260,23 @@ export default function ExcelAnalyticsPage() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody key={detailTableBodyKey}>
                     {detailTableSlice.map((r, i) => {
                       const line = rawRows[r.idx];
                       return (
                         <tr key={detailTableRowKey(r, i)}>
-                          <td className="excel-analytics-td-fixed">{r.idx + 1}</td>
+                          <td className="excel-analytics-td-fixed">
+                            {r.sourceRowId?.trim() ? r.sourceRowId : r.idx + 1}
+                          </td>
                           {detailShowSplitColumn && (
                             <td className="excel-analytics-td-fixed excel-analytics-td-fixed--after-num">
                               {r.splitPart != null && r.splitPart > 0 ? r.splitPart : '—'}
                             </td>
                           )}
                           {Array.from({ length: detailColumnCount }, (_, ci) => {
-                            const raw = line?.[ci] as CellPrimitive | undefined;
+                            const raw = detailSheetCellValue(r, ci, line, roles, customLabels) as
+                              | CellPrimitive
+                              | undefined;
                             return (
                               <td
                                 key={ci}
@@ -3281,10 +3398,14 @@ export default function ExcelAnalyticsPage() {
                         <div className="excel-filter-distributions-grid">
                           {allFilterDistributionCharts.map(({ key, label, bars }) =>
                             bars.length === 0 ? null : (
-                              <div
+                              <button
                                 key={key}
+                                type="button"
                                 id={`excel-chart-focus-${key}`}
-                                className="excel-filter-distribution-mini card glass-surface"
+                                className="excel-filter-distribution-mini card glass-surface excel-filter-distribution-mini--clickable"
+                                aria-label={`Открыть крупно: ${label}`}
+                                title="Нажмите для просмотра крупнее"
+                                onClick={() => setFilterDistributionModal({ key, label, bars })}
                               >
                                 <h4 className="excel-filter-distribution-mini-title">{label}</h4>
                                 <div className="excel-analytics-chart excel-filter-distribution-mini-chart">
@@ -3339,7 +3460,7 @@ export default function ExcelAnalyticsPage() {
                                     </BarChart>
                                   </ResponsiveContainer>
                                 </div>
-                              </div>
+                              </button>
                             ),
                           )}
                         </div>
@@ -3729,6 +3850,7 @@ export default function ExcelAnalyticsPage() {
                 </div>
                 {chartDrillOpen && (
                   <aside
+                    ref={chartDrillDockRef}
                     id="excel-chart-drill-dock"
                     className="excel-chart-drill-dock excel-metric-drill-panel"
                     aria-label={
@@ -4112,6 +4234,108 @@ export default function ExcelAnalyticsPage() {
           </div>
         )}
       </motion.div>
+
+      <AnimatePresence>
+        {filterDistributionModal && (
+          <motion.div
+            key={filterDistributionModal.key}
+            className="excel-filter-dist-modal-root"
+            role="dialog"
+            aria-modal
+            aria-labelledby="excel-filter-dist-modal-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <button
+              type="button"
+              className="excel-filter-dist-modal-backdrop"
+              aria-label="Закрыть"
+              onClick={() => setFilterDistributionModal(null)}
+            />
+            <motion.div
+              className="excel-filter-dist-modal-panel card glass-surface"
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+            >
+              <div className="excel-filter-dist-modal-head">
+                <div>
+                  <h2 id="excel-filter-dist-modal-title" className="excel-filter-dist-modal-title">
+                    {filterDistributionModal.label}
+                  </h2>
+                  <p className="muted excel-filter-dist-modal-sub">
+                    Логические уроки в текущем срезе по значению (топ вариантов). Похожие написания объединяются.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn excel-filter-dist-modal-close"
+                  onClick={() => setFilterDistributionModal(null)}
+                >
+                  Закрыть
+                </button>
+              </div>
+              <div className="excel-filter-dist-modal-chart-wrap excel-analytics-chart">
+                <ResponsiveContainer
+                  width="100%"
+                  height={Math.min(
+                    560,
+                    Math.max(240, 48 + filterDistributionModal.bars.length * 34),
+                  )}
+                >
+                  <BarChart
+                    data={filterDistributionModal.bars}
+                    layout="vertical"
+                    margin={{ top: 8, right: 16, left: 8, bottom: 8 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="short"
+                      width={168}
+                      tick={{ fontSize: 10 }}
+                      interval={0}
+                    />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const p = payload[0].payload as {
+                          fullName: string;
+                          uniqueLessons: number;
+                        };
+                        return (
+                          <div
+                            style={{
+                              background: '#fff',
+                              border: '1px solid var(--card-border)',
+                              borderRadius: 8,
+                              padding: '0.45rem 0.6rem',
+                              fontSize: 12,
+                              maxWidth: 360,
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, marginBottom: 4 }}>{p.fullName}</div>
+                            <div>Уроков: {p.uniqueLessons}</div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar
+                      dataKey="uniqueLessons"
+                      fill="#115e59"
+                      name="Уроков"
+                      radius={[0, 4, 4, 0]}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </MotionConfig>
   );
 }

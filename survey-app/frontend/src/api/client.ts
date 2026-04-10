@@ -1,4 +1,7 @@
 import type { SavedExcelSession } from '../lib/excelAnalytics/excelSessionStorage';
+import type { ParentResponsesSheetRow } from '../lib/phenomenalLessons/parseParentResponsesSheet';
+import type { TeacherLessonChecklistRow } from '../lib/phenomenalLessons/parseTeacherChecklistApril';
+import type { PhenomenalReportBlockDraft, PhenomenalReportDraft } from '../lib/phenomenalLessons/reportDraftTypes';
 import type {
   AiInsightsPayload,
   AnalyticsChatMessage,
@@ -13,14 +16,20 @@ import type {
   ExcelDashboardAiResponse,
   MultiSurveyAnalyticsPayload,
   TextQuestionInsightsPayload,
+  PedagogicalAnalyticsState,
+  PedagogicalPiiEntityDraft,
+  PedagogicalSessionListItem,
+  PedagogicalSessionPayload,
   AnswerSubmit,
   CommentRow,
   ResultsPayload,
+  DirectorLessonGroupsPayload,
   Survey,
   SurveyGroup,
   SurveyInviteRow,
   SurveyInviteTemplate,
   SurveyExportRowsPayload,
+  PhenomenalLessonsMergePayload,
   SurveyWorkbook,
   TextAnswersPage,
   PhotoWallPhotoRow,
@@ -45,9 +54,10 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
         'Администратору: CORS в API Gateway (survey-api-gw.yaml), CORS_ORIGIN на функции, VITE_API_BASE без /api в конце.'
       : 'Администратору: соберите фронт с VITE_API_BASE (URL шлюза или функции).';
     console.warn('[api]', dev, input, e);
-    throw new Error(
-      'Не удалось связаться с сервером. Проверьте интернет и попробуйте снова. Если ошибка повторяется — напишите администратору.',
-    );
+    const userMsg = API_BASE
+      ? 'Не удалось связаться с сервером. Частые причины: блокировка CORS (в консоли F12 — красные ошибки), неверный адрес API при сборке, VPN или обрыв сети. Откройте вкладку «Сеть» и проверьте запрос к API.'
+      : 'Не удалось выполнить запрос: для сайта не задан адрес API (при сборке нужен VITE_API_BASE — URL шлюза Yandex без /api в конце).';
+    throw new Error(userMsg);
   }
 }
 
@@ -55,9 +65,10 @@ function adminHeaders(): HeadersInit {
   const key = localStorage.getItem('admin_api_key') || '';
   const token = localStorage.getItem('auth_token') || '';
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
-  // Ключ из главной админки должен иметь приоритет: иначе просроченный Bearer перекрывает валидный X-Api-Key.
+  // Оба заголовка, если заданы: функция по Bearer узнаёт пользователя для сущностей с user_id (педагогика, Excel-проекты),
+  // а X-Api-Key по-прежнему даёт доступ админа. Только Bearer без ключа — как раньше.
   if (key.trim()) h['X-Api-Key'] = key.trim();
-  else if (token) h['Authorization'] = `Bearer ${token}`;
+  if (token.trim()) h['Authorization'] = `Bearer ${token}`;
   return h;
 }
 
@@ -99,6 +110,24 @@ export async function getSurveyGroups(): Promise<SurveyGroup[]> {
   const data = await parseJson<{ groups: SurveyGroup[] }>(res);
   if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
   return data.groups || [];
+}
+
+/** Создать раздел опросов (только роль admin или X-Api-Key). */
+export async function createSurveyGroup(payload: {
+  name: string;
+  curator_name?: string;
+  sort_order?: number;
+  slug?: string;
+}): Promise<SurveyGroup> {
+  const res = await apiFetch(`${API_BASE}/api/survey-groups`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ group?: SurveyGroup; error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.group) throw new Error('Нет данных раздела');
+  return data.group;
 }
 
 export async function getSurvey(id: number): Promise<Survey> {
@@ -173,6 +202,233 @@ export async function getSurveyExportRows(surveyId: number): Promise<SurveyExpor
   const data = await parseJson<SurveyExportRowsPayload & { error?: string }>(res);
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+/** Автосопоставление чек-листа педагогов с ответами родителей: опрос в системе или второй Excel (LLM на сервере). */
+export async function postPhenomenalLessonsMerge(
+  teacherRows: TeacherLessonChecklistRow[],
+  options: {
+    surveyId?: number;
+    parentRows?: ParentResponsesSheetRow[];
+    parentSourceTitle?: string;
+    confidenceThreshold?: number;
+  } = {},
+): Promise<PhenomenalLessonsMergePayload> {
+  const { surveyId, parentRows, parentSourceTitle, confidenceThreshold } = options;
+  const body: Record<string, unknown> = { teacher_rows: teacherRows };
+  if (parentRows && parentRows.length > 0) {
+    body.parent_rows = parentRows.map((r) => ({
+      answers_labeled: r.answers_labeled,
+      created_at: r.created_at ?? '',
+    }));
+    if (parentSourceTitle) body.parent_source_title = parentSourceTitle;
+  } else if (surveyId != null && Number.isFinite(surveyId) && surveyId >= 1) {
+    body.survey_id = surveyId;
+  } else {
+    throw new Error('Укажите опрос (surveyId) или загрузите Excel с ответами родителей (parentRows).');
+  }
+  if (typeof confidenceThreshold === 'number' && Number.isFinite(confidenceThreshold)) {
+    body.confidence_threshold = confidenceThreshold;
+  }
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-lessons/merge`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<
+    PhenomenalLessonsMergePayload & { error?: string; message?: string }
+  >(res);
+  if (!res.ok) {
+    throw new Error(
+      (data as { message?: string; error?: string }).message ||
+        (data as { error?: string }).error ||
+        res.statusText,
+    );
+  }
+  return data as PhenomenalLessonsMergePayload;
+}
+
+/** Превью текстовых ответов родителей с Пульса по полям блока (для редактора отчёта). */
+export async function postPhenomenalPreviewPulseComments(
+  surveyId: number,
+  blocks: Pick<PhenomenalReportBlockDraft, 'id' | 'lessonCode' | 'conductingTeachers' | 'parentClassLabel'>[],
+): Promise<{
+  parent_pulse_comments: Record<string, { question: string; text: string }[]>;
+  pulse_ready?: boolean;
+  pulse_hint?: string | null;
+}> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-lessons/preview-pulse-comments`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({
+      survey_id: surveyId,
+      blocks: blocks.map((b) => ({
+        id: b.id,
+        lessonCode: b.lessonCode,
+        conductingTeachers: b.conductingTeachers,
+        parentClassLabel: b.parentClassLabel ?? '',
+      })),
+    }),
+  });
+  const data = await parseJson<{
+    parent_pulse_comments?: Record<string, { question: string; text: string }[]>;
+    pulse_ready?: boolean;
+    pulse_hint?: string | null;
+    error?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return {
+    parent_pulse_comments: data.parent_pulse_comments ?? {},
+    pulse_ready: data.pulse_ready,
+    pulse_hint: data.pulse_hint ?? null,
+  };
+}
+
+export interface PhenomenalReportProjectRow {
+  id: number;
+  title: string;
+  survey_id: number | null;
+  director_share_token: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listPhenomenalReportProjects(): Promise<PhenomenalReportProjectRow[]> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-report-projects`, { headers: adminHeaders() });
+  const data = await parseJson<{ projects?: PhenomenalReportProjectRow[]; error?: string }>(res);
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data.projects ?? [];
+}
+
+export async function postPhenomenalReportProject(body: {
+  title?: string;
+  survey_id?: number | null;
+  draft: PhenomenalReportDraft;
+}): Promise<{ project: PhenomenalReportProjectRow; draft: PhenomenalReportDraft }> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-report-projects`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{
+    project?: PhenomenalReportProjectRow;
+    draft?: PhenomenalReportDraft;
+    error?: string;
+  }>(res);
+  if (!res.ok || !data.project || !data.draft) throw new Error(data.error || res.statusText);
+  return { project: data.project, draft: data.draft };
+}
+
+export async function getPhenomenalReportProject(
+  projectId: number,
+): Promise<{ project: PhenomenalReportProjectRow; draft: PhenomenalReportDraft }> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-report-projects/${projectId}`, { headers: adminHeaders() });
+  const data = await parseJson<{
+    project?: PhenomenalReportProjectRow;
+    draft?: PhenomenalReportDraft;
+    error?: string;
+  }>(res);
+  if (!res.ok || !data.project || !data.draft) throw new Error(data.error || res.statusText);
+  return { project: data.project, draft: data.draft };
+}
+
+export async function putPhenomenalReportProject(
+  projectId: number,
+  body: {
+    title?: string;
+    survey_id?: number | null;
+    draft: PhenomenalReportDraft;
+  },
+): Promise<{ project: PhenomenalReportProjectRow; draft: PhenomenalReportDraft }> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-report-projects/${projectId}`, {
+    method: 'PUT',
+    headers: adminHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<{
+    project?: PhenomenalReportProjectRow;
+    draft?: PhenomenalReportDraft;
+    error?: string;
+  }>(res);
+  if (!res.ok || !data.project || !data.draft) throw new Error(data.error || res.statusText);
+  return { project: data.project, draft: data.draft };
+}
+
+export interface PublicPhenomenalReportPayload {
+  title: string;
+  period_label: string;
+  survey_linked: boolean;
+  blocks: Array<{
+    id: string;
+    lessonCode: string;
+    conductingTeachers: string;
+    subjects: string;
+    methodologicalScore: string;
+    teacherNotes: string;
+    parentClassLabel: string;
+    rubricOrganizational?: string;
+    rubricGoalSetting?: string;
+    rubricTechnologies?: string;
+    rubricInformation?: string;
+    rubricGeneralContent?: string;
+    rubricCultural?: string;
+    rubricReflection?: string;
+    reviews: { id: string; text: string; fromMergedParent?: boolean }[];
+  }>;
+  parent_pulse_comments: Record<string, { question: string; text: string }[]>;
+}
+
+export async function getPublicPhenomenalReport(shareToken: string): Promise<PublicPhenomenalReportPayload> {
+  const enc = encodeURIComponent(shareToken);
+  const res = await apiFetch(`${API_BASE}/api/public/phenomenal-report/${enc}`, { cache: 'no-store' });
+  const data = await parseJson<PublicPhenomenalReportPayload & { error?: string }>(res);
+  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText);
+  return data;
+}
+
+/** Публичная страница отчёта для руководителя (отзывы с Пульса подгружаются с сервера без ИИ). */
+export function phenomenalReportPublicUrl(shareToken: string): string {
+  const enc = encodeURIComponent(shareToken);
+  return `${clientAppBase()}/phenomenal-report/${enc}`;
+}
+
+/** ИИ: сгруппировать блоки отчёта, если один урок попал в несколько блоков из-за расхождений в шифре. */
+export async function postPhenomenalLessonsClusterReportBlocks(
+  blocks: PhenomenalReportBlockDraft[],
+): Promise<{ groups: number[][]; llm_provider: string | null; warning?: string }> {
+  const res = await apiFetch(`${API_BASE}/api/phenomenal-lessons/cluster-report-blocks`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({
+      blocks: blocks.map((b) => ({
+        lessonCode: b.lessonCode,
+        conductingTeachers: b.conductingTeachers,
+        subjects: b.subjects,
+        observerName: b.observerName,
+        teacherNotes: b.teacherNotes,
+      })),
+    }),
+  });
+  const data = await parseJson<{
+    groups?: number[][];
+    llm_provider?: string | null;
+    warning?: string;
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) {
+    throw new Error(
+      (data as { message?: string }).message || (data as { error?: string }).error || res.statusText,
+    );
+  }
+  if (!data.groups || !Array.isArray(data.groups)) {
+    throw new Error('Нет поля groups в ответе');
+  }
+  return {
+    groups: data.groups,
+    llm_provider: data.llm_provider ?? null,
+    ...(data.warning ? { warning: data.warning } : {}),
+  };
 }
 
 export async function importRowsFromXlsxParse(
@@ -346,7 +602,7 @@ export async function getSurveyTextAnswers(
   return data;
 }
 
-/** Несколько опросов: сводка, темы, выбранные диаграммы + связный текст (LLM: DeepSeek / OpenAI / Yandex — см. окружение функции). */
+/** Несколько опросов: сводка, темы, выбранные диаграммы + связный текст (LLM: GigaChat / OpenAI / OpenRouter / Yandex — см. окружение функции). */
 export async function postMultiSurveyAnalytics(surveyIds: number[]): Promise<MultiSurveyAnalyticsPayload> {
   const res = await apiFetch(`${API_BASE}/api/surveys/batch-analytics`, {
     method: 'POST',
@@ -393,23 +649,48 @@ export async function requestAiInsights(surveyId: number, filters?: AnalyticsFil
 }
 
 /** Публичная сводка по секретному токену директора (без авторизации). */
-export async function getDirectorSurveyResults(directorToken: string): Promise<ResultsPayload> {
+export async function getDirectorSurveyResults(
+  directorToken: string,
+  opts?: { lessonKey?: string },
+): Promise<ResultsPayload> {
   const enc = encodeURIComponent(directorToken);
-  const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/results`, { cache: 'no-store' });
-  const data = await parseJson<ResultsPayload & { error?: string }>(res);
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  const q =
+    opts?.lessonKey != null && String(opts.lessonKey).trim() !== ''
+      ? `?lesson_key=${encodeURIComponent(String(opts.lessonKey).trim())}`
+      : '';
+  const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/results${q}`, { cache: 'no-store' });
+  const data = await parseJson<ResultsPayload & { error?: string; message?: string }>(res);
+  if (!res.ok) {
+    throw new Error(data.message || data.error || res.statusText);
+  }
   return data;
 }
 
-export async function requestDirectorAiInsights(directorToken: string): Promise<AiInsightsPayload> {
+/** Список уроков для сводки директора (группировка по учителю, классу, шифру урока). */
+export async function getDirectorLessonGroups(directorToken: string): Promise<DirectorLessonGroupsPayload> {
   const enc = encodeURIComponent(directorToken);
+  const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/lesson-groups`, { cache: 'no-store' });
+  const data = await parseJson<DirectorLessonGroupsPayload & { error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data;
+}
+
+export async function requestDirectorAiInsights(
+  directorToken: string,
+  opts?: { lessonKey?: string },
+): Promise<AiInsightsPayload> {
+  const enc = encodeURIComponent(directorToken);
+  const body: Record<string, unknown> = { filters: [] };
+  if (opts?.lessonKey != null && String(opts.lessonKey).trim() !== '') {
+    body.lesson_key = String(opts.lessonKey).trim();
+  }
   const res = await apiFetch(`${API_BASE}/api/public/director/${enc}/ai-insights`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filters: [] }),
+    body: JSON.stringify(body),
   });
-  const data = await parseJson<AiInsightsPayload & { error?: string }>(res);
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  const data = await parseJson<AiInsightsPayload & { error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
   return data;
 }
 
@@ -639,6 +920,257 @@ export async function deleteExcelAnalyticsProject(id: number): Promise<void> {
   });
   const data = await parseJson<{ error?: string; message?: string }>(res);
   if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+}
+
+export async function listPedagogicalSessions(): Promise<PedagogicalSessionListItem[]> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions`, { headers: adminHeaders() });
+  const data = await parseJson<{ sessions?: PedagogicalSessionListItem[]; error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data.sessions || [];
+}
+
+export async function getPedagogicalSession(id: number): Promise<PedagogicalSessionPayload> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${id}`, { headers: adminHeaders() });
+  const data = await parseJson<{ session?: PedagogicalSessionPayload; error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.session) throw new Error('Нет данных сессии');
+  return data.session;
+}
+
+export async function savePedagogicalSession(payload: {
+  title: string;
+  state: PedagogicalAnalyticsState;
+  id?: number;
+}): Promise<{ id: number; title: string; updated_at: string; state: PedagogicalAnalyticsState }> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{
+    session?: { id: number; title: string; updated_at: string; state: PedagogicalAnalyticsState };
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.session) throw new Error('Нет ответа');
+  return data.session;
+}
+
+/** Псевдонимизация: в LLM уходит только redactedText; map храните в сессии, не отправляйте в провайдера. */
+export async function postPedagogicalPiiTokenize(
+  plain: string,
+  entities: PedagogicalPiiEntityDraft[],
+  opts?: { auto?: boolean }
+): Promise<{ redactedText: string; map: Record<string, string>; entityCount?: number }> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-pii-tokenize`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({
+      plain,
+      auto: opts?.auto === true,
+      entities: entities.map((e) => ({ type: e.type, value: e.value })),
+    }),
+  });
+  const data = await parseJson<{
+    redactedText?: string;
+    map?: Record<string, string>;
+    entityCount?: number;
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return { redactedText: data.redactedText ?? '', map: data.map ?? {}, entityCount: data.entityCount };
+}
+
+/** Авто-псевдонимизация на сервере + LLM; в провайдер уходит только redacted-текст. */
+export async function postPedagogicalAnalyticsLlm(
+  sessionId: number,
+  body?: {
+    maxTokens?: number;
+    /** Текущий черновик с клиента (если ещё не сохранён в сессию). */
+    sourcePlain?: string;
+    /** По одному фрагменту на педагога (строка Excel); авто-ПДн на сервере обходит каждый блок отдельно. */
+    sourceBlocks?: string[];
+    extraEntities?: PedagogicalPiiEntityDraft[];
+  }
+): Promise<{
+  replyRedacted: string;
+  replyPlain: string;
+  provider?: string;
+  session: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState };
+}> {
+  const payload: Record<string, unknown> = {};
+  if (body?.maxTokens != null) payload.maxTokens = body.maxTokens;
+  if (body?.sourcePlain != null && body.sourcePlain.trim()) payload.sourcePlain = body.sourcePlain.trim();
+  if (body?.sourceBlocks?.length) {
+    payload.sourceBlocks = body.sourceBlocks.map((s) => String(s ?? '')).filter((s) => s.trim());
+  }
+  if (body?.extraEntities?.length) {
+    payload.extraEntities = body.extraEntities
+      .filter((e) => e.value.trim())
+      .map((e) => ({ type: e.type, value: e.value.trim() }));
+  }
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${sessionId}/llm`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{
+    ok?: boolean;
+    replyRedacted?: string;
+    replyPlain?: string;
+    provider?: string;
+    session?: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState };
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.session || data.replyPlain == null) throw new Error('Нет ответа сессии');
+  return {
+    replyRedacted: data.replyRedacted ?? '',
+    replyPlain: data.replyPlain ?? '',
+    provider: data.provider,
+    session: data.session,
+  };
+}
+
+/** Один педагог по индексу в sourceBlocks; для прогресс-бара — вызывать по очереди с restart при index === 0. */
+export async function postPedagogicalLlmTeacher(
+  sessionId: number,
+  body: {
+    index: number;
+    restart?: boolean;
+    sourceBlocks?: string[];
+    extraEntities?: PedagogicalPiiEntityDraft[];
+    maxTokens?: number;
+  },
+): Promise<{ session: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState } }> {
+  const payload: Record<string, unknown> = {
+    index: body.index,
+    restart: body.restart === true,
+  };
+  if (body.sourceBlocks?.length) {
+    payload.sourceBlocks = body.sourceBlocks.map((s) => String(s ?? '')).filter((s) => s.trim());
+  }
+  if (body.extraEntities?.length) {
+    payload.extraEntities = body.extraEntities
+      .filter((e) => e.value.trim())
+      .map((e) => ({ type: e.type, value: e.value.trim() }));
+  }
+  if (body.maxTokens != null) payload.maxTokens = body.maxTokens;
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${sessionId}/llm-teacher`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{
+    session?: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState };
+    error?: string;
+    message?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.session) throw new Error('Нет ответа сессии');
+  return { session: data.session };
+}
+
+/** Параллельная обработка всех педагогов на сервере (пул). */
+export async function postPedagogicalLlmTeachersBatch(
+  sessionId: number,
+  body?: {
+    sourceBlocks?: string[];
+    extraEntities?: PedagogicalPiiEntityDraft[];
+    maxTokens?: number;
+    /** Степень параллелизма на сервере (1–5). */
+    parallel?: number;
+    /** Если задано — пересчитать только эти индексы педагогов. */
+    selectedIndices?: number[];
+  },
+): Promise<{
+  ok: boolean;
+  message?: string;
+  session: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState };
+}> {
+  const payload: Record<string, unknown> = {};
+  if (body?.sourceBlocks?.length) {
+    payload.sourceBlocks = body.sourceBlocks.map((s) => String(s ?? '')).filter((s) => s.trim());
+  }
+  if (body?.extraEntities?.length) {
+    payload.extraEntities = body.extraEntities
+      .filter((e) => e.value.trim())
+      .map((e) => ({ type: e.type, value: e.value.trim() }));
+  }
+  if (body?.maxTokens != null) payload.maxTokens = body.maxTokens;
+  if (body?.parallel != null) payload.parallel = body.parallel;
+  if (body?.selectedIndices?.length) {
+    payload.selectedIndices = body.selectedIndices
+      .map((v) => Number(v))
+      .filter((v) => Number.isFinite(v) && v >= 0)
+      .map((v) => Math.floor(v));
+  }
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${sessionId}/llm-teachers-batch`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{
+    ok?: boolean;
+    message?: string;
+    session?: { id: number; title: string; updated_at?: string; state: PedagogicalAnalyticsState };
+    error?: string;
+  }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  if (!data.session) throw new Error('Нет ответа сессии');
+  return { ok: data.ok !== false, message: data.message, session: data.session };
+}
+
+export async function deletePedagogicalSession(id: number): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${id}`, {
+    method: 'DELETE',
+    headers: adminHeaders(),
+  });
+  const data = await parseJson<{ error?: string; message?: string }>(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+}
+
+export async function postPedagogicalNotify(
+  sessionId: number,
+  body: {
+    consent: boolean;
+    emails?: string[];
+    maxWebhookUrl?: string;
+    subject?: string;
+    html?: string;
+    text?: string;
+    /** Текст для вебхука; по умолчанию без расшифровки токенов (как в сессии). */
+    maxText?: string;
+    detokenizeEmail?: boolean;
+    maxDetokenize?: boolean;
+  }
+): Promise<{
+  ok: boolean;
+  smtp_configured?: boolean;
+  results: {
+    email: { sent: number; failed: { to: string; error: string }[] };
+    max: { ok: boolean; detail: string | null };
+  };
+}> {
+  const res = await apiFetch(`${API_BASE}/api/pedagogical-analytics-sessions/${sessionId}/notify`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<
+    { ok?: boolean; results?: unknown; error?: string; message?: string } & Record<string, unknown>
+  >(res);
+  if (!res.ok) throw new Error(data.message || data.error || res.statusText);
+  return data as {
+    ok: boolean;
+    results: {
+      email: { sent: number; failed: { to: string; error: string }[] };
+      max: { ok: boolean; detail: string | null };
+    };
+  };
 }
 
 /** Компиляция и вывод по всем текстовым ответам на один вопрос (ИИ — если OPENAI_API_KEY на функции). */
@@ -1016,4 +1548,10 @@ export function publicFormUrl(accessLink: string): string {
 export function directorSurveyUrl(directorToken: string): string {
   const enc = encodeURIComponent(directorToken);
   return `${clientAppBase()}/director/${enc}`;
+}
+
+/** Сводка для руководителя: список уроков → отдельные диаграммы по каждому уроку (феноменальные опросы). */
+export function directorSurveyLessonsUrl(directorToken: string): string {
+  const enc = encodeURIComponent(directorToken);
+  return `${clientAppBase()}/director/${enc}/lessons`;
 }

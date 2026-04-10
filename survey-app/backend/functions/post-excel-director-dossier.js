@@ -9,6 +9,19 @@ function truncate(s, n) {
 
 const MAX_PACKETS = 8;
 const MAX_FACTS_LEN = 5500;
+const LLM_RATE_LIMIT_RETRIES = 3;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRateLimitError(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429) return true;
+  const d = String(res.detail || '');
+  return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted/i.test(d);
+}
 
 async function fetchDossierFromLlm(packets, sharedCodebook) {
   const codebook = truncate(String(sharedCodebook || '').trim(), 4500);
@@ -48,7 +61,7 @@ ${
     `[СЕГМЕНТЫ — JSON]\n${JSON.stringify(compact, null, 0)}`;
 
   try {
-    const res = await chatCompletion(
+    let res = await chatCompletion(
       [
         { role: 'system', content: system },
         { role: 'user', content: userBlock },
@@ -60,14 +73,39 @@ ${
         jsonObject: true,
       },
     );
+    for (let attempt = 0; attempt < LLM_RATE_LIMIT_RETRIES && !res.ok && isRateLimitError(res); attempt++) {
+      const waitMs = 2500 * 2 ** attempt;
+      await sleep(waitMs);
+      res = await chatCompletion(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: userBlock },
+        ],
+        {
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          maxTokens: 8000,
+          temperature: 0.38,
+          jsonObject: true,
+        },
+      );
+    }
     if (!res.ok) {
       if (res.kind === 'no_key') return { kind: 'no_key' };
-      const detail =
+      let detail =
         res.kind === 'both_failed'
           ? res.detail
           : isOpenAiUnsupportedRegion(res.status, res.detail)
             ? formatGeoBlockHint(res.status, res.detail)
             : res.detail;
+      if (isRateLimitError(res)) {
+        detail = [
+          'Провайдер модели временно ограничил частоту запросов (HTTP 429). Подождите 1–2 минуты и нажмите кнопку снова; при повторениях сузьте срез (меньше сегментов) или проверьте квоту/тариф API.',
+          '',
+          String(detail || '').trim(),
+        ]
+          .filter(Boolean)
+          .join('\n');
+      }
       return { kind: 'openai_error', detail };
     }
     const parsed = tryParseLlmJsonObject(res.text);
@@ -126,7 +164,7 @@ async function handlePostExcelDirectorDossier(_pool, event) {
     items: null,
     hint:
       llm.kind === 'no_key'
-        ? 'Нет ключей LLM: задайте DEEPSEEK_API_KEY + LLM_PROVIDER=deepseek, или OPENAI_API_KEY, или YANDEX_* для YandexGPT (см. BACKEND_AND_API.md).'
+        ? 'Нет ключей LLM: задайте GIGACHAT_CREDENTIALS + при необходимости LLM_PROVIDER=gigachat, или OPENAI_API_KEY, или YANDEX_* для YandexGPT (см. BACKEND_AND_API.md).'
         : truncate(llm.detail, 1200),
   });
 }

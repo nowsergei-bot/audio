@@ -27,6 +27,10 @@ function markDone(accessLink: string) {
   localStorage.setItem(DONE_PREFIX + accessLink, '1');
 }
 
+function clearDone(accessLink: string) {
+  localStorage.removeItem(DONE_PREFIX + accessLink);
+}
+
 function initialAnswers(questions: Question[]): Record<number, string | number | string[]> {
   const acc: Record<number, string | number | string[]> = {};
   for (const q of questions) {
@@ -84,6 +88,7 @@ export default function PublicForm() {
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(() => alreadyDone(accessLink));
   const [submitting, setSubmitting] = useState(false);
+  const allowMultipleResponses = survey?.allow_multiple_responses === true;
 
   useEffect(() => {
     setDone(alreadyDone(accessLink));
@@ -98,6 +103,10 @@ export default function PublicForm() {
         const s = await getPublicSurvey(accessLink);
         if (cancelled) return;
         setSurvey(s);
+        if (s.allow_multiple_responses === true) {
+          clearDone(accessLink);
+          setDone(false);
+        }
         setAnswers(initialAnswers(s.questions || []));
         setOtherTexts({});
       } catch (e) {
@@ -147,7 +156,11 @@ export default function PublicForm() {
     try {
       const rid = getRespondentId(accessLink);
       await submitResponse(accessLink, rid, payload);
-      markDone(accessLink);
+      if (!allowMultipleResponses) {
+        markDone(accessLink);
+      } else {
+        clearDone(accessLink);
+      }
       setDone(true);
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка отправки');
@@ -260,6 +273,21 @@ export default function PublicForm() {
               </motion.div>
               <h1 style={{ marginTop: '0.35rem' }}>Спасибо!</h1>
               <p className="muted">Ваши ответы сохранены.</p>
+              {allowMultipleResponses && (
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={() => {
+                    setAnswers(initialAnswers(questions));
+                    setOtherTexts({});
+                    setErr(null);
+                    setDone(false);
+                  }}
+                >
+                  Пройти опрос еще раз
+                </button>
+              )}
             </motion.div>
           </div>
         </div>
@@ -287,7 +315,11 @@ export default function PublicForm() {
             >
               {survey?.title || 'Опрос'}
             </motion.h1>
-            {survey?.description && <p className="muted">{survey.description}</p>}
+            {survey?.description && (
+              <p className="muted" style={{ whiteSpace: 'pre-line' }}>
+                {survey.description}
+              </p>
+            )}
             <AnimatePresence>
               {err && (
                 <motion.p

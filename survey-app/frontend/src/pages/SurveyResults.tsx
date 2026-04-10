@@ -2,6 +2,7 @@ import { motion, MotionConfig } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  directorSurveyLessonsUrl,
   directorSurveyUrl,
   getResults,
   getSurveyExportRows,
@@ -146,7 +147,15 @@ export default function SurveyResults() {
                         target="_blank"
                         rel="noreferrer"
                       >
-                        сводка для руководителя
+                        сводка для руководителя (все ответы)
+                      </a>
+                      {' · '}
+                      <a
+                        href={directorSurveyLessonsUrl(data.survey.director_token)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        по урокам
                       </a>
                     </>
                   ) : null}
@@ -177,16 +186,28 @@ export default function SurveyResults() {
                 </Link>
               </motion.div>
               {data.survey.director_token ? (
-                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                  <a
-                    href={directorSurveyUrl(data.survey.director_token)}
-                    className="btn"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ссылка для руководителя
-                  </a>
-                </motion.div>
+                <>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                    <a
+                      href={directorSurveyUrl(data.survey.director_token)}
+                      className="btn"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Сводка для руководителя (все ответы)
+                    </a>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                    <a
+                      href={directorSurveyLessonsUrl(data.survey.director_token)}
+                      className="btn"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Сводка по урокам
+                    </a>
+                  </motion.div>
+                </>
               ) : null}
               <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                 <Link to={`/surveys/${surveyId}/edit`} className="btn">

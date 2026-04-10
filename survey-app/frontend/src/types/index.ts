@@ -28,6 +28,9 @@ export interface Survey {
   created_by: number | null;
   status: SurveyStatus;
   access_link: string;
+  allow_multiple_responses?: boolean;
+  /** false — в БД нет колонки, настройка не сохраняется (нужна миграция). */
+  allow_multiple_responses_supported?: boolean;
   /** Секрет для страницы «для директора» (не путать с access_link формы). */
   director_token?: string | null;
   media?: { photos?: { src: string; name?: string }[] };
@@ -266,6 +269,38 @@ export interface ResultsPayload {
   /** Если ответ пришёл с POST /results-filter — какие условия применены */
   filters_applied?: AnalyticsFilter[];
   workbooks?: SurveyWorkbook[];
+  /** Срез по одному уроку (публичная ссылка директора с lesson_key) */
+  lesson_key?: string;
+  lesson_filter_active?: boolean;
+}
+
+/** Урок для сводки директора по феноменальным опросам (группировка ответов родителей) */
+export interface DirectorLessonGroup {
+  lesson_key: string;
+  teacher: string;
+  class_label: string;
+  lesson_code: string;
+  response_count: number;
+}
+
+export type DirectorLessonSplitMode =
+  | 'triple'
+  | 'code_teacher'
+  | 'code_class'
+  | 'code_only'
+  | 'entire_survey';
+
+export interface DirectorLessonGroupsPayload {
+  survey: { id: number; title: string; status: SurveyStatus };
+  lesson_split: {
+    source: string;
+    mode: DirectorLessonSplitMode;
+    teacher_question_id: number | null;
+    class_question_id: number | null;
+    lesson_code_question_id: number | null;
+  };
+  groups: DirectorLessonGroup[];
+  hint?: string;
 }
 
 export type InsightTone = 'positive' | 'neutral' | 'attention' | 'negative';
@@ -318,6 +353,8 @@ export interface InsightRelation {
 
 export interface AiInsightsPayload {
   source: string;
+  /** Если нейросеть не ответила, краткая причина (для админов; ключи не раскрываются). */
+  llm_error?: string;
   dashboard: InsightDashboard;
   relations?: InsightRelation[];
   narrative: string | null;
@@ -394,6 +431,147 @@ export interface SurveyExportRowsPayload {
     created_at: string;
     answers: Record<number, unknown>;
   }[];
+}
+
+/** Слияние ответов родителей (опрос) со строками чек-листа педагогов через LLM на сервере. */
+export interface PhenomenalMergeRow {
+  parent_row_index: number;
+  teacher_row_index: number | null;
+  confidence: number;
+  reason: string;
+  parent: {
+    created_at: string;
+    respondent_id: string;
+    answers_labeled: Record<string, unknown>;
+  } | null;
+  teacher: {
+    lessonCode: string;
+    conductingTeachers: string;
+    subjects: string;
+    submittedAt: string | null;
+    methodologicalScore: number | null;
+    /** Все баллы по строкам чек-листа с тем же шифром (после сведения на сервере). */
+    methodologicalScores?: number[];
+    generalThoughts: string;
+    observerName: string;
+    rubricOrganizational?: string;
+    rubricGoalSetting?: string;
+    rubricTechnologies?: string;
+    rubricInformation?: string;
+    rubricGeneralContent?: string;
+    rubricCultural?: string;
+    rubricReflection?: string;
+  } | null;
+}
+
+export interface PhenomenalLessonsMergePayload {
+  survey: { id: number; title: string };
+  /** Откуда взяты строки родителей: опрос в системе или второй Excel */
+  parent_source?: 'survey' | 'excel';
+  confidence_threshold: number;
+  warnings: string[];
+  llm_provider: string | null;
+  stats: {
+    parent_rows: number;
+    teacher_rows: number;
+    merged_high_confidence: number;
+    uncertain_or_no_match: number;
+  };
+  merged: PhenomenalMergeRow[];
+  uncertain: PhenomenalMergeRow[];
+  unmatched_parent_indices: number[];
+  unmatched_teacher_indices: number[];
+}
+
+/** Тип сущности для псевдонимизации перед отправкой в LLM (префикс токена на сервере). */
+export type PedagogicalPiiEntityType = 'teacher' | 'phone' | 'address' | 'class' | 'child' | 'other';
+
+export interface PedagogicalPiiEntityDraft {
+  type: PedagogicalPiiEntityType;
+  value: string;
+}
+
+/** Последний ответ LLM по сессии (replyRedacted — как от модели; replyPlain — после подстановки на сервере). */
+export interface PedagogicalLlmLast {
+  at: string;
+  provider: string;
+  replyRedacted: string;
+  replyPlain: string;
+}
+
+/** Мета авто-псевдонимизации последнего прогона. */
+export interface PedagogicalPiiAutoMeta {
+  at: string;
+  entityCount: number;
+  autoDetectedCount: number;
+}
+
+/** Сегмент педагогической аналитики (один педагог / пара педагог+предмет). */
+export interface PedagogicalSegmentState {
+  id: string;
+  teacher: string;
+  subject?: string | null;
+  /** Текст от ИИ (после обработки). */
+  narrative?: string;
+  /** Ответ модели с токенами (для сводки сессии). */
+  narrativeRedacted?: string;
+  /** Статус генерации. */
+  genStatus?: 'pending' | 'running' | 'done' | 'failed';
+  /** Сообщение при genStatus === 'failed'. */
+  genError?: string;
+  /** Согласование методистом. */
+  reviewStatus?: 'pending' | 'approved' | 'skipped';
+  /** Строки-опоры из сводки (кратко). */
+  sourceSnippet?: string;
+}
+
+/** Состояние сессии «Педагогическая аналитика» (хранится в JSON на сервере). */
+export interface PedagogicalAnalyticsState {
+  v: 1;
+  step: 'draft' | 'generating' | 'review' | 'report' | 'sent';
+  job: {
+    status: 'idle' | 'running' | 'done' | 'failed';
+    done: number;
+    total: number;
+    error?: string | null;
+  };
+  segments: PedagogicalSegmentState[];
+  notification: {
+    emailEnabled: boolean;
+    maxWebhookUrl: string;
+    consent: boolean;
+    lastNotifiedAt?: string;
+  };
+  excelProjectId?: number | null;
+  /**
+   * Если задано (например после загрузки .xlsx), авто-ПДн на сервере собирается по каждому элементу отдельно, затем объединяется.
+   * Редактирование текста вручную в поле фактов сбрасывает этот режим (см. клиент).
+   */
+  sourceBlocks?: string[] | null;
+  /** token → исходное значение; в промпт LLM не передаётся. */
+  piiMap: Record<string, string>;
+  /** Текст для ИИ после замены ПДн на токены. */
+  redactedSource: string;
+  /** Черновик исходного текста с ПДн. */
+  sourcePlain: string;
+  piiEntitiesDraft: PedagogicalPiiEntityDraft[];
+  llmLast: PedagogicalLlmLast | null;
+  piiAuto: PedagogicalPiiAutoMeta | null;
+}
+
+export interface PedagogicalSessionListItem {
+  id: number;
+  title: string;
+  step: string | null;
+  updated_at: string;
+}
+
+export interface PedagogicalSessionPayload {
+  id: number;
+  title: string;
+  state: PedagogicalAnalyticsState;
+  created_at: string;
+  updated_at: string;
 }
 
 /** Автономная фотостена (не опрос) */

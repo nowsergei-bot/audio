@@ -6,6 +6,7 @@ export default function PublicLayout() {
   const wideCollage = /^\/photo-wall\/display\/?$/.test(pathname);
   const photoWallKiosk = wideCollage && new URLSearchParams(search).get('kiosk') === '1';
   const directorView = /^\/director\//.test(pathname);
+  const surveyFormView = /^\/s\//.test(pathname);
 
   return (
     <div
@@ -21,7 +22,7 @@ export default function PublicLayout() {
             <span className="public-pulse-word">Пульс</span>
             <PulseEkg size="brand" className="public-pulse-ekg-svg" />
           </div>
-          {!directorView && (
+          {!directorView && !surveyFormView && (
             <nav className="public-header-nav" aria-label="Разделы сайта">
               <Link to="/photo-wall" className="public-header-nav-primary">
                 Фотостена

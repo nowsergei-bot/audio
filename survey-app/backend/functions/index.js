@@ -1,8 +1,10 @@
 const { getPool } = require('./lib/pool');
+const { isSmtpConfigured } = require('./lib/mailer');
 const { json, normalizePath, getMethod, parseBody, CORS_HEADERS } = require('./lib/http');
 const { requireUser } = require('./lib/session-auth');
 const { handleGetSurveys } = require('./get-surveys');
 const { handleGetSurveyGroups } = require('./get-survey-groups');
+const { handlePostSurveyGroup } = require('./post-survey-group');
 const { handleCreateSurvey } = require('./create-survey');
 const { handleGetSurvey } = require('./get-survey');
 const { handleUpdateSurvey } = require('./update-survey');
@@ -27,6 +29,19 @@ const {
   handlePostExcelAnalyticsProject,
   handleDeleteExcelAnalyticsProject,
 } = require('./excel-analytics-projects');
+const {
+  handleGetPedagogicalSessions,
+  handleGetPedagogicalSession,
+  handlePostPedagogicalSession,
+  handleDeletePedagogicalSession,
+  handlePostPedagogicalNotify,
+} = require('./pedagogical-analytics-sessions');
+const { handlePostPedagogicalAnalyticsLlm } = require('./post-pedagogical-analytics-llm');
+const {
+  handlePostPedagogicalLlmTeacher,
+  handlePostPedagogicalLlmTeachersBatch,
+} = require('./post-pedagogical-analytics-llm-teachers');
+const { handlePostPedagogicalPiiTokenize } = require('./post-pedagogical-pii-tokenize');
 const { handlePostMultiSurveyAnalytics } = require('./post-multi-survey-analytics');
 const { handlePostTextQuestionInsights } = require('./post-text-question-insights');
 const { handlePostImportRows } = require('./post-import-rows');
@@ -35,6 +50,13 @@ const { handleDeleteWorkbook } = require('./delete-workbook');
 const { handlePostWorkbookAi } = require('./post-workbook-ai');
 const { handlePostSurveyFromWorkbook } = require('./post-survey-from-workbook');
 const { handleGetExportRows } = require('./get-export-rows');
+const { handlePostPhenomenalLessonsMerge } = require('./post-phenomenal-lessons-merge');
+const {
+  handlePostPhenomenalLessonsClusterReportBlocks,
+} = require('./post-phenomenal-lessons-cluster-report-blocks');
+const {
+  handlePostPhenomenalPreviewPulseComments,
+} = require('./post-phenomenal-preview-pulse-comments');
 const { handleGetAnalyticsFacets } = require('./get-analytics-facets');
 const { handlePostResultsFilter } = require('./post-results-filter');
 const { handleGetTextAnswers } = require('./get-text-answers');
@@ -58,11 +80,20 @@ const { handlePostPhotoWallClear } = require('./post-photo-wall-clear');
 const { handlePostPhotoWallApproveAll } = require('./post-photo-wall-approve-all');
 const {
   handleGetPublicDirectorResults,
+  handleGetPublicDirectorLessonGroups,
   handlePostPublicDirectorAiInsights,
 } = require('./get-public-director');
+const { handleGetPublicPhenomenalReport } = require('./get-public-phenomenal-report');
+const {
+  handleListPhenomenalReportProjects,
+  handlePostPhenomenalReportProject,
+  handleGetPhenomenalReportProject,
+  handlePutPhenomenalReportProject,
+  handleDeletePhenomenalReportProject,
+} = require('./phenomenal-report-projects');
 
 /** Смените при выкладке — по GET /api/ping видно, что в облаке свежий bundle */
-const DEPLOY_STAMP = '2026-04-06-excel-projects-migration-hint';
+const DEPLOY_STAMP = '2026-04-10-phenomenal-editor-pulse-layout';
 
 function segmentsFromPath(path) {
   return path
@@ -89,7 +120,12 @@ async function handlerImpl(event) {
 
   // Без БД и без ключа — чтобы отличить «шлюз + рантайм ок» от ошибок Postgres/таймаута
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'ping' && segs.length === 2) {
-    return json(200, { ok: true, service: 'survey-api', deploy_stamp: DEPLOY_STAMP });
+    return json(200, {
+      ok: true,
+      service: 'survey-api',
+      deploy_stamp: DEPLOY_STAMP,
+      smtp_configured: isSmtpConfigured(),
+    });
   }
 
   // Публичные маршруты (без API-ключа)
@@ -136,10 +172,21 @@ async function handlerImpl(event) {
     segs[1] === 'public' &&
     segs[2] === 'director' &&
     segs[3] &&
+    segs[4] === 'lesson-groups'
+  ) {
+    const pool = getPool();
+    return handleGetPublicDirectorLessonGroups(pool, segs[3]);
+  }
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'director' &&
+    segs[3] &&
     segs[4] === 'results'
   ) {
     const pool = getPool();
-    return handleGetPublicDirectorResults(pool, segs[3]);
+    return handleGetPublicDirectorResults(pool, segs[3], event);
   }
   if (
     method === 'POST' &&
@@ -151,6 +198,17 @@ async function handlerImpl(event) {
   ) {
     const pool = getPool();
     return handlePostPublicDirectorAiInsights(pool, segs[3], event);
+  }
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'public' &&
+    segs[2] === 'phenomenal-report' &&
+    segs[3] &&
+    segs.length === 4
+  ) {
+    const pool = getPool();
+    return handleGetPublicPhenomenalReport(pool, segs[3]);
   }
 
   // POST ответа по id опроса (ТЗ) — только для опубликованных, без ключа
@@ -177,6 +235,7 @@ async function handlerImpl(event) {
   const auth = await requireUser(pool, event);
   if (!auth.ok) return json(auth.code, { error: auth.error });
   const user = auth.user;
+  const sessionUser = auth.sessionUser || null;
 
   async function canAccessSurvey(surveyId) {
     if (!user) return false;
@@ -208,6 +267,9 @@ async function handlerImpl(event) {
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'survey-groups' && segs.length === 2) {
     return handleGetSurveyGroups(pool);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'survey-groups' && segs.length === 2) {
+    return handlePostSurveyGroup(pool, event, user);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'photo-wall' && segs[2] === 'photos' && segs.length === 3) {
     return handleGetPhotoWallPhotos(pool);
@@ -303,20 +365,87 @@ async function handlerImpl(event) {
     return handlePostExcelDashboardAi(pool, event);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs.length === 2) {
-    return handleGetExcelAnalyticsProjects(pool, user, auth.viaAdminKey);
+    return handleGetExcelAnalyticsProjects(pool, user, auth.viaAdminKey, sessionUser);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs[2] && segs.length === 3) {
     const pid = Number(segs[2]);
     if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
-    return handleGetExcelAnalyticsProject(pool, user, auth.viaAdminKey, pid);
+    return handleGetExcelAnalyticsProject(pool, user, auth.viaAdminKey, sessionUser, pid);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs.length === 2) {
-    return handlePostExcelAnalyticsProject(pool, user, auth.viaAdminKey, event);
+    return handlePostExcelAnalyticsProject(pool, user, auth.viaAdminKey, sessionUser, event);
   }
   if (method === 'DELETE' && segs[0] === 'api' && segs[1] === 'excel-analytics-projects' && segs[2] && segs.length === 3) {
     const pid = Number(segs[2]);
     if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
-    return handleDeleteExcelAnalyticsProject(pool, user, auth.viaAdminKey, pid);
+    return handleDeleteExcelAnalyticsProject(pool, user, auth.viaAdminKey, sessionUser, pid);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'pedagogical-analytics-sessions' && segs.length === 2) {
+    return handleGetPedagogicalSessions(pool, user, auth.viaAdminKey, sessionUser);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'pedagogical-analytics-sessions' && segs[2] && segs.length === 3) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handleGetPedagogicalSession(pool, user, auth.viaAdminKey, sessionUser, sid);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'pedagogical-analytics-sessions' && segs.length === 2) {
+    return handlePostPedagogicalSession(pool, user, auth.viaAdminKey, sessionUser, event);
+  }
+  if (method === 'DELETE' && segs[0] === 'api' && segs[1] === 'pedagogical-analytics-sessions' && segs[2] && segs.length === 3) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handleDeletePedagogicalSession(pool, user, auth.viaAdminKey, sessionUser, sid);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'pedagogical-analytics-sessions' &&
+    segs[2] &&
+    segs[3] === 'notify' &&
+    segs.length === 4
+  ) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handlePostPedagogicalNotify(pool, user, auth.viaAdminKey, sessionUser, sid, event);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'pedagogical-analytics-sessions' &&
+    segs[2] &&
+    segs[3] === 'llm' &&
+    segs.length === 4
+  ) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handlePostPedagogicalAnalyticsLlm(pool, user, auth.viaAdminKey, sessionUser, sid, event);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'pedagogical-analytics-sessions' &&
+    segs[2] &&
+    segs[3] === 'llm-teacher' &&
+    segs.length === 4
+  ) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handlePostPedagogicalLlmTeacher(pool, user, auth.viaAdminKey, sessionUser, sid, event);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'pedagogical-analytics-sessions' &&
+    segs[2] &&
+    segs[3] === 'llm-teachers-batch' &&
+    segs.length === 4
+  ) {
+    const sid = Number(segs[2]);
+    if (!Number.isFinite(sid)) return json(400, { error: 'Invalid id' });
+    return handlePostPedagogicalLlmTeachersBatch(pool, user, auth.viaAdminKey, sessionUser, sid, event);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'pedagogical-pii-tokenize' && segs.length === 2) {
+    return handlePostPedagogicalPiiTokenize(pool, user, auth.viaAdminKey, sessionUser, event);
   }
   if (method === 'POST' && segs[0] === 'api' && segs[1] === 'surveys' && segs.length === 2) {
     return handleCreateSurvey(pool, event, user);
@@ -370,6 +499,66 @@ async function handlerImpl(event) {
     if (ok === null) return json(404, { error: 'Not found' });
     if (!ok) return json(403, { error: 'Forbidden' });
     return handleGetExportRows(pool, id);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'phenomenal-lessons' && segs[2] === 'merge' && segs.length === 3) {
+    return handlePostPhenomenalLessonsMerge(pool, event, canAccessSurvey);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'phenomenal-lessons' &&
+    segs[2] === 'cluster-report-blocks' &&
+    segs.length === 3
+  ) {
+    return handlePostPhenomenalLessonsClusterReportBlocks(pool, event);
+  }
+  if (
+    method === 'POST' &&
+    segs[0] === 'api' &&
+    segs[1] === 'phenomenal-lessons' &&
+    segs[2] === 'preview-pulse-comments' &&
+    segs.length === 3
+  ) {
+    return handlePostPhenomenalPreviewPulseComments(pool, event, canAccessSurvey);
+  }
+  if (method === 'GET' && segs[0] === 'api' && segs[1] === 'phenomenal-report-projects' && segs.length === 2) {
+    return handleListPhenomenalReportProjects(pool, user);
+  }
+  if (method === 'POST' && segs[0] === 'api' && segs[1] === 'phenomenal-report-projects' && segs.length === 2) {
+    return handlePostPhenomenalReportProject(pool, user, event);
+  }
+  if (
+    method === 'GET' &&
+    segs[0] === 'api' &&
+    segs[1] === 'phenomenal-report-projects' &&
+    segs[2] &&
+    segs.length === 3
+  ) {
+    const pid = Number(segs[2]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handleGetPhenomenalReportProject(pool, user, pid);
+  }
+  if (
+    method === 'PUT' &&
+    segs[0] === 'api' &&
+    segs[1] === 'phenomenal-report-projects' &&
+    segs[2] &&
+    segs.length === 3
+  ) {
+    const pid = Number(segs[2]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handlePutPhenomenalReportProject(pool, user, pid, event);
+  }
+  if (
+    method === 'DELETE' &&
+    segs[0] === 'api' &&
+    segs[1] === 'phenomenal-report-projects' &&
+    segs[2] &&
+    segs.length === 3
+  ) {
+    const pid = Number(segs[2]);
+    if (!Number.isFinite(pid)) return json(400, { error: 'Invalid id' });
+    return handleDeletePhenomenalReportProject(pool, user, pid);
   }
   if (method === 'GET' && segs[0] === 'api' && segs[1] === 'surveys' && segs[2] && segs[3] === 'text-answers' && segs.length === 4) {
     const id = Number(segs[2]);

@@ -75,15 +75,17 @@ async function fetchLlmNarrative(snapshot) {
 
   try {
     const res = await chatCompletion(messages, { model, maxTokens: 2000, temperature: 0.4 });
-    if (!res.ok || typeof res.text !== 'string') return null;
+    if (!res.ok || typeof res.text !== 'string') {
+      return { text: null, llmError: res.detail || res.kind || 'LLM недоступна' };
+    }
     const text = res.text.trim();
-    return text || null;
-  } catch {
-    return null;
+    return { text: text || null, llmError: null };
+  } catch (e) {
+    return { text: null, llmError: e instanceof Error ? e.message : String(e) };
   }
 }
 
-async function runAiInsights(pool, surveyId, event) {
+async function runAiInsights(pool, surveyId, event, opts = {}) {
   const body = parseBody(event) || {};
   const filters = normalizeFiltersFromBody(body);
 
@@ -91,7 +93,9 @@ async function runAiInsights(pool, surveyId, event) {
   if (!survey) return json(404, { error: 'Not found' });
 
   let responseIds;
-  if (filters.length) {
+  if (opts.presetResponseIds instanceof Set) {
+    responseIds = opts.presetResponseIds;
+  } else if (filters.length) {
     const resolved = await resolveFilteredResponseIds(pool, surveyId, survey.questions, filters);
     responseIds = resolved === null ? undefined : resolved;
   }
@@ -106,9 +110,9 @@ async function runAiInsights(pool, surveyId, event) {
   let narrative = buildHeuristicNarrative(snapshot);
   let source = 'heuristic';
 
-  const llm = await fetchLlmNarrative(snapshot);
-  if (llm) {
-    narrative = llm;
+  const llmOut = await fetchLlmNarrative(snapshot);
+  if (llmOut.text) {
+    narrative = llmOut.text;
     source = 'llm_hybrid';
   }
 
@@ -116,6 +120,7 @@ async function runAiInsights(pool, surveyId, event) {
 
   return json(200, {
     source,
+    llm_error: llmOut.llmError || undefined,
     dashboard,
     relations,
     narrative,

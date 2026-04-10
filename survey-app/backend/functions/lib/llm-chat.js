@@ -1,7 +1,42 @@
 /**
- * Вызов чат-модели: DeepSeek (OpenAI-совместимый API), OpenAI, YandexGPT.
+ * Вызов чат-модели: GigaChat (OAuth + OpenAI-совместимый /chat/completions), OpenAI/OpenRouter, YandexGPT.
  * Сообщения в формате OpenAI: { role: 'system'|'user'|'assistant', content: string }
  */
+
+const crypto = require('crypto');
+const dns = require('dns');
+
+/** Снижает «fetch failed» в облаке, когда IPv6 маршрутизируется некорректно (undici/Node). */
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* ignore */
+}
+
+function normalizeFetchError(e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  const c =
+    e && typeof e === 'object' && 'cause' in e && e.cause instanceof Error ? ` (${e.cause.message})` : '';
+  const s = `${msg}${c}`.trim();
+  return s || 'Сетевая ошибка при запросе к API';
+}
+
+/** Только GigaChat: при GIGACHAT_TLS_INSECURE=1 — не проверять сертификат (отладка; в проде по возможности не включать). */
+let gigaInsecureDispatcher = null;
+function gigaFetch(url, init) {
+  try {
+    const undici = require('undici');
+    if (process.env.GIGACHAT_TLS_INSECURE === '1') {
+      if (!gigaInsecureDispatcher) {
+        gigaInsecureDispatcher = new undici.Agent({ connect: { rejectUnauthorized: false } });
+      }
+      return undici.fetch(url, { ...init, dispatcher: gigaInsecureDispatcher });
+    }
+    return undici.fetch(url, init);
+  } catch {
+    return fetch(url, init);
+  }
+}
 
 function isOpenAiUnsupportedRegion(status, detail) {
   if (Number(status) !== 403) return false;
@@ -13,6 +48,15 @@ function isOpenAiUnsupportedRegion(status, detail) {
     d.includes('not supported') ||
     d.includes('unsupported_country')
   );
+}
+
+/** Ответ провайдера по лимиту частоты / квоте (для fallback на другой API). */
+function isRateLimitFailure(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429) return true;
+  const d = String(res.detail || '');
+  return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted|quota|лимит/i.test(d);
 }
 
 /** Убирает BOM/пробелы — частая причина 401 при вставке ключа из консоли. */
@@ -35,60 +79,189 @@ function normalizeApiKey(raw) {
   return s.replace(/\r/g, '').trim();
 }
 
-function hasDeepSeekKey() {
-  return Boolean(normalizeApiKey(process.env.DEEPSEEK_API_KEY));
+/** Ключ авторизации из кабинета GigaChat (Base64 от client_id:client_secret) или пара id+secret. */
+function gigaChatAuthorizationHeader() {
+  const raw = normalizeApiKey(
+    process.env.GIGACHAT_CREDENTIALS || process.env.GIGACHAT_AUTHORIZATION_KEY,
+  );
+  if (raw) {
+    if (raw.toLowerCase().startsWith('basic ')) return raw;
+    return `Basic ${raw}`;
+  }
+  const id = normalizeApiKey(process.env.GIGACHAT_CLIENT_ID);
+  const secret = normalizeApiKey(process.env.GIGACHAT_CLIENT_SECRET);
+  if (id && secret) {
+    return `Basic ${Buffer.from(`${id}:${secret}`, 'utf8').toString('base64')}`;
+  }
+  return null;
+}
+
+function hasGigaChatCreds() {
+  return Boolean(gigaChatAuthorizationHeader());
+}
+
+function gigaChatOAuthUrl() {
+  return String(process.env.GIGACHAT_OAUTH_URL || 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth').replace(
+    /\/$/,
+    '',
+  );
+}
+
+function gigaChatChatBaseUrl() {
+  return String(
+    process.env.GIGACHAT_CHAT_BASE_URL || 'https://gigachat.devices.sberbank.ru/api/v1',
+  ).replace(/\/$/, '');
+}
+
+let gigaChatTokenCache = { token: null, expiresAtMs: 0 };
+
+async function getGigaChatAccessToken() {
+  const now = Date.now();
+  if (gigaChatTokenCache.token && gigaChatTokenCache.expiresAtMs > now + 10_000) {
+    return { ok: true, token: gigaChatTokenCache.token };
+  }
+  const authHeader = gigaChatAuthorizationHeader();
+  if (!authHeader) {
+    return {
+      ok: false,
+      kind: 'no_gigachat_key',
+      status: 0,
+      detail: 'Нет GIGACHAT_CREDENTIALS или GIGACHAT_CLIENT_ID+GIGACHAT_CLIENT_SECRET',
+    };
+  }
+  const rqUid = crypto.randomUUID();
+  const scope = String(process.env.GIGACHAT_SCOPE || 'GIGACHAT_API_PERS').trim();
+  let r;
+  try {
+    r = await gigaFetch(gigaChatOAuthUrl(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        RqUID: rqUid,
+        Authorization: authHeader,
+      },
+      body: `scope=${encodeURIComponent(scope)}`,
+    });
+  } catch (e) {
+    return { ok: false, kind: 'gigachat_oauth_error', status: 0, detail: normalizeFetchError(e) };
+  }
+
+  if (!r.ok) {
+    let detail = `HTTP ${r.status}`;
+    try {
+      const errBody = await r.json();
+      if (typeof errBody?.message === 'string') detail = `${detail}: ${errBody.message}`;
+      else if (errBody?.error) detail = `${detail}: ${JSON.stringify(errBody.error)}`;
+    } catch {
+      /* keep */
+    }
+    return { ok: false, kind: 'gigachat_oauth_error', status: r.status, detail };
+  }
+
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    return { ok: false, kind: 'gigachat_oauth_error', status: 200, detail: normalizeFetchError(e) };
+  }
+  const token = data.access_token;
+  if (!token || typeof token !== 'string') {
+    return {
+      ok: false,
+      kind: 'gigachat_oauth_error',
+      status: 200,
+      detail: 'Пустой access_token в ответе GigaChat OAuth',
+    };
+  }
+
+  let expiresAtMs = Date.now() + 25 * 60 * 1000;
+  if (typeof data.expires_at === 'number') {
+    expiresAtMs = data.expires_at * 1000 - 60_000;
+  } else if (typeof data.expires_in === 'number') {
+    expiresAtMs = Date.now() + data.expires_in * 1000 - 60_000;
+  }
+  gigaChatTokenCache = { token, expiresAtMs };
+  return { ok: true, token };
 }
 
 /**
- * DeepSeek — тот же контракт, что OpenAI /chat/completions.
- * @see https://api-docs.deepseek.com/
+ * GigaChat — OAuth, затем тот же контракт, что OpenAI /chat/completions.
+ * @see https://developers.sber.ru/docs/ru/gigachat/api/overview
  */
-async function fetchDeepSeekChat(messages, { maxTokens, temperature, jsonObject, model }) {
-  const key = normalizeApiKey(process.env.DEEPSEEK_API_KEY);
-  if (!key) {
-    return { ok: false, kind: 'no_deepseek_key', status: 0, detail: 'Нет DEEPSEEK_API_KEY' };
+async function fetchGigaChatChat(messages, { maxTokens, temperature, jsonObject, model }) {
+  const tRes = await getGigaChatAccessToken();
+  if (!tRes.ok) return tRes;
+
+  let m = String(model || process.env.GIGACHAT_MODEL || 'GigaChat').trim();
+  if (!m || m === 'gpt-4o-mini' || m.startsWith('gpt-') || m.startsWith('@') || m.includes('/')) {
+    m = process.env.GIGACHAT_MODEL || 'GigaChat';
   }
 
-  let m = String(model || process.env.DEEPSEEK_MODEL || 'deepseek-chat').trim();
-  if (!m || m === 'gpt-4o-mini' || m.startsWith('gpt-')) {
-    m = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const msgs = messages.map((x) => ({ ...x, content: String(x.content ?? '') }));
+  if (jsonObject) {
+    const sysJsonHint =
+      '\n\nОтветь строго одним JSON-объектом в тексте сообщения, без markdown и без пояснений вокруг.';
+    const sysIdx = msgs.findIndex((x) => x.role === 'system');
+    if (sysIdx >= 0) {
+      msgs[sysIdx] = { ...msgs[sysIdx], content: msgs[sysIdx].content + sysJsonHint };
+    } else {
+      msgs.unshift({ role: 'system', content: 'Ты отвечаешь только валидным JSON.' + sysJsonHint });
+    }
   }
 
-  const url = 'https://api.deepseek.com/v1/chat/completions';
   const body = {
     model: m,
-    messages,
+    messages: msgs,
     max_tokens: Math.min(maxTokens ?? 8192, 8192),
     temperature: temperature ?? 0.25,
   };
-  if (jsonObject) body.response_format = { type: 'json_object' };
 
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  let r;
+  try {
+    r = await gigaFetch(`${gigaChatChatBaseUrl()}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tRes.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, kind: 'gigachat_error', status: 0, detail: normalizeFetchError(e) };
+  }
 
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;
     try {
       const errBody = await r.json();
       if (errBody?.error?.message) detail = `${detail}: ${errBody.error.message}`;
+      else if (typeof errBody?.message === 'string') detail = `${detail}: ${errBody.message}`;
     } catch {
       /* keep */
     }
-    return { ok: false, kind: 'deepseek_error', status: r.status, detail };
+    return { ok: false, kind: 'gigachat_error', status: r.status, detail };
   }
 
-  const data = await r.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) {
-    return { ok: false, kind: 'deepseek_error', status: 200, detail: 'Пустой ответ DeepSeek' };
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    return { ok: false, kind: 'gigachat_error', status: 200, detail: normalizeFetchError(e) };
   }
-  return { ok: true, text: text.trim() };
+  const extracted = extractOpenAiStyleAssistantText(data.choices?.[0]?.message);
+  if (extracted.refusal) {
+    return {
+      ok: false,
+      kind: 'gigachat_error',
+      status: 200,
+      detail: `GigaChat отказался ответить: ${extracted.refusal.slice(0, 400)}`,
+    };
+  }
+  if (!extracted.text) {
+    return { ok: false, kind: 'gigachat_error', status: 200, detail: 'Пустой ответ GigaChat' };
+  }
+  return { ok: true, text: extracted.text };
 }
 
 function openAiBaseUrl() {
@@ -116,7 +289,7 @@ function formatGeoBlockHint(status, detail) {
     'OpenAI не обслуживает запросы из региона, где выполняется ваша Cloud Function (часто так бывает в РФ и в облаке Yandex).',
     '',
     'Что сделать:',
-    '1) Подключить DeepSeek (из РФ): DEEPSEEK_API_KEY с platform.deepseek.com и LLM_PROVIDER=deepseek.',
+    '1) Подключить GigaChat API: GIGACHAT_CREDENTIALS (или GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET) и при необходимости LLM_PROVIDER=gigachat — см. BACKEND_AND_API.md.',
     '2) Подключить YandexGPT: YANDEX_CLOUD_FOLDER_ID и YANDEX_API_KEY (Api-Key СА) или YANDEX_IAM_TOKEN (Bearer).',
     '3) Или направить OpenAI через прокси/Azure: OPENAI_BASE_URL=https://....../v1',
     '',
@@ -129,6 +302,34 @@ function toYandexMessages(messages) {
     role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
     text: String(m.content ?? ''),
   }));
+}
+
+/**
+ * Текст ассистента из ответа в стиле OpenAI: content строка или массив { type, text };
+ * refusal; иногда пустой content при tool_calls.
+ */
+function extractOpenAiStyleAssistantText(message) {
+  if (!message || typeof message !== 'object') {
+    return { text: '', refusal: null, hasToolCalls: false };
+  }
+  const ref = message.refusal;
+  if (typeof ref === 'string' && ref.trim()) {
+    return { text: '', refusal: ref.trim(), hasToolCalls: false };
+  }
+  const c = message.content;
+  if (typeof c === 'string') {
+    return { text: c.trim(), refusal: null, hasToolCalls: false };
+  }
+  if (Array.isArray(c)) {
+    const parts = [];
+    for (const p of c) {
+      if (!p || typeof p !== 'object') continue;
+      if (typeof p.text === 'string' && p.text) parts.push(p.text);
+    }
+    return { text: parts.join('').trim(), refusal: null, hasToolCalls: false };
+  }
+  const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+  return { text: '', refusal: null, hasToolCalls };
 }
 
 async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonObject }) {
@@ -144,15 +345,20 @@ async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonOb
   };
   if (jsonObject) body.response_format = { type: 'json_object' };
 
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      ...openRouterExtraHeaders(),
-    },
-    body: JSON.stringify(body),
-  });
+  let r;
+  try {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        ...openRouterExtraHeaders(),
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return { ok: false, kind: 'openai_error', status: 0, detail: normalizeFetchError(e) };
+  }
 
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;
@@ -165,12 +371,43 @@ async function fetchOpenAIChat(messages, { model, maxTokens, temperature, jsonOb
     return { ok: false, kind: 'openai_error', status: r.status, detail };
   }
 
-  const data = await r.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (typeof text !== 'string' || !text.trim()) {
-    return { ok: false, kind: 'openai_error', status: 200, detail: 'Пустой ответ модели' };
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    return { ok: false, kind: 'openai_error', status: 200, detail: normalizeFetchError(e) };
   }
-  return { ok: true, text: text.trim() };
+  const choice = data.choices?.[0];
+  const msg = choice?.message;
+  const extracted = extractOpenAiStyleAssistantText(msg);
+  if (extracted.refusal) {
+    return {
+      ok: false,
+      kind: 'openai_error',
+      status: 200,
+      detail: `Модель отказалась ответить: ${extracted.refusal.slice(0, 400)}`,
+    };
+  }
+  if (extracted.hasToolCalls) {
+    return {
+      ok: false,
+      kind: 'openai_error',
+      status: 200,
+      detail:
+        'Модель вернула вызов инструментов вместо текста. Укажите модель без function calling или другой OPENAI_MODEL.',
+    };
+  }
+  const text = extracted.text;
+  if (!text) {
+    const fr = choice?.finish_reason;
+    return {
+      ok: false,
+      kind: 'openai_error',
+      status: 200,
+      detail: fr ? `Пустой ответ модели (finish_reason: ${fr})` : 'Пустой ответ модели',
+    };
+  }
+  return { ok: true, text };
 }
 
 function yandexErrorDetail(status, errBody) {
@@ -217,23 +454,28 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
     ? { Authorization: `Bearer ${iamToken}` }
     : { Authorization: `Api-Key ${apiKey}` };
 
-  const r = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completion', {
-    method: 'POST',
-    headers: {
-      ...authHeaders,
-      'x-folder-id': folderId,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      modelUri,
-      completionOptions: {
-        stream: false,
-        temperature: temperature ?? 0.25,
-        maxTokens: Math.min(maxTokens ?? 3500, 8000),
+  let r;
+  try {
+    r = await fetch('https://llm.api.cloud.yandex.net/foundationModels/v1/completion', {
+      method: 'POST',
+      headers: {
+        ...authHeaders,
+        'x-folder-id': folderId,
+        'Content-Type': 'application/json',
       },
-      messages: yandexMessages,
-    }),
-  });
+      body: JSON.stringify({
+        modelUri,
+        completionOptions: {
+          stream: false,
+          temperature: temperature ?? 0.25,
+          maxTokens: Math.min(maxTokens ?? 3500, 8000),
+        },
+        messages: yandexMessages,
+      }),
+    });
+  } catch (e) {
+    return { ok: false, kind: 'yandex_error', status: 0, detail: normalizeFetchError(e) };
+  }
 
   if (!r.ok) {
     let detail = `HTTP ${r.status}`;
@@ -255,7 +497,12 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
     return { ok: false, kind: 'yandex_error', status: r.status, detail };
   }
 
-  const data = await r.json();
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    return { ok: false, kind: 'yandex_error', status: 200, detail: normalizeFetchError(e) };
+  }
   const text =
     data.result?.alternatives?.[0]?.message?.text ?? data.result?.alternatives?.[0]?.message?.Text;
   if (typeof text !== 'string' || !text.trim()) {
@@ -264,25 +511,39 @@ async function fetchYandexGptChat(messages, { maxTokens, temperature, jsonObject
   return { ok: true, text: text.trim() };
 }
 
+async function chatCompletion(messages, opts = {}) {
+  try {
+    return await runChatCompletion(messages, opts);
+  } catch (e) {
+    return { ok: false, kind: 'network', status: 0, detail: normalizeFetchError(e) };
+  }
+}
+
 /**
  * @param {Array<{role:string,content:string}>} messages
  * @param {{ model?: string, maxTokens?: number, temperature?: number, jsonObject?: boolean }} opts
  */
-async function chatCompletion(messages, opts = {}) {
+async function runChatCompletion(messages, opts = {}) {
   const provider = String(process.env.LLM_PROVIDER || 'auto').trim().toLowerCase();
   const tryYandexFirst = provider === 'yandex' || provider === 'yc' || provider === 'yandexgpt';
-  const tryDeepSeekFirst = provider === 'deepseek' || provider === 'deepseek-ai';
+  const tryGigaChatFirst = provider === 'gigachat' || provider === 'sber';
 
-  if (tryDeepSeekFirst) {
-    if (!hasDeepSeekKey()) {
+  if (tryGigaChatFirst) {
+    if (!hasGigaChatCreds()) {
       return {
         ok: false,
         kind: 'no_key',
-        detail: 'Задано LLM_PROVIDER=deepseek, но нет DEEPSEEK_API_KEY (ключ с platform.deepseek.com).',
+        detail:
+          'Задано LLM_PROVIDER=gigachat, но нет GIGACHAT_CREDENTIALS (или GIGACHAT_CLIENT_ID + GIGACHAT_CLIENT_SECRET).',
       };
     }
-    const d = await fetchDeepSeekChat(messages, opts);
-    return d.ok ? { ...d, provider: 'deepseek' } : d;
+    const g = await fetchGigaChatChat(messages, opts);
+    if (g.ok) return { ...g, provider: 'gigachat' };
+    if (isRateLimitFailure(g) && hasYandexLlmCreds()) {
+      const y = await fetchYandexGptChat(messages, opts);
+      if (y.ok) return { ...y, provider: 'yandex' };
+    }
+    return g;
   }
 
   if (tryYandexFirst && hasYandexLlmCreds()) {
@@ -301,9 +562,9 @@ async function chatCompletion(messages, opts = {}) {
     ) {
       const y = await fetchYandexGptChat(messages, opts);
       if (y.ok) return { ...y, provider: 'yandex' };
-      if (hasDeepSeekKey()) {
-        const d = await fetchDeepSeekChat(messages, opts);
-        if (d.ok) return { ...d, provider: 'deepseek' };
+      if (hasGigaChatCreds()) {
+        const g = await fetchGigaChatChat(messages, opts);
+        if (g.ok) return { ...g, provider: 'gigachat' };
       }
       return {
         ok: false,
@@ -312,17 +573,29 @@ async function chatCompletion(messages, opts = {}) {
         status: oa.status,
       };
     }
-    if (provider === 'auto' && hasDeepSeekKey()) {
-      const d = await fetchDeepSeekChat(messages, opts);
-      if (d.ok) return { ...d, provider: 'deepseek' };
+    if (provider === 'auto' && hasGigaChatCreds()) {
+      const g = await fetchGigaChatChat(messages, opts);
+      if (g.ok) return { ...g, provider: 'gigachat' };
+    }
+    /**
+     * Любая неуспешная попытка OpenRouter/OpenAI после GigaChat: пробуем YandexGPT
+     * (раньше Yandex вызывался только при 429 — из‑за этого при 401/5xx оставалась только эвристика на клиенте).
+     */
+    if (provider === 'auto' && hasYandexLlmCreds()) {
+      const y = await fetchYandexGptChat(messages, opts);
+      if (y.ok) return { ...y, provider: 'yandex' };
     }
     return { ...oa, provider: 'openai' };
   }
 
-  if (hasDeepSeekKey()) {
-    const d = await fetchDeepSeekChat(messages, opts);
-    if (d.ok) return { ...d, provider: 'deepseek' };
-    return d;
+  if (hasGigaChatCreds()) {
+    const g = await fetchGigaChatChat(messages, opts);
+    if (g.ok) return { ...g, provider: 'gigachat' };
+    if (isRateLimitFailure(g) && hasYandexLlmCreds()) {
+      const y = await fetchYandexGptChat(messages, opts);
+      if (y.ok) return { ...y, provider: 'yandex' };
+    }
+    return g;
   }
 
   if (hasYandexLlmCreds()) {
@@ -334,7 +607,7 @@ async function chatCompletion(messages, opts = {}) {
     ok: false,
     kind: 'no_key',
     detail:
-      'Нет ключа LLM: задайте DEEPSEEK_API_KEY (DeepSeek), или OPENAI_API_KEY, или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. Для дашборда Excel: LLM_PROVIDER=deepseek и DEEPSEEK_API_KEY — см. BACKEND_AND_API.md.',
+      'Нет ключа LLM: задайте GIGACHAT_CREDENTIALS (GigaChat API), или OPENAI_API_KEY (в т.ч. OpenRouter), или YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. См. BACKEND_AND_API.md.',
   };
 }
 
@@ -343,5 +616,6 @@ module.exports = {
   isOpenAiUnsupportedRegion,
   formatGeoBlockHint,
   hasYandexLlmCreds,
-  hasDeepSeekKey,
+  hasGigaChatCreds,
+  isRateLimitFailure,
 };

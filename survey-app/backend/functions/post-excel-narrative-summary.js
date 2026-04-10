@@ -1,6 +1,7 @@
 const { json, parseBody } = require('./lib/http');
 const { chatCompletion, isOpenAiUnsupportedRegion, formatGeoBlockHint } = require('./lib/llm-chat');
 const { tryParseLlmJsonObject } = require('./lib/parse-llm-json');
+const { isTransientLlmDetail } = require('./lib/llm-transient');
 
 function truncate(s, n) {
   const t = String(s ?? '');
@@ -14,6 +15,20 @@ function wordCountRu(s) {
     .filter(Boolean).length;
 }
 
+const LLM_RATE_LIMIT_RETRIES = 3;
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function isRateLimitError(res) {
+  if (!res || res.ok) return false;
+  const st = Number(res.status);
+  if (st === 429) return true;
+  const d = String(res.detail || '');
+  return /(^|\s)429(\s|:|$)|rate limit|too many requests|resource_exhausted/i.test(d);
+}
+
 function buildSystemStandard() {
   return `Ты — методический и управленческий аналитик. Ниже — **факты** из опроса или таблицы наблюдений (Excel). Текст читает **директор или завуч**: живой русский язык, без канцелярита про «систему» и без пересказа служебных пометок из выгрузки.
 
@@ -24,6 +39,12 @@ function buildSystemStandard() {
 - Числа в тексте: **округляй разумно** (обычно до одного знака после запятой или целые проценты). **Не** копируй длинные дроби вроде 4,58955223880597 — если такое есть во входе, скажи «единичные странные значения» или «около 4,6».
 - Если во входе **нет** достоверного календарного периода или явно сказано, что даты недостоверны — **не выдумывай даты**; опиши выборку без календаря («в текущей выборке ответов родителей…»).
 - Служебные заголовки вроде «ПАРАМЕТРЫ СРЕЗА» не цитируй; переформулируй: «в выборке учтены ответы по темам…», «отбор по полям анкеты…».
+
+**Тексты участников (обязательно, если во входе есть выдержки из открытых полей, рефлексии, комментариев):**
+- Включай в отчёт **короткие дословные фрагменты** в кавычках «…» — **только из блока фактов**, не придумывай.
+- Ориентир: **не меньше 3–5** таких цитат в полном тексте, если материала достаточно; если открытых текстов мало — столько, сколько реально есть.
+- Каждую цитату сопровождай пояснением контекста по смыслу пункта (название из фактов), без «вопрос N».
+- Не заменяй живые формулировки детей/участников одним нейтральным пересказом: там, где важна тональность и формулировка — опирайся на **слово ребёнка/участника из фактов**.
 
 Задача: **единый связный документ** — интерпретация и выводы для управления, не копипаст фактов списком. При малой выборке — короче, с оговоркой об ограниченности.
 
@@ -36,7 +57,7 @@ function buildSystemStandard() {
 3) Текстовая шкала (если есть): доли, смысл для практики.
 4) Разрезы по темам анкеты (класс, предмет и т.д. — **если они явно есть** в фактах); если в данных нет класса/предмета — так и скажи коротко, без фантазий.
 5) Педагоги по кодам/шифрам (если есть): сравнение нейтральное, без ярлыков личности.
-6) Смысл открытых ответов и рекомендаций из таблицы: темы, риски, сильные стороны.
+6) Смысл открытых ответов и рекомендаций из таблицы: темы, риски, сильные стороны — **с опорой на дословные выдержки** из п. «Тексты участников».
 7) Итог: 3–6 приоритетов для администрации и методслужбы; что отслеживать дальше — **без** перечисления «мониторить вопросы 3, 7, 9»; формулируй по смыслу критерия.
 
 Достоверность: цифры и цитаты — только из входа; ФИО педагогов — только из справочника шифр→ФИО или из данных, не выдумывать.
@@ -49,6 +70,11 @@ function buildSystemDeep() {
 
 Те же **стиль и запреты**, что в стандартном режиме: только русский; не тиражировать технический жаргон выгрузки; не нумеровать «вопрос N» — использовать названия критериев из фактов; не копировать длинные дроби; не указывать календарный период, если во входе нет правдоподобных дат или явно сказано об ошибке дат.
 
+**Тексты участников (обязательно, если во входе есть выдержки из открытых полей):**
+- Включай **много дословных фрагментов** в кавычках «…» — **только из фактов**, не придумывай.
+- Ориентир: **не менее 5–8** цитат в развёрнутом отчёте, если материала достаточно; если текстов мало — все доступные, с аккуратным контекстом.
+- Не своди живые ответы к одному обобщению: сопоставляй **разные голоса** из фактов (противоречия, тональность — по данным).
+
 Задача — **полный разбор** для директора/завуча: связно, с перекрёстными сопоставлениями и приоритетами. Не перечисляй факты подряд — осмысляй. При малой выборке — короче, с ограничениями обобщения.
 
 **Структура** (заголовки — отдельными строками, без #):
@@ -57,8 +83,8 @@ function buildSystemDeep() {
 3) Текстовая шкала (если есть).
 4) Разрезы по полям анкеты (если есть в фактах); иначе — одна честная фраза, без выдуманных измерений.
 5) Педагоги по шифрам (если есть) — нейтрально.
-6) Открытые ответы и смысл рекомендаций из таблицы.
-7) Синтез: 5–10 тезисов, где сходятся цифры, темы и тексты (только факты).
+6) Открытые ответы и смысл рекомендаций из таблицы — **с опорой на дословные выдержки** из п. «Тексты участников».
+7) Синтез: 5–10 тезисов, где сходятся цифры, темы и **цитаты респондентов** (только факты).
 8) Риски интерпретации (перекосы выборки — без новых цифр).
 9) Итог: приоритеты и что отслеживать — **формулировки по смыслу критериев**, не «мониторить вопросы 3, 7, 9».
 
@@ -67,7 +93,9 @@ function buildSystemDeep() {
 Ответь ОДНИМ JSON-объектом: {"narrative":"..."}. Без markdown вокруг JSON.`;
 }
 
-async function fetchNarrativeFromLlm(context) {
+const NARRATIVE_NETWORK_RETRIES = 3;
+
+async function fetchNarrativeFromLlmOnce(context) {
   const modeRaw = String(context.analysisMode || 'standard').toLowerCase();
   const isDeep = modeRaw === 'deep' || modeRaw === 'full';
 
@@ -100,13 +128,13 @@ ${isDeep ? 'Запрошен развёрнутый разбор текущей 
 
 ${filterSummary ? `[Как сузили выборку — переформулируй для читателя, без жаргона]\n${filterSummary}\n` : ''}
 ${userFocus ? `[Фокус пользователя]\n${userFocus}\n` : ''}
-[Факты — единственный источник цифр и цитат]
+[Факты — единственный источник цифр и цитат; открытые ответы участников цитируй дословно короткими фрагментами «…», как в системной инструкции]
 ${summary}
 ${extra ? `\n[Дополнительно: средние по педагогам и пунктам]\n${extra}` : ''}
 ${labels && labels !== '{}' ? `\n[Подписи полей]\n${labels}` : ''}`;
 
   try {
-    const res = await chatCompletion(
+    let res = await chatCompletion(
       [
         { role: 'system', content: system },
         { role: 'user', content: userBlock },
@@ -118,14 +146,39 @@ ${labels && labels !== '{}' ? `\n[Подписи полей]\n${labels}` : ''}`;
         jsonObject: true,
       },
     );
+    for (let attempt = 0; attempt < LLM_RATE_LIMIT_RETRIES && !res.ok && isRateLimitError(res); attempt++) {
+      const waitMs = 2500 * 2 ** attempt;
+      await sleep(waitMs);
+      res = await chatCompletion(
+        [
+          { role: 'system', content: system },
+          { role: 'user', content: userBlock },
+        ],
+        {
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          maxTokens: 8192,
+          temperature: isDeep ? 0.46 : 0.42,
+          jsonObject: true,
+        },
+      );
+    }
     if (!res.ok) {
       if (res.kind === 'no_key') return { kind: 'no_key' };
-      const detail =
+      let detail =
         res.kind === 'both_failed'
           ? res.detail
           : isOpenAiUnsupportedRegion(res.status, res.detail)
             ? formatGeoBlockHint(res.status, res.detail)
             : res.detail;
+      if (isRateLimitError(res)) {
+        detail = [
+          'Провайдер модели временно ограничил частоту запросов (HTTP 429). Подождите 1–2 минуты и нажмите кнопку снова; при повторениях сузьте срез или проверьте квоту/тариф API.',
+          '',
+          String(detail || '').trim(),
+        ]
+          .filter(Boolean)
+          .join('\n');
+      }
       return { kind: 'openai_error', detail };
     }
     const parsed = tryParseLlmJsonObject(res.text);
@@ -142,6 +195,22 @@ ${labels && labels !== '{}' ? `\n[Подписи полей]\n${labels}` : ''}`;
   } catch (e) {
     return { kind: 'openai_error', detail: String(e?.message || e) };
   }
+}
+
+/** Повтор при обрыве TLS/сети к OpenRouter/GigaChat/Sber (в Node часто «fetch failed»). */
+async function fetchNarrativeFromLlm(context) {
+  let last;
+  for (let attempt = 0; attempt < NARRATIVE_NETWORK_RETRIES; attempt++) {
+    if (attempt > 0) await sleep(1600 * attempt);
+    last = await fetchNarrativeFromLlmOnce(context);
+    if (last.kind === 'ok' || last.kind === 'no_key') return last;
+    if (last.kind === 'openai_error') {
+      if (!isTransientLlmDetail(last.detail) || attempt === NARRATIVE_NETWORK_RETRIES - 1) return last;
+    } else {
+      return last;
+    }
+  }
+  return last;
 }
 
 async function handlePostExcelNarrativeSummary(_pool, event) {
@@ -162,13 +231,17 @@ async function handlePostExcelNarrativeSummary(_pool, event) {
     });
   }
 
+  const fallbackHint =
+    llm.kind === 'no_key'
+      ? 'Нет ключей LLM на функции: OPENAI_API_KEY + для OpenRouter OPENAI_BASE_URL=https://openrouter.ai/api/v1 (и LLM_PROVIDER=openai), либо GIGACHAT_CREDENTIALS (GigaChat API), либо YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. После правок — новая версия функции. См. BACKEND_AND_API.md.'
+      : llm.kind === 'openai_error' && isTransientLlmDetail(llm.detail)
+        ? `Кратковременный сбой сети или провайдера модели (часто «fetch failed» при обрыве до GigaChat/OpenRouter). Уже пробовали повтор на сервере — подождите минуту и обновите срез или страницу. Технически: ${truncate(llm.detail, 800)}`
+        : truncate(llm.detail, 1200);
+
   return json(200, {
     source: 'fallback',
     narrative: null,
-    hint:
-      llm.kind === 'no_key'
-        ? 'Нет ключей LLM на функции: OPENAI_API_KEY + для OpenRouter OPENAI_BASE_URL=https://openrouter.ai/api/v1 (и LLM_PROVIDER=openai), либо DEEPSEEK_API_KEY, либо YANDEX_CLOUD_FOLDER_ID + YANDEX_API_KEY. После правок — новая версия функции. См. BACKEND_AND_API.md.'
-        : truncate(llm.detail, 1200),
+    hint: fallbackHint,
   });
 }
 

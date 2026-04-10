@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   createSurvey,
+  directorSurveyLessonsUrl,
   directorSurveyUrl,
   getSurvey,
   getSurveyGroups,
@@ -115,6 +116,8 @@ export default function SurveyBuilder() {
   const [surveyGroupId, setSurveyGroupId] = useState<number | ''>('');
   const [surveyGroups, setSurveyGroups] = useState<SurveyGroup[]>([]);
   const [status, setStatus] = useState<SurveyStatus>('draft');
+  const [allowMultipleResponses, setAllowMultipleResponses] = useState(false);
+  const [allowMultipleSupported, setAllowMultipleSupported] = useState(true);
   const [accessLink, setAccessLink] = useState('');
   const [directorToken, setDirectorToken] = useState<string | null>(null);
   const [questions, setQuestions] = useState<DraftQuestion[]>([]);
@@ -196,6 +199,8 @@ export default function SurveyBuilder() {
         setDescription(s.description);
         setSurveyGroupId(s.survey_group_id ?? '');
         setStatus(s.status);
+        setAllowMultipleResponses(s.allow_multiple_responses === true);
+        setAllowMultipleSupported(s.allow_multiple_responses_supported !== false);
         setAccessLink(s.access_link);
         setDirectorToken(s.director_token != null && s.director_token !== '' ? s.director_token : null);
         setQuestions((s.questions || []).map((q) => toDraft(q)));
@@ -319,6 +324,7 @@ export default function SurveyBuilder() {
         title,
         description,
         status,
+        allow_multiple_responses: allowMultipleResponses,
         access_link: accessLink || undefined,
         questions: payloadQuestions,
         media: { photos },
@@ -339,7 +345,13 @@ export default function SurveyBuilder() {
         }
       }
       setDirectorToken(s.director_token != null && s.director_token !== '' ? s.director_token : null);
-      navigate(`/surveys/${s.id}/edit`, { replace: true });
+      setAllowMultipleResponses(s.allow_multiple_responses === true);
+      if (typeof s.allow_multiple_responses_supported === 'boolean') {
+        setAllowMultipleSupported(s.allow_multiple_responses_supported);
+      }
+      if (!isEdit) {
+        navigate(`/surveys/${s.id}/edit`, { replace: true });
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Ошибка сохранения');
     } finally {
@@ -565,6 +577,23 @@ export default function SurveyBuilder() {
             </label>
           )}
         </div>
+        <label style={{ display: 'block', marginTop: '0.75rem' }}>
+          <input
+            type="checkbox"
+            checked={allowMultipleResponses}
+            disabled={!allowMultipleSupported}
+            onChange={(e) => setAllowMultipleResponses(e.target.checked)}
+            style={{ marginRight: 8 }}
+          />
+          Разрешить повторное прохождение одним респондентом
+        </label>
+        {!allowMultipleSupported && (
+          <p className="err" style={{ marginTop: '0.35rem', marginBottom: 0 }}>
+            В базе нет поля для этой настройки — галочка не сохранится. Выполните миграцию{' '}
+            <code style={{ fontSize: '0.9em' }}>backend/db/migrations/018_allow_multiple_responses.sql</code> в PostgreSQL,
+            затем перезагрузите страницу.
+          </p>
+        )}
         <p className="muted">
           Опрос принимает ответы только в статусе «Опубликован». Ссылка для респондентов:{' '}
           {accessLink ? (
@@ -575,30 +604,62 @@ export default function SurveyBuilder() {
             'сохраните опрос, чтобы увидеть токен'
           )}
         </p>
+        <p className="muted" style={{ marginTop: '0.35rem' }}>
+          {!allowMultipleSupported
+            ? 'Пока миграция не применена, повторное прохождение в базе не включается.'
+            : allowMultipleResponses
+              ? 'Повторные отправки включены: респондент сможет пройти опрос несколько раз.'
+              : 'Повторные отправки выключены: респондент может отправить ответы только один раз с этого устройства.'}
+        </p>
         {isEdit && directorToken && (
-          <p className="muted" style={{ marginTop: '0.5rem' }}>
-            Сводка для руководителя (без входа в админку):{' '}
-            <a href={directorSurveyUrl(directorToken)} target="_blank" rel="noreferrer">
-              открыть
-            </a>
-            {' · '}
-            <button
-              type="button"
-              className="muted"
-              style={{
-                padding: 0,
-                border: 'none',
-                background: 'none',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                font: 'inherit',
-                color: 'inherit',
-              }}
-              onClick={() => void navigator.clipboard.writeText(directorSurveyUrl(directorToken))}
-            >
-              скопировать ссылку
-            </button>
-          </p>
+          <div className="muted" style={{ marginTop: '0.5rem' }}>
+            <p style={{ margin: '0 0 0.35rem' }}>
+              Общая сводка для руководителя (все ответы, диаграммы целиком):{' '}
+              <a href={directorSurveyUrl(directorToken)} target="_blank" rel="noreferrer">
+                открыть
+              </a>
+              {' · '}
+              <button
+                type="button"
+                className="muted"
+                style={{
+                  padding: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  font: 'inherit',
+                  color: 'inherit',
+                }}
+                onClick={() => void navigator.clipboard.writeText(directorSurveyUrl(directorToken))}
+              >
+                скопировать ссылку
+              </button>
+            </p>
+            <p style={{ margin: 0 }}>
+              Сводка по урокам (список уроков → ответы родителей по каждому; удобно для феноменальных опросов):{' '}
+              <a href={directorSurveyLessonsUrl(directorToken)} target="_blank" rel="noreferrer">
+                открыть
+              </a>
+              {' · '}
+              <button
+                type="button"
+                className="muted"
+                style={{
+                  padding: 0,
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  font: 'inherit',
+                  color: 'inherit',
+                }}
+                onClick={() => void navigator.clipboard.writeText(directorSurveyLessonsUrl(directorToken))}
+              >
+                скопировать ссылку
+              </button>
+            </p>
+          </div>
         )}
       </div>
 

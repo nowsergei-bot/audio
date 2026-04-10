@@ -24,7 +24,11 @@ export const COLUMN_ROLE_OPTIONS: { value: ColumnRole; label: string; group: str
     label: 'Исключить из дашборда',
     group: 'Дополнительно',
   },
-  { value: 'id_row', label: 'ID строки (редко нужен)', group: 'Дополнительно' },
+  {
+    value: 'id_row',
+    label: 'Номер строки в источнике (одинаковый № = одна запись для счётчиков и графиков)',
+    group: 'Дополнительно',
+  },
   { value: 'date', label: 'Дата', group: 'Время и подпись' },
   { value: 'row_label', label: 'Подпись строки', group: 'Время и подпись' },
   { value: 'filter_teacher_code', label: 'Код/шифр педагога', group: 'Фильтры' },

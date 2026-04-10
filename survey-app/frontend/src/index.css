@@ -382,6 +382,44 @@ body {
   padding: 1.1rem 1.25rem;
 }
 
+.survey-groups-admin-add-form {
+  margin: 1rem 0 0;
+  padding: 0.85rem 0 0;
+  border-top: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+.survey-groups-admin-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 1rem;
+}
+
+.survey-groups-admin-add-field {
+  flex: 1 1 12rem;
+  min-width: min(100%, 10rem);
+  margin: 0;
+}
+
+.survey-groups-admin-add-field--sort {
+  flex: 0 1 8rem;
+  max-width: 10rem;
+}
+
+.survey-groups-admin-add-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 0.1rem;
+}
+
+.survey-groups-admin-add-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  max-width: 48rem;
+}
+
 .survey-groups-admin-ref-list {
   margin: 0.5rem 0 0;
   padding-left: 1.25rem;
@@ -5067,6 +5105,96 @@ body {
   min-height: 0;
 }
 
+.excel-filter-distribution-mini--clickable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.excel-filter-distribution-mini--clickable:hover {
+  border-color: rgba(17, 94, 89, 0.35);
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12);
+}
+
+.excel-filter-distribution-mini--clickable:focus-visible {
+  outline: 2px solid #115e59;
+  outline-offset: 2px;
+}
+
+.excel-filter-dist-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.excel-filter-dist-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  border: none;
+  margin: 0;
+  padding: 0;
+  background: rgba(17, 24, 39, 0.35);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+}
+
+.excel-filter-dist-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(920px, 100%);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.1rem 1.15rem;
+  overflow: hidden;
+}
+
+.excel-filter-dist-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  flex-shrink: 0;
+}
+
+.excel-filter-dist-modal-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--page-fg);
+}
+
+.excel-filter-dist-modal-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.excel-filter-dist-modal-close {
+  flex-shrink: 0;
+}
+
+.excel-filter-dist-modal-chart-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
 .excel-pulse-vs-notes-hint {
   margin: 0 0 0.85rem;
   font-size: 0.84rem;
@@ -5810,6 +5938,8 @@ body {
   top: 0.75rem;
   align-self: start;
   max-height: min(85vh, 560px);
+  scroll-margin-top: 1rem;
+  scroll-margin-bottom: 1rem;
 }
 
 @media (max-width: 1099px) {
@@ -7865,6 +7995,10 @@ body {
   margin: 1.5rem 0 1.25rem;
 }
 
+.director-survey-charts--embed {
+  margin-top: 0.25rem;
+}
+
 .director-survey-cloud {
   margin: 1.25rem 0 1.5rem;
 }
@@ -7921,4 +8055,726 @@ body {
 /* Записка внизу блока «Сводка» на странице директора */
 .app-public .ai-insights-narrative--director-bottom {
   margin-top: 1.35rem;
+}
+
+/* ——— Педагогическая аналитика ——— */
+.pedagogical-analytics-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pedagogical-analytics-stepbar {
+  padding: 1rem 1.15rem;
+}
+
+.pedagogical-analytics-stepbar-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+}
+
+.pedagogical-step-link {
+  font-weight: 600;
+  color: var(--page-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  padding-bottom: 0.15rem;
+}
+
+.pedagogical-step-link--active {
+  color: var(--page-fg, #111827);
+  border-bottom-color: var(--accent, #e30613);
+}
+
+.pedagogical-hub-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.pedagogical-hub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pedagogical-hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.pedagogical-copy-workflow {
+  margin: 1rem 0 0.5rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--page-fg, #111827) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--page-fg, #111827) 10%, transparent);
+}
+
+.pedagogical-copy-workflow-title {
+  margin: 0 0 0.5rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.pedagogical-copy-workflow-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--page-muted);
+}
+
+.pedagogical-copy-workflow-list li {
+  margin-bottom: 0.4rem;
+}
+
+.pedagogical-copy-workflow-list li:last-child {
+  margin-bottom: 0;
+}
+
+.pedagogical-subheading {
+  margin: 1.25rem 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.pedagogical-plain-textarea {
+  width: 100%;
+  max-width: 100%;
+  min-height: 8rem;
+  resize: vertical;
+  font-family: ui-monospace, monospace;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.pedagogical-entity-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.pedagogical-entity-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.pedagogical-entity-type {
+  flex: 0 0 auto;
+  min-width: 11rem;
+}
+
+.pedagogical-entity-value {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+}
+
+.pedagogical-progress-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.pedagogical-redacted-preview {
+  margin: 0.35rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background: var(--input-bg, rgba(0, 0, 0, 0.03));
+  font-size: 0.88rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: min(50vh, 420px);
+  overflow: auto;
+}
+
+.pedagogical-map-details {
+  margin-top: 1rem;
+}
+
+.pedagogical-map-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.pedagogical-map-table th,
+.pedagogical-map-table td {
+  border: 1px solid var(--card-border);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pedagogical-segment-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pedagogical-segment-card {
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+}
+
+.pedagogical-segment-head {
+  font-size: 0.95rem;
+}
+
+.pedagogical-segment-narrative {
+  max-height: min(36vh, 280px);
+}
+
+/* Феноменальные уроки: чек-лист педагогов + сопоставление с опросом родителей */
+.phenomenal-lessons-page .phenomenal-upload-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.phenomenal-lessons-page .phenomenal-file-label {
+  position: relative;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.phenomenal-lessons-page .phenomenal-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.phenomenal-lessons-page .phenomenal-mapping-table,
+.phenomenal-lessons-page .phenomenal-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin-top: 0.65rem;
+}
+
+.phenomenal-lessons-page .phenomenal-mapping-table th,
+.phenomenal-lessons-page .phenomenal-mapping-table td,
+.phenomenal-lessons-page .phenomenal-data-table th,
+.phenomenal-lessons-page .phenomenal-data-table td {
+  border: 1px solid var(--card-border);
+  padding: 0.45rem 0.6rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.phenomenal-lessons-page .phenomenal-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.phenomenal-lessons-page .phenomenal-key-cell {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  max-width: 12rem;
+}
+
+.phenomenal-lessons-page .phenomenal-merge-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.85rem 1rem;
+}
+
+.phenomenal-lessons-page .phenomenal-merge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 12rem;
+}
+
+.phenomenal-lessons-page .phenomenal-merge-threshold-input {
+  max-width: 6rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.phenomenal-lessons-page .phenomenal-merge-wait {
+  margin-top: 0.85rem;
+}
+
+.phenomenal-lessons-page .phenomenal-merge-subtitle {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 1.1rem 0 0.4rem;
+}
+
+/* Редактор отчёта «Отзывы» */
+.phenomenal-report-editor-page .phenomenal-report-back-link {
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.phenomenal-report-editor-page .phenomenal-report-back-link:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.phenomenal-report-meta .phenomenal-report-label,
+.phenomenal-report-block .phenomenal-report-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--muted, #64748b);
+}
+
+.phenomenal-report-label--full {
+  margin-top: 0.65rem;
+}
+
+.phenomenal-report-input,
+.phenomenal-report-textarea {
+  font-size: 0.92rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-border);
+  background: var(--surface);
+  color: var(--text);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.phenomenal-report-textarea {
+  font-family: inherit;
+  line-height: 1.45;
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.phenomenal-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.65rem 1rem;
+  margin-top: 0.5rem;
+}
+
+/* Блок урока: поля слева (~50%), диаграмма справа */
+.phenomenal-report-block-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.25rem;
+  align-items: start;
+  margin-top: 0.5rem;
+}
+
+.phenomenal-report-block-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.phenomenal-report-block-chart {
+  min-width: 0;
+}
+
+.phenomenal-report-block-chart .phenomenal-block-competency-title {
+  font-size: 0.88rem;
+}
+
+.phenomenal-report-teacher-notes {
+  margin-top: 1rem;
+}
+
+@media (max-width: 960px) {
+  .phenomenal-report-block-top {
+    grid-template-columns: 1fr;
+  }
+}
+
+.phenomenal-report-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.phenomenal-report-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.phenomenal-report-block-title {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.phenomenal-report-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.phenomenal-report-source-tag {
+  font-size: 0.82rem;
+  margin: 0 0 0.5rem;
+}
+
+.phenomenal-report-review-row {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.phenomenal-report-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.phenomenal-report-review-num {
+  font-weight: 700;
+  min-width: 1.5rem;
+}
+
+.phenomenal-report-review-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.phenomenal-report-editor-page .btn-sm {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.phenomenal-competency-section {
+  padding-bottom: 1rem;
+}
+
+.phenomenal-competency-charts-title {
+  font-size: 1.05rem;
+  font-weight: 650;
+  margin: 0 0 0.35rem;
+}
+
+.phenomenal-competency-charts-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.86rem;
+}
+
+.phenomenal-competency-charts--empty {
+  padding: 0.25rem 0;
+}
+
+.phenomenal-competency-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 960px) {
+  .phenomenal-competency-charts-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+
+.phenomenal-competency-chart-panel {
+  min-width: 0;
+}
+
+.phenomenal-competency-chart-caption {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  margin: 0 0 0.35rem;
+}
+
+.phenomenal-competency-chart-wrap {
+  width: 100%;
+  min-height: 260px;
+}
+
+.phenomenal-competency-chart-wrap--bar {
+  min-height: 280px;
+}
+
+.phenomenal-competency-chart-wrap--radar {
+  min-height: 300px;
+}
+
+.phenomenal-competency-on-upload .phenomenal-competency-charts {
+  padding: 0.75rem 0 0;
+}
+
+.phenomenal-block-competency {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+}
+
+.phenomenal-block-competency-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  margin: 0 0 0.35rem;
+}
+
+.phenomenal-block-competency-lead {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+}
+
+.phenomenal-block-competency-dl {
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.phenomenal-block-competency-dl-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  font-size: 0.84rem;
+}
+
+.phenomenal-block-competency-dl-row dt {
+  margin: 0;
+  color: var(--muted, #64748b);
+  font-weight: 500;
+}
+
+.phenomenal-block-competency-dl-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.phenomenal-block-competency-empty {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.phenomenal-block-competency-charts-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 900px) {
+  .phenomenal-block-competency-charts-grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+
+.phenomenal-block-competency-bar {
+  min-height: 200px;
+}
+
+.phenomenal-block-competency-radar {
+  min-height: 220px;
+}
+
+.phenomenal-upload-competency-tr td {
+  padding-top: 0.35rem;
+  padding-bottom: 0.65rem;
+  vertical-align: top;
+  background: var(--surface-elevated, rgba(15, 23, 42, 0.2));
+}
+
+.phenomenal-upload-row-competency {
+  margin: 0;
+}
+
+.phenomenal-upload-row-competency-summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--muted, #64748b);
+  list-style-position: outside;
+}
+
+.phenomenal-upload-row-competency-summary:hover {
+  color: var(--foreground, #e2e8f0);
+}
+
+.phenomenal-upload-row-competency-panel {
+  margin-top: 0.5rem;
+}
+
+.phenomenal-upload-row-competency-panel .phenomenal-block-competency {
+  margin-top: 0;
+  padding-top: 0.5rem;
+  border-top: none;
+}
+
+.phenomenal-rubric-usage {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+}
+
+.phenomenal-rubric-usage-title {
+  font-size: 0.9rem;
+  font-weight: 650;
+  margin: 0 0 0.35rem;
+}
+
+.phenomenal-rubric-usage-lead {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.phenomenal-rubric-usage-legend {
+  white-space: nowrap;
+}
+
+.phenomenal-rubric-usage-swatch {
+  display: inline-block;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 2px;
+  margin-right: 0.25rem;
+  vertical-align: middle;
+}
+
+.phenomenal-rubric-usage-swatch--on {
+  background: #dc2626;
+}
+
+.phenomenal-rubric-usage-swatch--off {
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+}
+
+.phenomenal-rubric-usage-empty {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.phenomenal-rubric-usage-table-wrap {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.35));
+}
+
+.phenomenal-rubric-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.phenomenal-rubric-usage-th-dim,
+.phenomenal-rubric-usage-td-dim {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.35));
+  max-width: 12rem;
+}
+
+.phenomenal-rubric-usage-th-lv {
+  text-align: center;
+  width: 2.25rem;
+  padding: 0.35rem 0.25rem;
+  font-weight: 600;
+  color: var(--muted, #64748b);
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.35));
+  background: var(--surface-muted, rgba(241, 245, 249, 0.5));
+}
+
+.phenomenal-rubric-usage-cell {
+  text-align: center;
+  padding: 0.35rem 0.25rem;
+  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.25));
+  font-size: 0.75rem;
+}
+
+.phenomenal-rubric-usage-cell--on {
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+}
+
+.phenomenal-rubric-usage-cell--off {
+  background: #e2e8f0;
+  color: #94a3b8;
+}
+
+.phenomenal-rubric-usage-cell--na {
+  background: #f8fafc;
+  color: #cbd5e1;
+  font-size: 0.7rem;
+}
+
+.phenomenal-rubric-field-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.phenomenal-rubric-title {
+  font-weight: 650;
+  font-size: 0.88rem;
+}
+
+.phenomenal-rubric-details {
+  font-size: 0.8rem;
+}
+
+.phenomenal-rubric-details summary {
+  cursor: pointer;
+  color: var(--muted, #64748b);
+  user-select: none;
+}
+
+.phenomenal-rubric-desc {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  max-width: 52rem;
+}
+
+.phenomenal-cluster-wait {
+  margin-top: 0.5rem;
 }

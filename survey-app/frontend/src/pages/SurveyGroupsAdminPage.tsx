@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getSurveyGroups, listSurveys, updateSurvey } from '../api/client';
+import { createSurveyGroup, getSurveyGroups, listSurveys, updateSurvey } from '../api/client';
 import PulseLoadingDashboard from '../components/PulseLoadingDashboard';
 import { adminStagger, adminStaggerItem } from '../motion/adminMotion';
 import { SURVEY_STATUS_LABEL_RU } from '../lib/labels';
@@ -13,6 +13,15 @@ export default function SurveyGroupsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupCurator, setNewGroupCurator] = useState('');
+  const [newGroupSort, setNewGroupSort] = useState('');
+  const [addGroupBusy, setAddGroupBusy] = useState(false);
+
+  const suggestedSortOrder = useMemo(() => {
+    if (!groups.length) return 1;
+    return Math.max(...groups.map((g) => g.sort_order)) + 1;
+  }, [groups]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -31,6 +40,42 @@ export default function SurveyGroupsAdminPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  async function addSurveyGroup() {
+    const name = newGroupName.trim();
+    if (!name) {
+      setErr('Введите название раздела.');
+      return;
+    }
+    let sort_order: number | undefined;
+    if (newGroupSort.trim() !== '') {
+      const n = Number(newGroupSort);
+      if (!Number.isFinite(n)) {
+        setErr('Порядок сортировки — целое число.');
+        return;
+      }
+      sort_order = n;
+    } else {
+      sort_order = suggestedSortOrder;
+    }
+    setAddGroupBusy(true);
+    setErr(null);
+    try {
+      await createSurveyGroup({
+        name,
+        curator_name: newGroupCurator.trim() || undefined,
+        sort_order,
+      });
+      setNewGroupName('');
+      setNewGroupCurator('');
+      setNewGroupSort('');
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Не удалось создать раздел');
+    } finally {
+      setAddGroupBusy(false);
+    }
+  }
 
   async function assignGroup(surveyId: number, survey_group_id: number | null) {
     setSavingId(surveyId);
@@ -76,7 +121,63 @@ export default function SurveyGroupsAdminPage() {
         animate="show"
       >
         <h2 className="admin-dash-h2 admin-dash-h2--flush">Справочник разделов</h2>
-        <p className="muted">Фиксированный набор групп (меняется только на стороне базы данных при необходимости).</p>
+        <p className="muted">
+          Разделы используются в фильтре «Модуль аналитики» и при создании опроса. Добавление — только у администратора
+          или при входе по API-ключу с главной.
+        </p>
+        <div className="survey-groups-admin-add-form">
+          <div className="survey-groups-admin-add-row">
+            <label className="excel-analytics-field survey-groups-admin-add-field">
+              Название раздела
+              <input
+                className="excel-analytics-input"
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Например: Стажировки"
+                maxLength={500}
+                disabled={addGroupBusy}
+              />
+            </label>
+            <label className="excel-analytics-field survey-groups-admin-add-field">
+              Куратор (необязательно)
+              <input
+                className="excel-analytics-input"
+                type="text"
+                value={newGroupCurator}
+                onChange={(e) => setNewGroupCurator(e.target.value)}
+                placeholder="ФИО"
+                maxLength={500}
+                disabled={addGroupBusy}
+              />
+            </label>
+            <label className="excel-analytics-field survey-groups-admin-add-field survey-groups-admin-add-field--sort">
+              Порядок в списке
+              <input
+                className="excel-analytics-input"
+                type="number"
+                value={newGroupSort}
+                onChange={(e) => setNewGroupSort(e.target.value)}
+                placeholder={String(suggestedSortOrder)}
+                disabled={addGroupBusy}
+              />
+            </label>
+            <div className="survey-groups-admin-add-actions">
+              <button
+                type="button"
+                className="btn primary"
+                disabled={addGroupBusy}
+                onClick={() => void addSurveyGroup()}
+              >
+                {addGroupBusy ? 'Сохранение…' : 'Добавить раздел'}
+              </button>
+            </div>
+          </div>
+          <p className="muted survey-groups-admin-add-hint">
+            Пустой порядок — в конец списка (сейчас это {suggestedSortOrder}). Идентификатор в БД (slug) создаётся
+            автоматически.
+          </p>
+        </div>
         <ul className="survey-groups-admin-ref-list">
           {groups.map((g) => (
             <motion.li key={g.id} variants={adminStaggerItem}>
